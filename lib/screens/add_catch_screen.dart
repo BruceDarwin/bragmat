@@ -1,4 +1,6 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 
@@ -15,6 +17,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   final _lengthController = TextEditingController();
   final _notesController = TextEditingController();
   DateTime? _dateCaught;
+  String? _imagePath;
+  DateTime? _photoDateTime;
 
   @override
   void initState() {
@@ -24,6 +28,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _lengthController.text = widget.catchToEdit!.lengthCm.toString();
       _notesController.text = widget.catchToEdit!.notes ?? '';
       _dateCaught = widget.catchToEdit!.dateCaught;
+      _imagePath = widget.catchToEdit!.imagePath;
+      _photoDateTime = widget.catchToEdit!.photoDateTime;
     }
   }
 
@@ -41,6 +47,17 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     }
   }
 
+  Future<void> _pickImage() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    if (pickedFile != null) {
+      setState(() {
+        _imagePath = pickedFile.path;
+        _photoDateTime = DateTime.now();
+      });
+    }
+  }
+
 void _saveCatch() async {
   final fishType = _fishTypeController.text;
   final length = int.tryParse(_lengthController.text) ?? 0;
@@ -54,6 +71,8 @@ void _saveCatch() async {
       notes: notes,
       createdAt: widget.catchToEdit!.createdAt,
       dateCaught: _dateCaught,
+      imagePath: _imagePath,
+      photoDateTime: _photoDateTime,
     );
     await DatabaseHelper.instance.updateCatch(updatedCatch);
   } else {
@@ -63,6 +82,8 @@ void _saveCatch() async {
       notes: notes,
       createdAt: DateTime.now(),
       dateCaught: _dateCaught,
+      imagePath: _imagePath,
+      photoDateTime: _photoDateTime,
     );
     await DatabaseHelper.instance.insertCatch(newCatch);
   }
@@ -105,6 +126,23 @@ void _saveCatch() async {
               ),
               trailing: const Icon(Icons.calendar_today),
               onTap: _selectDate,
+            ),
+            const SizedBox(height: 16),
+            if (_imagePath != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.file(
+                  File(_imagePath!),
+                  height: 150,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: _pickImage,
+              icon: const Icon(Icons.photo_library),
+              label: const Text('Add Photo'),
             ),
             const SizedBox(height: 20),
             ElevatedButton(

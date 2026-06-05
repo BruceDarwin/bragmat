@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
@@ -60,6 +61,17 @@ class _CatchListScreenState extends State<CatchListScreen> {
         itemBuilder: (context, index) {
           final catchItem = _catches[index];
           return ListTile(
+            leading: catchItem.imagePath != null
+                ? ClipRRect(
+                    borderRadius: BorderRadius.circular(8),
+                    child: Image.file(
+                      File(catchItem.imagePath!),
+                      width: 56,
+                      height: 56,
+                      fit: BoxFit.cover,
+                    ),
+                  )
+                : null,
             title: Text(catchItem.fishType),
             subtitle: Text(
               '${catchItem.dateCaught != null ? '${catchItem.dateCaught!.day}/${catchItem.dateCaught!.month}/${catchItem.dateCaught!.year}\n' : ''}${catchItem.lengthCm} cm\n${catchItem.notes ?? ''}'

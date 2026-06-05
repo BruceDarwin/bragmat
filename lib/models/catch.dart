@@ -5,6 +5,8 @@ class Catch {
   final String? notes;
   final DateTime createdAt;
   final DateTime? dateCaught;
+  final String? imagePath;
+  final DateTime? photoDateTime;
 
   Catch({
     this.id,
@@ -13,6 +15,8 @@ class Catch {
     this.notes,
     required this.createdAt,
     this.dateCaught,
+    this.imagePath,
+    this.photoDateTime,
   });
 
   Map<String, dynamic> toMap() {
@@ -23,6 +27,8 @@ class Catch {
       'notes': notes,
       'created_at': createdAt.toIso8601String(),
       'date_caught': dateCaught?.toIso8601String(),
+      'image_path': imagePath,
+      'photo_datetime': photoDateTime?.toIso8601String(),
     };
   }
 
@@ -37,6 +43,10 @@ factory Catch.fromMap(Map<String, dynamic> map) {
         : DateTime.now(),
     dateCaught: map['date_caught'] != null
         ? DateTime.parse(map['date_caught'] as String)
+        : null,
+    imagePath: map['image_path'] as String?,
+    photoDateTime: map['photo_datetime'] != null
+        ? DateTime.parse(map['photo_datetime'] as String)
         : null,
   );
 }

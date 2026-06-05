@@ -20,7 +20,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 2,
+      version: 3,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -34,7 +34,9 @@ class DatabaseHelper {
         length_cm INTEGER,
         notes TEXT,
         created_at TEXT,
-        date_caught TEXT
+        date_caught TEXT,
+        image_path TEXT,
+        photo_datetime TEXT
       )
     ''');
   }
@@ -42,6 +44,10 @@ class DatabaseHelper {
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 2) {
       await db.execute('ALTER TABLE catches ADD COLUMN date_caught TEXT');
+    }
+    if (oldVersion < 3) {
+      await db.execute('ALTER TABLE catches ADD COLUMN image_path TEXT');
+      await db.execute('ALTER TABLE catches ADD COLUMN photo_datetime TEXT');
     }
   }
 
