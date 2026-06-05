@@ -39,6 +39,15 @@ class _CatchListScreenState extends State<CatchListScreen> {
             subtitle: Text(
               '${catchItem.lengthCm} cm\n${catchItem.notes ?? ''}'
 ),
+            onTap: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AddCatchScreen(catchToEdit: catchItem),
+                ),
+              );
+              _loadCatches();
+            },
           );
         },
       ),

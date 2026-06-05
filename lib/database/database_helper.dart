@@ -50,4 +50,15 @@ class DatabaseHelper {
 
     return result.map((json) => Catch.fromMap(json)).toList();
   }
+
+  // UPDATE
+  Future<int> updateCatch(Catch catchItem) async {
+    final db = await instance.database;
+    return await db.update(
+      'catches',
+      catchItem.toMap(),
+      where: 'id = ?',
+      whereArgs: [catchItem.id],
+    );
+  }
 }
