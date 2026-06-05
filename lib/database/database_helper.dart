@@ -61,4 +61,14 @@ class DatabaseHelper {
       whereArgs: [catchItem.id],
     );
   }
+
+  // DELETE
+  Future<int> deleteCatch(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'catches',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
 }

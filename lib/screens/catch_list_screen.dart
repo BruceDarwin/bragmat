@@ -26,6 +26,31 @@ class _CatchListScreenState extends State<CatchListScreen> {
     });
   }
 
+  Future<void> _showDeleteDialog(Catch catchItem) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Catch'),
+        content: Text('Are you sure you want to delete ${catchItem.fishType}?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && catchItem.id != null) {
+      await DatabaseHelper.instance.deleteCatch(catchItem.id!);
+      _loadCatches();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -48,6 +73,10 @@ class _CatchListScreenState extends State<CatchListScreen> {
               );
               _loadCatches();
             },
+            trailing: IconButton(
+              icon: const Icon(Icons.delete),
+              onPressed: () => _showDeleteDialog(catchItem),
+            ),
           );
         },
       ),
