@@ -4,6 +4,7 @@ class Catch {
   final int lengthCm;
   final String? notes;
   final DateTime createdAt;
+  final DateTime? dateCaught;
 
   Catch({
     this.id,
@@ -11,6 +12,7 @@ class Catch {
     required this.lengthCm,
     this.notes,
     required this.createdAt,
+    this.dateCaught,
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +22,7 @@ class Catch {
       'length_cm': lengthCm,
       'notes': notes,
       'created_at': createdAt.toIso8601String(),
+      'date_caught': dateCaught?.toIso8601String(),
     };
   }
 
@@ -32,6 +35,9 @@ factory Catch.fromMap(Map<String, dynamic> map) {
     createdAt: map['created_at'] != null
         ? DateTime.parse(map['created_at'] as String)
         : DateTime.now(),
+    dateCaught: map['date_caught'] != null
+        ? DateTime.parse(map['date_caught'] as String)
+        : null,
   );
 }
 }

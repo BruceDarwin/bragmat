@@ -62,7 +62,7 @@ class _CatchListScreenState extends State<CatchListScreen> {
           return ListTile(
             title: Text(catchItem.fishType),
             subtitle: Text(
-              '${catchItem.lengthCm} cm\n${catchItem.notes ?? ''}'
+              '${catchItem.dateCaught != null ? '${catchItem.dateCaught!.day}/${catchItem.dateCaught!.month}/${catchItem.dateCaught!.year}\n' : ''}${catchItem.lengthCm} cm\n${catchItem.notes ?? ''}'
 ),
             onTap: () async {
               await Navigator.push(

@@ -20,8 +20,9 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: _createDB,
+      onUpgrade: _onUpgrade,
     );
   }
 
@@ -32,9 +33,16 @@ class DatabaseHelper {
         fish_type TEXT,
         length_cm INTEGER,
         notes TEXT,
-        created_at TEXT
+        created_at TEXT,
+        date_caught TEXT
       )
     ''');
+  }
+
+  Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      await db.execute('ALTER TABLE catches ADD COLUMN date_caught TEXT');
+    }
   }
 
   // INSERT

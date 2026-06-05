@@ -14,6 +14,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   final _fishTypeController = TextEditingController();
   final _lengthController = TextEditingController();
   final _notesController = TextEditingController();
+  DateTime? _dateCaught;
 
   @override
   void initState() {
@@ -22,6 +23,21 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _fishTypeController.text = widget.catchToEdit!.fishType;
       _lengthController.text = widget.catchToEdit!.lengthCm.toString();
       _notesController.text = widget.catchToEdit!.notes ?? '';
+      _dateCaught = widget.catchToEdit!.dateCaught;
+    }
+  }
+
+  Future<void> _selectDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateCaught ?? DateTime.now(),
+      firstDate: DateTime(2000),
+      lastDate: DateTime.now(),
+    );
+    if (picked != null) {
+      setState(() {
+        _dateCaught = picked;
+      });
     }
   }
 
@@ -37,6 +53,7 @@ void _saveCatch() async {
       lengthCm: length,
       notes: notes,
       createdAt: widget.catchToEdit!.createdAt,
+      dateCaught: _dateCaught,
     );
     await DatabaseHelper.instance.updateCatch(updatedCatch);
   } else {
@@ -45,6 +62,7 @@ void _saveCatch() async {
       lengthCm: length,
       notes: notes,
       createdAt: DateTime.now(),
+      dateCaught: _dateCaught,
     );
     await DatabaseHelper.instance.insertCatch(newCatch);
   }
@@ -76,6 +94,17 @@ void _saveCatch() async {
             TextField(
               controller: _notesController,
               decoration: const InputDecoration(labelText: 'Notes'),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              title: const Text('Date Caught'),
+              subtitle: Text(
+                _dateCaught != null
+                    ? '${_dateCaught!.day}/${_dateCaught!.month}/${_dateCaught!.year}'
+                    : 'Not set',
+              ),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: _selectDate,
             ),
             const SizedBox(height: 20),
             ElevatedButton(
