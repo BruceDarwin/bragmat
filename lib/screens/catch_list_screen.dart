@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import 'add_catch_screen.dart';
+import 'catch_details_screen.dart';
 
 class CatchListScreen extends StatefulWidget {
   const CatchListScreen({super.key});
@@ -25,31 +26,6 @@ class _CatchListScreenState extends State<CatchListScreen> {
     setState(() {
       _catches = data;
     });
-  }
-
-  Future<void> _showDeleteDialog(Catch catchItem) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete Catch'),
-        content: Text('Are you sure you want to delete ${catchItem.fishType}?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed == true && catchItem.id != null) {
-      await DatabaseHelper.instance.deleteCatch(catchItem.id!);
-      _loadCatches();
-    }
   }
 
   @override
@@ -77,18 +53,16 @@ class _CatchListScreenState extends State<CatchListScreen> {
               '${catchItem.dateCaught != null ? '${catchItem.dateCaught!.day}/${catchItem.dateCaught!.month}/${catchItem.dateCaught!.year}\n' : ''}${catchItem.lengthCm} cm\n${catchItem.notes ?? ''}'
 ),
             onTap: () async {
-              await Navigator.push(
+              final result = await Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => AddCatchScreen(catchToEdit: catchItem),
+                  builder: (_) => CatchDetailsScreen(catchItem: catchItem),
                 ),
               );
-              _loadCatches();
+              if (result == true) {
+                _loadCatches();
+              }
             },
-            trailing: IconButton(
-              icon: const Icon(Icons.delete),
-              onPressed: () => _showDeleteDialog(catchItem),
-            ),
           );
         },
       ),
