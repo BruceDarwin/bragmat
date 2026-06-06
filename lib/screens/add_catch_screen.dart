@@ -62,6 +62,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _latitude = null;
         _longitude = null;
       });
+      debugPrint('Selected photo path: ${pickedFile.path}');
       await _extractGpsData(pickedFile.path);
     }
   }
@@ -86,9 +87,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
             _latitude = latitude;
             _longitude = longitude;
           });
+
+          debugPrint('Extracted GPS - Latitude: $latitude, Longitude: $longitude');
         }
+      } else {
+        debugPrint('No GPS data found in photo EXIF');
       }
     } catch (e) {
+      debugPrint('Error reading EXIF data: $e');
       // If EXIF reading fails, continue without GPS data
     }
   }
@@ -157,31 +163,6 @@ void _saveCatch() async {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            TextField(
-              controller: _fishTypeController,
-              decoration: const InputDecoration(labelText: 'Fish Type'),
-            ),
-            TextField(
-              controller: _lengthController,
-              decoration: const InputDecoration(labelText: 'Length (cm)'),
-              keyboardType: TextInputType.number,
-            ),
-            TextField(
-              controller: _notesController,
-              decoration: const InputDecoration(labelText: 'Notes'),
-            ),
-            const SizedBox(height: 16),
-            ListTile(
-              title: const Text('Date Caught'),
-              subtitle: Text(
-                _dateCaught != null
-                    ? '${_dateCaught!.day}/${_dateCaught!.month}/${_dateCaught!.year}'
-                    : 'Not set',
-              ),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: _selectDate,
-            ),
-            const SizedBox(height: 16),
             if (_imagePath != null)
               ClipRRect(
                 borderRadius: BorderRadius.circular(8),
@@ -197,6 +178,31 @@ void _saveCatch() async {
               onPressed: _pickImage,
               icon: const Icon(Icons.photo_library),
               label: const Text('Add Photo'),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              title: const Text('Date Caught'),
+              subtitle: Text(
+                _dateCaught != null
+                    ? '${_dateCaught!.day}/${_dateCaught!.month}/${_dateCaught!.year}'
+                    : 'Not set',
+              ),
+              trailing: const Icon(Icons.calendar_today),
+              onTap: _selectDate,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _fishTypeController,
+              decoration: const InputDecoration(labelText: 'Fish Type'),
+            ),
+            TextField(
+              controller: _lengthController,
+              decoration: const InputDecoration(labelText: 'Size (cm)'),
+              keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: _notesController,
+              decoration: const InputDecoration(labelText: 'Notes'),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
