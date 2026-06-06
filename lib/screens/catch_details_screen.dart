@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import 'add_catch_screen.dart';
+import 'photo_viewer_screen.dart';
 
 class CatchDetailsScreen extends StatelessWidget {
   final Catch catchItem;
@@ -68,13 +69,23 @@ class CatchDetailsScreen extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (catchItem.imagePath != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(12),
-                child: Image.file(
-                  File(catchItem.imagePath!),
-                  width: double.infinity,
-                  height: 250,
-                  fit: BoxFit.cover,
+              GestureDetector(
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => PhotoViewerScreen(imagePath: catchItem.imagePath!),
+                    ),
+                  );
+                },
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(12),
+                  child: Image.file(
+                    File(catchItem.imagePath!),
+                    width: double.infinity,
+                    height: 250,
+                    fit: BoxFit.cover,
+                  ),
                 ),
               ),
             if (catchItem.imagePath != null) const SizedBox(height: 20),
