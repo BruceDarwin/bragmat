@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:exif/exif.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 
@@ -19,6 +20,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   DateTime? _dateCaught;
   String? _imagePath;
   DateTime? _photoDateTime;
+  double? _latitude;
+  double? _longitude;
 
   @override
   void initState() {
@@ -30,6 +33,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _dateCaught = widget.catchToEdit!.dateCaught;
       _imagePath = widget.catchToEdit!.imagePath;
       _photoDateTime = widget.catchToEdit!.photoDateTime;
+      _latitude = widget.catchToEdit!.latitude;
+      _longitude = widget.catchToEdit!.longitude;
     }
   }
 
@@ -54,8 +59,53 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       setState(() {
         _imagePath = pickedFile.path;
         _photoDateTime = DateTime.now();
+        _latitude = null;
+        _longitude = null;
       });
+      await _extractGpsData(pickedFile.path);
     }
+  }
+
+  Future<void> _extractGpsData(String imagePath) async {
+    try {
+      final file = File(imagePath);
+      final bytes = await file.readAsBytes();
+      final data = await readExifFromBytes(bytes);
+
+      if (data.containsKey('GPSLatitude') && data.containsKey('GPSLongitude')) {
+        final lat = data['GPSLatitude'];
+        final latRef = data['GPSLatitudeRef'];
+        final lon = data['GPSLongitude'];
+        final lonRef = data['GPSLongitudeRef'];
+
+        if (lat != null && latRef != null && lon != null && lonRef != null) {
+          final latitude = _convertToDecimalDegrees(lat, latRef);
+          final longitude = _convertToDecimalDegrees(lon, lonRef);
+
+          setState(() {
+            _latitude = latitude;
+            _longitude = longitude;
+          });
+        }
+      }
+    } catch (e) {
+      // If EXIF reading fails, continue without GPS data
+    }
+  }
+
+  double _convertToDecimalDegrees(dynamic value, dynamic ref) {
+    if (value is! List || value.length != 3) return 0.0;
+
+    final degrees = value[0] is num ? value[0].toDouble() : 0.0;
+    final minutes = value[1] is num ? value[1].toDouble() : 0.0;
+    final seconds = value[2] is num ? value[2].toDouble() : 0.0;
+
+    final decimal = degrees + (minutes / 60) + (seconds / 3600);
+
+    if (ref == 'S' || ref == 'W') {
+      return -decimal;
+    }
+    return decimal;
   }
 
 void _saveCatch() async {
@@ -73,6 +123,8 @@ void _saveCatch() async {
       dateCaught: _dateCaught,
       imagePath: _imagePath,
       photoDateTime: _photoDateTime,
+      latitude: _latitude,
+      longitude: _longitude,
     );
     await DatabaseHelper.instance.updateCatch(updatedCatch);
   } else {
@@ -84,6 +136,8 @@ void _saveCatch() async {
       dateCaught: _dateCaught,
       imagePath: _imagePath,
       photoDateTime: _photoDateTime,
+      latitude: _latitude,
+      longitude: _longitude,
     );
     await DatabaseHelper.instance.insertCatch(newCatch);
   }

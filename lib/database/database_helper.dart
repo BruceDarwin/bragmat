@@ -20,7 +20,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 3,
+      version: 4,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -36,7 +36,9 @@ class DatabaseHelper {
         created_at TEXT,
         date_caught TEXT,
         image_path TEXT,
-        photo_datetime TEXT
+        photo_datetime TEXT,
+        latitude REAL,
+        longitude REAL
       )
     ''');
   }
@@ -48,6 +50,10 @@ class DatabaseHelper {
     if (oldVersion < 3) {
       await db.execute('ALTER TABLE catches ADD COLUMN image_path TEXT');
       await db.execute('ALTER TABLE catches ADD COLUMN photo_datetime TEXT');
+    }
+    if (oldVersion < 4) {
+      await db.execute('ALTER TABLE catches ADD COLUMN latitude REAL');
+      await db.execute('ALTER TABLE catches ADD COLUMN longitude REAL');
     }
   }
 

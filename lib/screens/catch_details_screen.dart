@@ -93,6 +93,9 @@ class CatchDetailsScreen extends StatelessWidget {
             if (catchItem.photoDateTime != null)
               _buildDetailRow('Photo Taken',
                   '${catchItem.photoDateTime!.day}/${catchItem.photoDateTime!.month}/${catchItem.photoDateTime!.year} ${catchItem.photoDateTime!.hour}:${catchItem.photoDateTime!.minute.toString().padLeft(2, '0')}'),
+            if (catchItem.latitude != null && catchItem.longitude != null)
+              _buildDetailRow('Location',
+                  '${catchItem.latitude!.toStringAsFixed(6)}, ${catchItem.longitude!.toStringAsFixed(6)}'),
             if (catchItem.notes != null && catchItem.notes!.isNotEmpty)
               _buildDetailRow('Notes', catchItem.notes!),
           ],
