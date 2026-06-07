@@ -20,7 +20,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 4,
+      version: 5,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -41,6 +41,20 @@ class DatabaseHelper {
         longitude REAL
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE fish_types (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL
+      )
+    ''');
+
+    // Insert default fish types
+    await db.insert('fish_types', {'name': 'Barramundi'});
+    await db.insert('fish_types', {'name': 'Mangrove Jack'});
+    await db.insert('fish_types', {'name': 'Saratoga'});
+    await db.insert('fish_types', {'name': 'Jewfish'});
+    await db.insert('fish_types', {'name': 'Queenfish'});
   }
 
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -54,6 +68,19 @@ class DatabaseHelper {
     if (oldVersion < 4) {
       await db.execute('ALTER TABLE catches ADD COLUMN latitude REAL');
       await db.execute('ALTER TABLE catches ADD COLUMN longitude REAL');
+    }
+    if (oldVersion < 5) {
+      await db.execute('''
+        CREATE TABLE fish_types (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL
+        )
+      ''');
+      await db.insert('fish_types', {'name': 'Barramundi'});
+      await db.insert('fish_types', {'name': 'Mangrove Jack'});
+      await db.insert('fish_types', {'name': 'Saratoga'});
+      await db.insert('fish_types', {'name': 'Jewfish'});
+      await db.insert('fish_types', {'name': 'Queenfish'});
     }
   }
 
@@ -90,5 +117,22 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  // FISH TYPES
+  Future<List<String>> getFishTypes() async {
+    final db = await instance.database;
+    final result = await db.query('fish_types', orderBy: 'name');
+    return result.map((json) => json['name'] as String).toList();
+  }
+
+  Future<int> insertFishType(String name) async {
+    final db = await instance.database;
+    try {
+      return await db.insert('fish_types', {'name': name});
+    } catch (e) {
+      // If fish type already exists, return -1
+      return -1;
+    }
   }
 }

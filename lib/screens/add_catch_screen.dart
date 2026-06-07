@@ -22,10 +22,13 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   DateTime? _photoDateTime;
   double? _latitude;
   double? _longitude;
+  String? _selectedFishType;
+  List<String> _fishTypes = [];
 
   @override
   void initState() {
     super.initState();
+    _loadFishTypes();
     if (widget.catchToEdit != null) {
       _fishTypeController.text = widget.catchToEdit!.fishType;
       _lengthController.text = widget.catchToEdit!.lengthCm.toString();
@@ -35,6 +38,70 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _photoDateTime = widget.catchToEdit!.photoDateTime;
       _latitude = widget.catchToEdit!.latitude;
       _longitude = widget.catchToEdit!.longitude;
+    }
+  }
+
+  Future<void> _loadFishTypes() async {
+    final types = await DatabaseHelper.instance.getFishTypes();
+    setState(() {
+      // Remove duplicates and trim whitespace
+      final uniqueTypes = types.map((t) => t.trim()).toSet().toList();
+      _fishTypes = uniqueTypes;
+
+      // If editing and current fish type is not in list, add it once
+      if (widget.catchToEdit != null) {
+        final currentFishType = widget.catchToEdit!.fishType.trim();
+        if (currentFishType.isNotEmpty &&
+            !_fishTypes.contains(currentFishType)) {
+          _fishTypes = [..._fishTypes, currentFishType];
+        }
+        // Set selected fish type to the trimmed value
+        _selectedFishType = currentFishType.isEmpty ? null : currentFishType;
+      }
+    });
+  }
+
+  Future<void> _showAddFishTypeDialog() async {
+    final controller = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add New Fish Type'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Fish Type Name'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (result != null && result.isNotEmpty) {
+      final trimmedResult = result.trim();
+      // Check if already exists in current list
+      if (!_fishTypes.contains(trimmedResult)) {
+        final inserted = await DatabaseHelper.instance.insertFishType(trimmedResult);
+        if (inserted != -1) {
+          await _loadFishTypes();
+          setState(() {
+            _selectedFishType = trimmedResult;
+          });
+        }
+      } else {
+        // Already exists, just select it
+        setState(() {
+          _selectedFishType = trimmedResult;
+        });
+      }
     }
   }
 
@@ -62,7 +129,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _latitude = null;
         _longitude = null;
       });
-      debugPrint('Selected photo path: ${pickedFile.path}');
       await _extractGpsData(pickedFile.path);
     }
   }
@@ -115,9 +181,11 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   }
 
 void _saveCatch() async {
-  final fishType = _fishTypeController.text;
+  final fishType = _selectedFishType ?? _fishTypeController.text;
   final length = int.tryParse(_lengthController.text) ?? 0;
   final notes = _notesController.text;
+
+  Catch? savedCatch;
 
   if (widget.catchToEdit != null) {
     final updatedCatch = Catch(
@@ -133,6 +201,7 @@ void _saveCatch() async {
       longitude: _longitude,
     );
     await DatabaseHelper.instance.updateCatch(updatedCatch);
+    savedCatch = updatedCatch;
   } else {
     final newCatch = Catch(
       fishType: fishType,
@@ -146,11 +215,12 @@ void _saveCatch() async {
       longitude: _longitude,
     );
     await DatabaseHelper.instance.insertCatch(newCatch);
+    savedCatch = newCatch;
   }
 
   if (!mounted) return;
 
-  Navigator.pop(context);
+  Navigator.pop(context, savedCatch);
 }
 
   @override
@@ -191,9 +261,31 @@ void _saveCatch() async {
               onTap: _selectDate,
             ),
             const SizedBox(height: 16),
-            TextField(
-              controller: _fishTypeController,
+            DropdownButtonFormField<String>(
+              value: _selectedFishType,
               decoration: const InputDecoration(labelText: 'Fish Type'),
+              items: [
+                ..._fishTypes.map((type) {
+                  return DropdownMenuItem(
+                    value: type,
+                    child: Text(type),
+                  );
+                }),
+                const DropdownMenuItem(
+                  value: 'add_new',
+                  child: Text('+ Add New Fish Type'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == 'add_new') {
+                  _showAddFishTypeDialog();
+                } else {
+                  setState(() {
+                    _selectedFishType = value;
+                    _fishTypeController.text = value ?? '';
+                  });
+                }
+              },
             ),
             TextField(
               controller: _lengthController,
