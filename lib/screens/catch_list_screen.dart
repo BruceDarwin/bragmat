@@ -84,48 +84,84 @@ class _CatchListScreenState extends State<CatchListScreen> {
         ],
       ),
       body: ListView.builder(
+        padding: const EdgeInsets.all(16),
         itemCount: _filteredCatches.length,
         itemBuilder: (context, index) {
           final catchItem = _filteredCatches[index];
-          return ListTile(
-            leading: catchItem.imagePath != null
-                ? ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
-                    child: Image.file(
-                      File(catchItem.imagePath!),
-                      width: 56,
-                      height: 56,
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                : null,
-            title: Text(catchItem.fishType),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${catchItem.dateCaught != null ? '${catchItem.dateCaught!.day}/${catchItem.dateCaught!.month}/${catchItem.dateCaught!.year}' : ''} • ${catchItem.lengthCm} cm',
-                ),
-                if (catchItem.location != null && catchItem.location!.isNotEmpty)
-                  Text(
-                    catchItem.location!,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 12),
+          return Card(
+            margin: const EdgeInsets.only(bottom: 12),
+            child: InkWell(
+              onTap: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CatchDetailsScreen(catchItem: catchItem),
                   ),
-              ],
-            ),
-            onTap: () async {
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => CatchDetailsScreen(catchItem: catchItem),
+                );
+                if (result == true) {
+                  _loadCatches();
+                }
+              },
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    if (catchItem.imagePath != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(catchItem.imagePath!),
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.cover,
+                        ),
+                      )
+                    else
+                      Container(
+                        width: 80,
+                        height: 80,
+                        decoration: BoxDecoration(
+                          color: Colors.grey[200],
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: const Icon(Icons.image_not_supported, size: 40, color: Colors.grey),
+                      ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            catchItem.fishType,
+                            style: const TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${catchItem.lengthCm} cm',
+                            style: const TextStyle(fontSize: 14),
+                          ),
+                          if (catchItem.dateCaught != null)
+                            Text(
+                              '${catchItem.dateCaught!.day}/${catchItem.dateCaught!.month}/${catchItem.dateCaught!.year}',
+                              style: const TextStyle(fontSize: 14),
+                            ),
+                          if (catchItem.location != null && catchItem.location!.isNotEmpty)
+                            Text(
+                              catchItem.location!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-              );
-              if (result == true) {
-                _loadCatches();
-              }
-            },
+              ),
+            ),
           );
         },
       ),
