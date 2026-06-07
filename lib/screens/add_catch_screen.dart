@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
 import '../database/database_helper.dart';
@@ -7,7 +8,8 @@ import '../models/catch.dart';
 
 class AddCatchScreen extends StatefulWidget {
   final Catch? catchToEdit;
-  const AddCatchScreen({super.key, this.catchToEdit});
+  final VoidCallback? onCatchSaved;
+  const AddCatchScreen({super.key, this.catchToEdit, this.onCatchSaved});
 
   @override
   State<AddCatchScreen> createState() => _AddCatchScreenState();
@@ -182,65 +184,99 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     return decimal;
   }
 
-void _saveCatch() async {
-  final fishType = _selectedFishType ?? _fishTypeController.text;
-  final length = int.tryParse(_lengthController.text) ?? 0;
-  final notes = _notesController.text;
-  final location = _locationController.text.trim();
+  void _saveCatch() async {
+    debugPrint('=== _saveCatch method called ===');
+    debugPrint('onCatchSaved: ${widget.onCatchSaved}');
+    debugPrint('catchToEdit: ${widget.catchToEdit}');
 
-  if (fishType.isEmpty) {
-    return;
+    final fishType = _selectedFishType ?? _fishTypeController.text;
+    final length = int.tryParse(_lengthController.text) ?? 0;
+    final notes = _notesController.text;
+    final location = _locationController.text.trim();
+
+    debugPrint('fishType: $fishType');
+    debugPrint('length: $length');
+
+    if (fishType.isEmpty) {
+      debugPrint('Validation failed: fishType is empty');
+      return;
+    }
+
+    Catch? savedCatch;
+
+    if (widget.catchToEdit != null) {
+      debugPrint('Updating existing catch');
+      final updatedCatch = Catch(
+        id: widget.catchToEdit!.id,
+        fishType: fishType,
+        lengthCm: length,
+        notes: notes,
+        createdAt: widget.catchToEdit!.createdAt,
+        dateCaught: _dateCaught,
+        imagePath: _imagePath,
+        photoDateTime: _photoDateTime,
+        latitude: _latitude,
+        longitude: _longitude,
+        location: location.isEmpty ? null : location,
+      );
+      await DatabaseHelper.instance.updateCatch(updatedCatch);
+      savedCatch = updatedCatch;
+    } else {
+      debugPrint('Creating new catch');
+      final newCatch = Catch(
+        fishType: fishType,
+        lengthCm: length,
+        notes: notes,
+        createdAt: DateTime.now(),
+        dateCaught: _dateCaught,
+        imagePath: _imagePath,
+        photoDateTime: _photoDateTime,
+        latitude: _latitude,
+        longitude: _longitude,
+        location: location.isEmpty ? null : location,
+      );
+      debugPrint('About to insert catch');
+      await DatabaseHelper.instance.insertCatch(newCatch);
+      debugPrint('Catch inserted');
+      savedCatch = newCatch;
+    }
+
+    debugPrint('mounted: $mounted');
+
+    if (!mounted) return;
+
+    // Only pop if editing (catchToEdit != null)
+    // When adding from bottom nav, use callback to switch to My Catches
+    if (widget.catchToEdit != null) {
+      debugPrint('Editing mode: calling Navigator.pop');
+      Navigator.pop(context, savedCatch);
+    } else {
+      debugPrint('Adding mode: calling onCatchSaved callback');
+      // Call callback to switch to My Catches tab
+      widget.onCatchSaved?.call();
+      debugPrint('Callback called');
+    }
+    debugPrint('Save flow completed');
   }
-
-  Catch? savedCatch;
-
-  if (widget.catchToEdit != null) {
-    final updatedCatch = Catch(
-      id: widget.catchToEdit!.id,
-      fishType: fishType,
-      lengthCm: length,
-      notes: notes,
-      createdAt: widget.catchToEdit!.createdAt,
-      dateCaught: _dateCaught,
-      imagePath: _imagePath,
-      photoDateTime: _photoDateTime,
-      latitude: _latitude,
-      longitude: _longitude,
-      location: location.isEmpty ? null : location,
-    );
-    await DatabaseHelper.instance.updateCatch(updatedCatch);
-    savedCatch = updatedCatch;
-  } else {
-    final newCatch = Catch(
-      fishType: fishType,
-      lengthCm: length,
-      notes: notes,
-      createdAt: DateTime.now(),
-      dateCaught: _dateCaught,
-      imagePath: _imagePath,
-      photoDateTime: _photoDateTime,
-      latitude: _latitude,
-      longitude: _longitude,
-      location: location.isEmpty ? null : location,
-    );
-    await DatabaseHelper.instance.insertCatch(newCatch);
-    savedCatch = newCatch;
-  }
-
-  if (!mounted) return;
-
-  Navigator.pop(context, savedCatch);
-}
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.catchToEdit != null ? 'Edit Catch' : 'Add Catch'),
+        automaticallyImplyLeading: widget.catchToEdit != null,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadFishTypes,
+            tooltip: 'Refresh Fish Types',
+          ),
+        ],
       ),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             if (_imagePath != null)
               ClipRRect(
@@ -252,13 +288,13 @@ void _saveCatch() async {
                   fit: BoxFit.cover,
                 ),
               ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _pickImage,
               icon: const Icon(Icons.photo_library),
-              label: const Text('Add Photo'),
+              label: Text(_imagePath != null ? 'Change Photo' : 'Add Photo'),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             ListTile(
               title: const Text('Date Caught'),
               subtitle: Text(
@@ -269,7 +305,7 @@ void _saveCatch() async {
               trailing: const Icon(Icons.calendar_today),
               onTap: _selectDate,
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
             DropdownButtonFormField<String>(
               value: _selectedFishType,
               decoration: const InputDecoration(labelText: 'Fish Type'),
@@ -296,22 +332,29 @@ void _saveCatch() async {
                 }
               },
             ),
+            const SizedBox(height: 16),
             TextField(
               controller: _lengthController,
               decoration: const InputDecoration(labelText: 'Size (cm)'),
               keyboardType: TextInputType.number,
             ),
+            const SizedBox(height: 16),
             TextField(
               controller: _locationController,
               decoration: const InputDecoration(labelText: 'Location'),
             ),
+            const SizedBox(height: 16),
             TextField(
               controller: _notesController,
               decoration: const InputDecoration(labelText: 'Notes'),
+              maxLines: 3,
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: _saveCatch,
+              onPressed: () {
+                debugPrint('Save Catch button pressed');
+                _saveCatch();
+              },
               child: const Text('Save Catch'),
             ),
           ],

@@ -147,4 +147,42 @@ class DatabaseHelper {
       return -1;
     }
   }
+
+  Future<bool> isFishTypeUsed(String name) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'catches',
+      where: 'fish_type = ?',
+      whereArgs: [name],
+    );
+    return result.isNotEmpty;
+  }
+
+  Future<int> updateFishType(String oldName, String newName) async {
+    final db = await instance.database;
+    // Update the fish type name in fish_types table
+    final fishTypeResult = await db.update(
+      'fish_types',
+      {'name': newName},
+      where: 'name = ?',
+      whereArgs: [oldName],
+    );
+    // Update all catches that use this fish type
+    await db.update(
+      'catches',
+      {'fish_type': newName},
+      where: 'fish_type = ?',
+      whereArgs: [oldName],
+    );
+    return fishTypeResult;
+  }
+
+  Future<int> deleteFishType(String name) async {
+    final db = await instance.database;
+    return await db.delete(
+      'fish_types',
+      where: 'name = ?',
+      whereArgs: [name],
+    );
+  }
 }

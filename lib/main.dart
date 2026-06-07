@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'screens/catch_list_screen.dart';
 import 'screens/add_catch_screen.dart';
 import 'screens/settings_screen.dart';
@@ -25,17 +26,11 @@ class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  State<MainScreen> createState() => MainScreenState();
 }
 
-class _MainScreenState extends State<MainScreen> {
+class MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
-
-  final List<Widget> _screens = [
-    const CatchListScreen(),
-    const AddCatchScreen(),
-    const SettingsScreen(),
-  ];
 
   void _onItemTapped(int index) {
     setState(() {
@@ -43,10 +38,32 @@ class _MainScreenState extends State<MainScreen> {
     });
   }
 
+  void switchToMyCatches() {
+    debugPrint('=== switchToMyCatches called ===');
+    debugPrint('Current _selectedIndex: $_selectedIndex');
+    setState(() {
+      _selectedIndex = 0; // Switch to My Catches tab after saving
+    });
+    debugPrint('New _selectedIndex: $_selectedIndex');
+  }
+
+  Widget _buildScreen(int index) {
+    switch (index) {
+      case 0:
+        return const CatchListScreen();
+      case 1:
+        return AddCatchScreen(onCatchSaved: switchToMyCatches);
+      case 2:
+        return const SettingsScreen();
+      default:
+        return const CatchListScreen();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _screens[_selectedIndex],
+      body: _buildScreen(_selectedIndex),
       bottomNavigationBar: BottomNavigationBar(
         currentIndex: _selectedIndex,
         onTap: _onItemTapped,

@@ -14,6 +14,7 @@ class PhotoViewerScreen extends StatelessWidget {
         backgroundColor: Colors.black,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(''),
+        automaticallyImplyLeading: true,
       ),
       body: Center(
         child: InteractiveViewer(

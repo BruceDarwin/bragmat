@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
-import 'add_catch_screen.dart';
 import 'catch_details_screen.dart';
 
 class CatchListScreen extends StatefulWidget {
@@ -24,18 +24,21 @@ class _CatchListScreenState extends State<CatchListScreen> {
   }
 
   Future<void> _loadCatches() async {
+    debugPrint('=== _loadCatches called ===');
     final data = await DatabaseHelper.instance.getCatches();
-    // Sort by Date Caught, newest first
+    debugPrint('Total catches: ${data.length}');
+    // Sort by Date Caught, newest first. If dateCaught is null, use createdAt
     data.sort((a, b) {
-      if (a.dateCaught == null && b.dateCaught == null) return 0;
-      if (a.dateCaught == null) return 1;
-      if (b.dateCaught == null) return -1;
-      return b.dateCaught!.compareTo(a.dateCaught!);
+      final aDate = a.dateCaught ?? a.createdAt;
+      final bDate = b.dateCaught ?? b.createdAt;
+      return bDate.compareTo(aDate);
     });
+    debugPrint('Sorted catches');
     setState(() {
       _catches = data;
       _applyFilter();
     });
+    debugPrint('Filtered catches: ${_filteredCatches.length}');
   }
 
   void _applyFilter() {
@@ -89,7 +92,6 @@ class _CatchListScreenState extends State<CatchListScreen> {
         itemBuilder: (context, index) {
           final catchItem = _filteredCatches[index];
           return Card(
-            margin: const EdgeInsets.only(bottom: 12),
             child: InkWell(
               onTap: () async {
                 final result = await Navigator.push(
@@ -121,10 +123,14 @@ class _CatchListScreenState extends State<CatchListScreen> {
                         width: 80,
                         height: 80,
                         decoration: BoxDecoration(
-                          color: Colors.grey[200],
+                          color: Theme.of(context).colorScheme.surface,
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(Icons.image_not_supported, size: 40, color: Colors.grey),
+                        child: Icon(
+                          Icons.image_not_supported,
+                          size: 40,
+                          color: Colors.grey[400],
+                        ),
                       ),
                     const SizedBox(width: 16),
                     Expanded(
@@ -133,27 +139,26 @@ class _CatchListScreenState extends State<CatchListScreen> {
                         children: [
                           Text(
                             catchItem.fishType,
-                            style: const TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
+                            style: Theme.of(context).textTheme.titleLarge,
                           ),
                           const SizedBox(height: 4),
                           Text(
                             '${catchItem.lengthCm} cm',
-                            style: const TextStyle(fontSize: 14),
+                            style: Theme.of(context).textTheme.bodyMedium,
                           ),
                           if (catchItem.dateCaught != null)
                             Text(
                               '${catchItem.dateCaught!.day}/${catchItem.dateCaught!.month}/${catchItem.dateCaught!.year}',
-                              style: const TextStyle(fontSize: 14),
+                              style: Theme.of(context).textTheme.bodyMedium,
                             ),
                           if (catchItem.location != null && catchItem.location!.isNotEmpty)
                             Text(
                               catchItem.location!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(fontSize: 12, color: Colors.grey),
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[600],
+                              ),
                             ),
                         ],
                       ),
@@ -164,16 +169,6 @@ class _CatchListScreenState extends State<CatchListScreen> {
             ),
           );
         },
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () async {
-          await Navigator.push(
-            context,
-            MaterialPageRoute(builder: (_) => const AddCatchScreen()),
-          );
-          _loadCatches(); // refresh after returning
-        },
-        child: const Icon(Icons.add),
       ),
     );
   }

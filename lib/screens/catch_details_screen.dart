@@ -171,8 +171,7 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
         children: [
           Text(
             label,
-            style: TextStyle(
-              fontSize: 14,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
               color: Colors.grey[600],
               fontWeight: FontWeight.w500,
             ),
@@ -180,9 +179,7 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
           const SizedBox(height: 4),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 16,
-            ),
+            style: Theme.of(context).textTheme.bodyLarge,
           ),
         ],
       ),
