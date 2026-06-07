@@ -14,6 +14,8 @@ class CatchListScreen extends StatefulWidget {
 
 class _CatchListScreenState extends State<CatchListScreen> {
   List<Catch> _catches = [];
+  List<Catch> _filteredCatches = [];
+  String? _selectedFishTypeFilter;
 
   @override
   void initState() {
@@ -23,19 +25,68 @@ class _CatchListScreenState extends State<CatchListScreen> {
 
   Future<void> _loadCatches() async {
     final data = await DatabaseHelper.instance.getCatches();
+    // Sort by Date Caught, newest first
+    data.sort((a, b) {
+      if (a.dateCaught == null && b.dateCaught == null) return 0;
+      if (a.dateCaught == null) return 1;
+      if (b.dateCaught == null) return -1;
+      return b.dateCaught!.compareTo(a.dateCaught!);
+    });
     setState(() {
       _catches = data;
+      _applyFilter();
     });
+  }
+
+  void _applyFilter() {
+    if (_selectedFishTypeFilter == null || _selectedFishTypeFilter == 'All') {
+      _filteredCatches = _catches;
+    } else {
+      _filteredCatches = _catches.where((c) => c.fishType == _selectedFishTypeFilter).toList();
+    }
+  }
+
+  List<String> _getFishTypes() {
+    final types = _catches.map((c) => c.fishType).toSet().toList();
+    types.sort();
+    return types;
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('My Catches')),
+      appBar: AppBar(
+        title: const Text('My Catches'),
+        actions: [
+          PopupMenuButton<String>(
+            icon: const Icon(Icons.filter_list),
+            onSelected: (value) {
+              setState(() {
+                _selectedFishTypeFilter = value;
+                _applyFilter();
+              });
+            },
+            itemBuilder: (context) {
+              return [
+                const PopupMenuItem(
+                  value: 'All',
+                  child: Text('All Fish Types'),
+                ),
+                ..._getFishTypes().map((type) {
+                  return PopupMenuItem(
+                    value: type,
+                    child: Text(type),
+                  );
+                }),
+              ];
+            },
+          ),
+        ],
+      ),
       body: ListView.builder(
-        itemCount: _catches.length,
+        itemCount: _filteredCatches.length,
         itemBuilder: (context, index) {
-          final catchItem = _catches[index];
+          final catchItem = _filteredCatches[index];
           return ListTile(
             leading: catchItem.imagePath != null
                 ? ClipRRect(
