@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'dart:io';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
@@ -301,6 +302,143 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return value;
   }
 
+  Future<void> _exportAndShareCatchesToCSV() async {
+    debugPrint('=== Export & Share Catches to CSV started ===');
+    
+    try {
+      final catches = await DatabaseHelper.instance.getCatches();
+      debugPrint('Retrieved ${catches.length} catches from database');
+      
+      if (catches.isEmpty) {
+        debugPrint('No catches to export');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No catches to export')),
+          );
+        }
+        return;
+      }
+
+      // Get downloads directory
+      final directory = await getDownloadsDirectory();
+      if (directory == null) {
+        debugPrint('ERROR: Could not access downloads directory');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not access downloads directory')),
+          );
+        }
+        return;
+      }
+      debugPrint('Downloads directory: ${directory.path}');
+
+      // Create CSV content
+      final csvContent = StringBuffer();
+      // Header row
+      csvContent.writeln('Fish Type,Size (cm),Date Caught,Location,Notes,Photo Path,Photo Date/Time,Latitude,Longitude');
+      
+      // Data rows
+      for (final catch_ in catches) {
+        final fishType = _escapeCSV(catch_.fishType);
+        final size = catch_.lengthCm.toString();
+        final dateCaught = catch_.dateCaught?.toString().split(' ')[0] ?? catch_.createdAt.toString().split(' ')[0];
+        final location = _escapeCSV(catch_.location ?? '');
+        final notes = _escapeCSV(catch_.notes ?? '');
+        final photoPath = _escapeCSV(catch_.imagePath ?? '');
+        final photoDateTime = catch_.photoDateTime?.toString() ?? '';
+        final latitude = catch_.latitude?.toString() ?? '';
+        final longitude = catch_.longitude?.toString() ?? '';
+        
+        csvContent.writeln('$fishType,$size,$dateCaught,$location,$notes,$photoPath,$photoDateTime,$latitude,$longitude');
+      }
+
+      // Generate filename with timestamp
+      final timestamp = DateTime.now().toString().replaceAll(':', '-').replaceAll(' ', '_').split('.')[0];
+      final filename = 'bragmat_catches_$timestamp.csv';
+      final filePath = '${directory.path}/$filename';
+      debugPrint('Export file path: $filePath');
+      
+      // Write file
+      final file = File(filePath);
+      await file.writeAsString(csvContent.toString());
+      debugPrint('File written successfully');
+
+      // Verify file exists
+      if (await file.exists()) {
+        debugPrint('File verified to exist at: $filePath');
+        final fileSize = await file.length();
+        debugPrint('File size: $fileSize bytes');
+      } else {
+        debugPrint('ERROR: File does not exist after write');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Export failed: File not created')),
+          );
+        }
+        return;
+      }
+
+      // Share the file
+      debugPrint('Initiating share action for: $filePath');
+      await Share.shareXFiles(
+        [XFile(filePath)],
+        subject: 'Bragmat Catches Export',
+        text: 'Exported $filename',
+      );
+      debugPrint('Share action completed');
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Export & Share Successful'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('CSV file exported successfully.'),
+                const SizedBox(height: 8),
+                const Text('File name:'),
+                const SizedBox(height: 4),
+                SelectableText(
+                  filename,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text('File path:'),
+                const SizedBox(height: 4),
+                SelectableText(
+                  filePath,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('ERROR: Export & Share failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Export & Share failed: $e')),
+        );
+      }
+    }
+    debugPrint('=== Export & Share Catches to CSV completed ===');
+  }
+
   @override
   Widget build(BuildContext context) {
     final mostRecentCatch = _catches.isNotEmpty
@@ -437,6 +575,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     leading: const Icon(Icons.file_upload),
                     title: const Text('Export Catches'),
                     onTap: _exportCatchesToCSV,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.share),
+                    title: const Text('Export & Share CSV'),
+                    onTap: _exportAndShareCatchesToCSV,
                   ),
                   _buildComingSoonMenuItem(Icons.file_download, 'Import Catches'),
                   _buildComingSoonMenuItem(Icons.backup, 'Backup and Restore'),
