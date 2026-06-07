@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/catch_list_screen.dart';
+import 'theme.dart';
 
 void main() {
   runApp(const BragmatApp());
@@ -10,8 +11,10 @@ class BragmatApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const MaterialApp(
-      home: CatchListScreen(),
+    return MaterialApp(
+      title: 'Bragmat',
+      theme: AppTheme.lightTheme,
+      home: const CatchListScreen(),
     );
   }
 }
