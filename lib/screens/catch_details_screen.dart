@@ -79,7 +79,6 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
         ],
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -93,42 +92,74 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                     ),
                   );
                 },
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                child: Hero(
+                  tag: 'catch_photo_${_catchItem.id}',
                   child: Image.file(
                     File(_catchItem.imagePath!),
                     width: double.infinity,
-                    height: 250,
+                    height: 300,
                     fit: BoxFit.cover,
                   ),
                 ),
               ),
-            if (_catchItem.imagePath != null) const SizedBox(height: 20),
-            Text(
-              _catchItem.fishType,
-              style: const TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
+            Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    _catchItem.fishType,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  _buildSection('Basic Info', [
+                    if (_catchItem.dateCaught != null)
+                      _buildDetailRow('Date Caught',
+                          '${_catchItem.dateCaught!.day}/${_catchItem.dateCaught!.month}/${_catchItem.dateCaught!.year}'),
+                    _buildDetailRow('Length', '${_catchItem.lengthCm} cm'),
+                    if (_catchItem.photoDateTime != null)
+                      _buildDetailRow('Photo Taken',
+                          '${_catchItem.photoDateTime!.day}/${_catchItem.photoDateTime!.month}/${_catchItem.photoDateTime!.year} ${_catchItem.photoDateTime!.hour}:${_catchItem.photoDateTime!.minute.toString().padLeft(2, '0')}'),
+                  ]),
+                  if (_catchItem.location != null && _catchItem.location!.isNotEmpty ||
+                      (_catchItem.latitude != null && _catchItem.longitude != null))
+                    _buildSection('Location', [
+                      if (_catchItem.location != null && _catchItem.location!.isNotEmpty)
+                        _buildDetailRow('Location', _catchItem.location!),
+                      if (_catchItem.latitude != null && _catchItem.longitude != null)
+                        _buildDetailRow('GPS Location',
+                            '${_catchItem.latitude!.toStringAsFixed(6)}, ${_catchItem.longitude!.toStringAsFixed(6)}'),
+                    ]),
+                  if (_catchItem.notes != null && _catchItem.notes!.isNotEmpty)
+                    _buildSection('Notes', [
+                      _buildDetailRow('Notes', _catchItem.notes!),
+                    ]),
+                ],
               ),
             ),
-            const SizedBox(height: 16),
-            if (_catchItem.dateCaught != null)
-              _buildDetailRow('Date Caught',
-                  '${_catchItem.dateCaught!.day}/${_catchItem.dateCaught!.month}/${_catchItem.dateCaught!.year}'),
-            _buildDetailRow('Length', '${_catchItem.lengthCm} cm'),
-            if (_catchItem.photoDateTime != null)
-              _buildDetailRow('Photo Taken',
-                  '${_catchItem.photoDateTime!.day}/${_catchItem.photoDateTime!.month}/${_catchItem.photoDateTime!.year} ${_catchItem.photoDateTime!.hour}:${_catchItem.photoDateTime!.minute.toString().padLeft(2, '0')}'),
-            if (_catchItem.latitude != null && _catchItem.longitude != null)
-              _buildDetailRow('GPS Location',
-                  '${_catchItem.latitude!.toStringAsFixed(6)}, ${_catchItem.longitude!.toStringAsFixed(6)}'),
-            if (_catchItem.location != null && _catchItem.location!.isNotEmpty)
-              _buildDetailRow('Location', _catchItem.location!),
-            if (_catchItem.notes != null && _catchItem.notes!.isNotEmpty)
-              _buildDetailRow('Notes', _catchItem.notes!),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildSection(String title, List<Widget> children) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: Theme.of(context).colorScheme.primary,
+          ),
+        ),
+        const SizedBox(height: 12),
+        ...children,
+        const SizedBox(height: 24),
+      ],
     );
   }
 
@@ -140,9 +171,9 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 14,
-              color: Colors.grey,
+              color: Colors.grey[600],
               fontWeight: FontWeight.w500,
             ),
           ),
@@ -150,7 +181,7 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
           Text(
             value,
             style: const TextStyle(
-              fontSize: 18,
+              fontSize: 16,
             ),
           ),
         ],
