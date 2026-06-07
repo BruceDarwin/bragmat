@@ -17,6 +17,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   final _fishTypeController = TextEditingController();
   final _lengthController = TextEditingController();
   final _notesController = TextEditingController();
+  final _locationController = TextEditingController();
   DateTime? _dateCaught;
   String? _imagePath;
   DateTime? _photoDateTime;
@@ -33,6 +34,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _fishTypeController.text = widget.catchToEdit!.fishType;
       _lengthController.text = widget.catchToEdit!.lengthCm.toString();
       _notesController.text = widget.catchToEdit!.notes ?? '';
+      _locationController.text = widget.catchToEdit!.location ?? '';
       _dateCaught = widget.catchToEdit!.dateCaught;
       _imagePath = widget.catchToEdit!.imagePath;
       _photoDateTime = widget.catchToEdit!.photoDateTime;
@@ -184,6 +186,11 @@ void _saveCatch() async {
   final fishType = _selectedFishType ?? _fishTypeController.text;
   final length = int.tryParse(_lengthController.text) ?? 0;
   final notes = _notesController.text;
+  final location = _locationController.text.trim();
+
+  if (fishType.isEmpty) {
+    return;
+  }
 
   Catch? savedCatch;
 
@@ -199,6 +206,7 @@ void _saveCatch() async {
       photoDateTime: _photoDateTime,
       latitude: _latitude,
       longitude: _longitude,
+      location: location.isEmpty ? null : location,
     );
     await DatabaseHelper.instance.updateCatch(updatedCatch);
     savedCatch = updatedCatch;
@@ -213,6 +221,7 @@ void _saveCatch() async {
       photoDateTime: _photoDateTime,
       latitude: _latitude,
       longitude: _longitude,
+      location: location.isEmpty ? null : location,
     );
     await DatabaseHelper.instance.insertCatch(newCatch);
     savedCatch = newCatch;
@@ -291,6 +300,10 @@ void _saveCatch() async {
               controller: _lengthController,
               decoration: const InputDecoration(labelText: 'Size (cm)'),
               keyboardType: TextInputType.number,
+            ),
+            TextField(
+              controller: _locationController,
+              decoration: const InputDecoration(labelText: 'Location'),
             ),
             TextField(
               controller: _notesController,

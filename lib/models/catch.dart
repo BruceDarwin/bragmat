@@ -9,6 +9,7 @@ class Catch {
   final DateTime? photoDateTime;
   final double? latitude;
   final double? longitude;
+  final String? location;
 
   Catch({
     this.id,
@@ -21,6 +22,7 @@ class Catch {
     this.photoDateTime,
     this.latitude,
     this.longitude,
+    this.location,
   });
 
   Map<String, dynamic> toMap() {
@@ -35,6 +37,7 @@ class Catch {
       'photo_datetime': photoDateTime?.toIso8601String(),
       'latitude': latitude,
       'longitude': longitude,
+      'location': location,
     };
   }
 
@@ -56,6 +59,7 @@ factory Catch.fromMap(Map<String, dynamic> map) {
         : null,
     latitude: map['latitude'] as double?,
     longitude: map['longitude'] as double?,
+    location: map['location'] as String?,
   );
 }
 }

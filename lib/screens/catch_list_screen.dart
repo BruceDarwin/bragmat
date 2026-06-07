@@ -101,7 +101,7 @@ class _CatchListScreenState extends State<CatchListScreen> {
                 : null,
             title: Text(catchItem.fishType),
             subtitle: Text(
-              '${catchItem.dateCaught != null ? '${catchItem.dateCaught!.day}/${catchItem.dateCaught!.month}/${catchItem.dateCaught!.year}\n' : ''}${catchItem.lengthCm} cm\n${catchItem.notes ?? ''}'
+              '${catchItem.dateCaught != null ? '${catchItem.dateCaught!.day}/${catchItem.dateCaught!.month}/${catchItem.dateCaught!.year}' : ''} • ${catchItem.lengthCm} cm${catchItem.location != null && catchItem.location!.isNotEmpty ? ' • ${catchItem.location}' : ''}'
 ),
             onTap: () async {
               final result = await Navigator.push(

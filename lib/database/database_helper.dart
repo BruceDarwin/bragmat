@@ -20,7 +20,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 5,
+      version: 7,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -38,7 +38,8 @@ class DatabaseHelper {
         image_path TEXT,
         photo_datetime TEXT,
         latitude REAL,
-        longitude REAL
+        longitude REAL,
+        location TEXT
       )
     ''');
 
@@ -81,6 +82,17 @@ class DatabaseHelper {
       await db.insert('fish_types', {'name': 'Saratoga'});
       await db.insert('fish_types', {'name': 'Jewfish'});
       await db.insert('fish_types', {'name': 'Queenfish'});
+    }
+    if (oldVersion < 6) {
+      await db.execute('ALTER TABLE catches ADD COLUMN location TEXT');
+    }
+    if (oldVersion < 7) {
+      // Add location column if it doesn't exist (for databases at version 6 without location)
+      try {
+        await db.execute('ALTER TABLE catches ADD COLUMN location TEXT');
+      } catch (e) {
+        // Column might already exist, ignore error
+      }
     }
   }
 

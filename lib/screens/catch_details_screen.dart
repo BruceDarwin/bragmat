@@ -120,8 +120,10 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
               _buildDetailRow('Photo Taken',
                   '${_catchItem.photoDateTime!.day}/${_catchItem.photoDateTime!.month}/${_catchItem.photoDateTime!.year} ${_catchItem.photoDateTime!.hour}:${_catchItem.photoDateTime!.minute.toString().padLeft(2, '0')}'),
             if (_catchItem.latitude != null && _catchItem.longitude != null)
-              _buildDetailRow('Location',
+              _buildDetailRow('GPS Location',
                   '${_catchItem.latitude!.toStringAsFixed(6)}, ${_catchItem.longitude!.toStringAsFixed(6)}'),
+            if (_catchItem.location != null && _catchItem.location!.isNotEmpty)
+              _buildDetailRow('Location', _catchItem.location!),
             if (_catchItem.notes != null && _catchItem.notes!.isNotEmpty)
               _buildDetailRow('Notes', _catchItem.notes!),
           ],
