@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
+import '../models/catch.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -10,11 +11,22 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   List<String> _fishTypes = [];
+  List<Catch> _catches = [];
 
   @override
   void initState() {
     super.initState();
     _loadFishTypes();
+    _loadStatistics();
+  }
+
+  Future<void> _loadStatistics() async {
+    final catches = await DatabaseHelper.instance.getCatches();
+    final fishTypes = await DatabaseHelper.instance.getFishTypes();
+    setState(() {
+      _catches = catches;
+      _fishTypes = fishTypes;
+    });
   }
 
   Future<void> _loadFishTypes() async {
@@ -168,6 +180,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final mostRecentCatch = _catches.isNotEmpty
+        ? _catches.reduce((a, b) {
+            final aDate = a.dateCaught ?? a.createdAt;
+            final bDate = b.dateCaught ?? b.createdAt;
+            return aDate.isAfter(bDate) ? a : b;
+          })
+        : null;
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -175,6 +195,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // App Information Section
           Card(
             child: Padding(
               padding: const EdgeInsets.all(16),
@@ -182,7 +203,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Manage Fish Types',
+                    'App Information',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildInfoRow('App Name', 'Bragmat'),
+                  _buildInfoRow('Version', '1.0.0'),
+                  _buildInfoRow('Build Number', '1'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Statistics Section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Statistics',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildInfoRow('Total Catches', '${_catches.length}'),
+                  _buildInfoRow('Total Fish Types', '${_fishTypes.length}'),
+                  _buildInfoRow(
+                    'Most Recent Catch',
+                    mostRecentCatch != null
+                        ? '${mostRecentCatch.dateCaught?.toString().split(' ')[0] ?? mostRecentCatch.createdAt.toString().split(' ')[0]}'
+                        : 'No catches yet',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Fish Types Section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Fish Types',
                     style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: Theme.of(context).colorScheme.primary,
@@ -219,8 +293,133 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ),
             ),
           ),
+          const SizedBox(height: 16),
+
+          // Data Management Section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Data Management',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildComingSoonMenuItem(Icons.file_upload, 'Export Catches'),
+                  _buildComingSoonMenuItem(Icons.file_download, 'Import Catches'),
+                  _buildComingSoonMenuItem(Icons.backup, 'Backup and Restore'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // About Bragmat Section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'About Bragmat',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Bragmat helps anglers record, manage and review their fishing catches.',
+                    style: TextStyle(fontSize: 14),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Website: Coming Soon',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: Colors.grey,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Developer Section
+          Card(
+            child: ExpansionTile(
+              title: Text(
+                'Developer',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.primary,
+                ),
+              ),
+              children: [
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildInfoRow('SQLite Database Version', '1'),
+                      _buildInfoRow('Catches Table Records', '${_catches.length}'),
+                      _buildInfoRow('Fish Types Table Records', '${_fishTypes.length}'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(fontSize: 14),
+          ),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildComingSoonMenuItem(IconData icon, String label) {
+    return ListTile(
+      leading: Icon(icon),
+      title: Text(label),
+      trailing: const Text(
+        'Coming Soon',
+        style: TextStyle(
+          color: Colors.grey,
+          fontSize: 12,
+        ),
+      ),
+      onTap: () {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Coming Soon')),
+        );
+      },
     );
   }
 }

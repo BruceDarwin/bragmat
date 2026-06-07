@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import 'catch_details_screen.dart';
@@ -24,21 +23,17 @@ class _CatchListScreenState extends State<CatchListScreen> {
   }
 
   Future<void> _loadCatches() async {
-    debugPrint('=== _loadCatches called ===');
     final data = await DatabaseHelper.instance.getCatches();
-    debugPrint('Total catches: ${data.length}');
     // Sort by Date Caught, newest first. If dateCaught is null, use createdAt
     data.sort((a, b) {
       final aDate = a.dateCaught ?? a.createdAt;
       final bDate = b.dateCaught ?? b.createdAt;
       return bDate.compareTo(aDate);
     });
-    debugPrint('Sorted catches');
     setState(() {
       _catches = data;
       _applyFilter();
     });
-    debugPrint('Filtered catches: ${_filteredCatches.length}');
   }
 
   void _applyFilter() {

@@ -1,6 +1,5 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
 import '../database/database_helper.dart';
@@ -185,27 +184,18 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   }
 
   void _saveCatch() async {
-    debugPrint('=== _saveCatch method called ===');
-    debugPrint('onCatchSaved: ${widget.onCatchSaved}');
-    debugPrint('catchToEdit: ${widget.catchToEdit}');
-
     final fishType = _selectedFishType ?? _fishTypeController.text;
     final length = int.tryParse(_lengthController.text) ?? 0;
     final notes = _notesController.text;
     final location = _locationController.text.trim();
 
-    debugPrint('fishType: $fishType');
-    debugPrint('length: $length');
-
     if (fishType.isEmpty) {
-      debugPrint('Validation failed: fishType is empty');
       return;
     }
 
     Catch? savedCatch;
 
     if (widget.catchToEdit != null) {
-      debugPrint('Updating existing catch');
       final updatedCatch = Catch(
         id: widget.catchToEdit!.id,
         fishType: fishType,
@@ -222,7 +212,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       await DatabaseHelper.instance.updateCatch(updatedCatch);
       savedCatch = updatedCatch;
     } else {
-      debugPrint('Creating new catch');
       final newCatch = Catch(
         fishType: fishType,
         lengthCm: length,
@@ -235,28 +224,20 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         longitude: _longitude,
         location: location.isEmpty ? null : location,
       );
-      debugPrint('About to insert catch');
       await DatabaseHelper.instance.insertCatch(newCatch);
-      debugPrint('Catch inserted');
       savedCatch = newCatch;
     }
-
-    debugPrint('mounted: $mounted');
 
     if (!mounted) return;
 
     // Only pop if editing (catchToEdit != null)
     // When adding from bottom nav, use callback to switch to My Catches
     if (widget.catchToEdit != null) {
-      debugPrint('Editing mode: calling Navigator.pop');
       Navigator.pop(context, savedCatch);
     } else {
-      debugPrint('Adding mode: calling onCatchSaved callback');
       // Call callback to switch to My Catches tab
       widget.onCatchSaved?.call();
-      debugPrint('Callback called');
     }
-    debugPrint('Save flow completed');
   }
 
   @override
@@ -351,10 +332,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
             ),
             const SizedBox(height: 24),
             ElevatedButton(
-              onPressed: () {
-                debugPrint('Save Catch button pressed');
-                _saveCatch();
-              },
+              onPressed: _saveCatch,
               child: const Text('Save Catch'),
             ),
           ],

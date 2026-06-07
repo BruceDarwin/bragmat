@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'screens/catch_list_screen.dart';
 import 'screens/add_catch_screen.dart';
 import 'screens/settings_screen.dart';
@@ -39,12 +38,9 @@ class MainScreenState extends State<MainScreen> {
   }
 
   void switchToMyCatches() {
-    debugPrint('=== switchToMyCatches called ===');
-    debugPrint('Current _selectedIndex: $_selectedIndex');
     setState(() {
       _selectedIndex = 0; // Switch to My Catches tab after saving
     });
-    debugPrint('New _selectedIndex: $_selectedIndex');
   }
 
   Widget _buildScreen(int index) {
