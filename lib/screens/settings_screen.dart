@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:file_picker/file_picker.dart';
 import 'dart:io';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
@@ -315,6 +316,255 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return value;
   }
 
+  Future<void> _importCatchesFromCSV() async {
+    debugPrint('=== Import Catches from CSV started ===');
+    
+    try {
+      // Pick CSV file
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['csv'],
+      );
+
+      if (result == null || result.files.isEmpty) {
+        debugPrint('No file selected');
+        return;
+      }
+
+      final file = result.files.first;
+      debugPrint('Selected file: ${file.name}');
+      
+      if (file.path == null) {
+        debugPrint('ERROR: File path is null');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not read file')),
+          );
+        }
+        return;
+      }
+
+      // Read file
+      final csvFile = File(file.path!);
+      final csvContent = await csvFile.readAsString();
+      debugPrint('File read successfully');
+
+      // Parse CSV
+      final lines = csvContent.split('\n');
+      if (lines.isEmpty) {
+        debugPrint('ERROR: File is empty');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('File is empty')),
+          );
+        }
+        return;
+      }
+
+      // Get existing catches for duplicate detection
+      final existingCatches = await DatabaseHelper.instance.getCatches();
+      debugPrint('Existing catches: ${existingCatches.length}');
+
+      // Statistics
+      int rowsRead = 0;
+      int catchesImported = 0;
+      int rowsSkipped = 0;
+      List<String> errors = [];
+
+      // Skip header row
+      final dataLines = lines.skip(1).toList();
+      rowsRead = dataLines.length;
+
+      for (int i = 0; i < dataLines.length; i++) {
+        final line = dataLines[i].trim();
+        if (line.isEmpty) {
+          rowsSkipped++;
+          continue;
+        }
+
+        // Parse CSV line (handle quoted values)
+        final values = _parseCSVLine(line);
+        
+        if (values.length < 2) {
+          errors.add('Row ${i + 2}: Invalid format (expected at least 2 columns)');
+          rowsSkipped++;
+          continue;
+        }
+
+        // Extract fields
+        final fishType = values[0].trim();
+        final size = int.tryParse(values[1].trim()) ?? 0;
+        final dateCaughtStr = values.length > 2 ? values[2].trim() : '';
+        final location = values.length > 3 ? values[3].trim() : '';
+        final notes = values.length > 4 ? values[4].trim() : '';
+        final photoPath = values.length > 5 ? values[5].trim() : '';
+        final photoDateTimeStr = values.length > 6 ? values[6].trim() : '';
+        final latitudeStr = values.length > 7 ? values[7].trim() : '';
+        final longitudeStr = values.length > 8 ? values[8].trim() : '';
+
+        // Validate required fields
+        if (fishType.isEmpty) {
+          errors.add('Row ${i + 2}: Fish type is required');
+          rowsSkipped++;
+          continue;
+        }
+
+        // Parse date
+        DateTime? dateCaught;
+        if (dateCaughtStr.isNotEmpty) {
+          try {
+            dateCaught = DateTime.parse(dateCaughtStr);
+          } catch (e) {
+            debugPrint('Row ${i + 2}: Could not parse date: $dateCaughtStr');
+          }
+        }
+
+        // Parse photo date/time
+        DateTime? photoDateTime;
+        if (photoDateTimeStr.isNotEmpty) {
+          try {
+            photoDateTime = DateTime.parse(photoDateTimeStr);
+          } catch (e) {
+            debugPrint('Row ${i + 2}: Could not parse photo date/time: $photoDateTimeStr');
+          }
+        }
+
+        // Parse coordinates
+        double? latitude;
+        if (latitudeStr.isNotEmpty) {
+          latitude = double.tryParse(latitudeStr);
+        }
+        double? longitude;
+        if (longitudeStr.isNotEmpty) {
+          longitude = double.tryParse(longitudeStr);
+        }
+
+        // Check for duplicates (fish type + size + date combination)
+        final isDuplicate = existingCatches.any((existing) {
+          final existingDate = existing.dateCaught ?? existing.createdAt;
+          final importDate = dateCaught ?? DateTime.now();
+          return existing.fishType == fishType &&
+                 existing.lengthCm == size &&
+                 existingDate.year == importDate.year &&
+                 existingDate.month == importDate.month &&
+                 existingDate.day == importDate.day;
+        });
+
+        if (isDuplicate) {
+          errors.add('Row ${i + 2}: Duplicate catch (fish type: $fishType, size: $size)');
+          rowsSkipped++;
+          continue;
+        }
+
+        // Create catch object
+        final newCatch = Catch(
+          fishType: fishType,
+          lengthCm: size,
+          notes: notes.isEmpty ? null : notes,
+          createdAt: DateTime.now(),
+          dateCaught: dateCaught,
+          imagePath: photoPath.isEmpty ? null : photoPath,
+          photoDateTime: photoDateTime,
+          latitude: latitude,
+          longitude: longitude,
+          location: location.isEmpty ? null : location,
+        );
+
+        // Insert into database
+        await DatabaseHelper.instance.insertCatch(newCatch);
+        catchesImported++;
+        debugPrint('Imported catch: $fishType');
+      }
+
+      debugPrint('Import complete: $catchesImported imported, $rowsSkipped skipped, ${errors.length} errors');
+
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Import Complete'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Rows read: $rowsRead'),
+                Text('Catches imported: $catchesImported'),
+                Text('Rows skipped: $rowsSkipped'),
+                if (errors.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  const Text('Errors:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    height: 150,
+                    child: ListView.builder(
+                      shrinkWrap: true,
+                      itemCount: errors.length > 10 ? 10 : errors.length,
+                      itemBuilder: (context, index) => Text(
+                        errors[index],
+                        style: const TextStyle(fontSize: 12, color: Colors.red),
+                      ),
+                    ),
+                  ),
+                  if (errors.length > 10)
+                    Text('... and ${errors.length - 10} more errors', style: const TextStyle(fontSize: 12)),
+                ],
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _loadStatistics(); // Refresh statistics
+                },
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('ERROR: Import failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Import failed: $e')),
+        );
+      }
+    }
+    debugPrint('=== Import Catches from CSV completed ===');
+  }
+
+  List<String> _parseCSVLine(String line) {
+    final values = <String>[];
+    final buffer = StringBuffer();
+    bool inQuotes = false;
+
+    for (int i = 0; i < line.length; i++) {
+      final char = line[i];
+      
+      if (char == '"') {
+        if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
+          // Escaped quote
+          buffer.write('"');
+          i++;
+        } else {
+          // Toggle quote mode
+          inQuotes = !inQuotes;
+        }
+      } else if (char == ',' && !inQuotes) {
+        // End of value
+        values.add(buffer.toString());
+        buffer.clear();
+      } else {
+        buffer.write(char);
+      }
+    }
+    
+    // Add last value
+    values.add(buffer.toString());
+    
+    return values;
+  }
+
   @override
   Widget build(BuildContext context) {
     final mostRecentCatch = _catches.isNotEmpty
@@ -452,7 +702,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: const Text('Export Catches'),
                     onTap: _exportCatchesToCSV,
                   ),
-                  _buildComingSoonMenuItem(Icons.file_download, 'Import Catches'),
+                  ListTile(
+                    leading: const Icon(Icons.file_download),
+                    title: const Text('Import Catches'),
+                    onTap: _importCatchesFromCSV,
+                  ),
                   _buildComingSoonMenuItem(Icons.backup, 'Backup and Restore'),
                 ],
               ),
