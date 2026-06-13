@@ -4,6 +4,8 @@ import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
+import '../models/fishing_trip.dart';
+import '../services/current_trip_service.dart';
 import 'catch_details_screen.dart';
 
 class CatchListScreen extends StatefulWidget {
@@ -19,12 +21,28 @@ class _CatchListScreenState extends State<CatchListScreen> {
   String? _selectedFishTypeFilter;
   Map<int, String> _fishingBuddyNames = {};
   Map<int, String> _primaryMediaPaths = {};
+  int? _currentTripId;
+  String? _currentTripName;
 
   @override
   void initState() {
     super.initState();
     _loadCatches();
     _loadFishingBuddyNames();
+    _loadCurrentTrip();
+  }
+
+  Future<void> _loadCurrentTrip() async {
+    final currentTripId = await CurrentTripService.getCurrentTripId();
+    if (currentTripId != null) {
+      final trip = await DatabaseHelper.instance.getFishingTrip(currentTripId);
+      if (mounted) {
+        setState(() {
+          _currentTripId = currentTripId;
+          _currentTripName = trip?.name;
+        });
+      }
+    }
   }
 
   Future<void> _loadFishingBuddyNames() async {
@@ -107,7 +125,63 @@ class _CatchListScreenState extends State<CatchListScreen> {
           ),
         ],
       ),
-      body: ListView.builder(
+      body: Column(
+        children: [
+          if (_currentTripName != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                border: Border(
+                  bottom: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.directions_boat,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Current Trip',
+                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                              ),
+                        ),
+                        Text(
+                          _currentTripName!,
+                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: Theme.of(context).colorScheme.onPrimaryContainer,
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      await CurrentTripService.clearCurrentTrip();
+                      setState(() {
+                        _currentTripId = null;
+                        _currentTripName = null;
+                      });
+                    },
+                    child: const Text('Clear'),
+                  ),
+                ],
+              ),
+            ),
+          Expanded(
+            child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _filteredCatches.length,
         itemBuilder: (context, index) {
@@ -197,6 +271,9 @@ class _CatchListScreenState extends State<CatchListScreen> {
             ),
           );
         },
+      ),
+          ),
+        ],
       ),
     );
   }

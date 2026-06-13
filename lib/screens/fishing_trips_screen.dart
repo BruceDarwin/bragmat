@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/fishing_trip.dart';
+import '../services/current_trip_service.dart';
 import 'trip_details_screen.dart';
 import 'add_trip_screen.dart';
 
@@ -15,11 +16,22 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
   List<FishingTrip> _trips = [];
   Map<int, int> _catchCounts = {};
   bool _isLoading = true;
+  int? _currentTripId;
 
   @override
   void initState() {
     super.initState();
     _loadTrips();
+    _loadCurrentTrip();
+  }
+
+  Future<void> _loadCurrentTrip() async {
+    final currentTripId = await CurrentTripService.getCurrentTripId();
+    if (mounted) {
+      setState(() {
+        _currentTripId = currentTripId;
+      });
+    }
   }
 
   Future<void> _loadTrips() async {
@@ -73,7 +85,40 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
 
     if (confirmed == true && trip.id != null) {
       await DatabaseHelper.instance.deleteFishingTrip(trip.id!);
+      // If this was the current trip, clear it
+      if (_currentTripId == trip.id) {
+        await CurrentTripService.clearCurrentTrip();
+        setState(() {
+          _currentTripId = null;
+        });
+      }
       await _loadTrips();
+    }
+  }
+
+  Future<void> _setCurrentTrip(FishingTrip trip) async {
+    if (trip.id != null) {
+      await CurrentTripService.setCurrentTrip(trip.id);
+      setState(() {
+        _currentTripId = trip.id;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${trip.name} set as current trip')),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearCurrentTrip() async {
+    await CurrentTripService.clearCurrentTrip();
+    setState(() {
+      _currentTripId = null;
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Current trip cleared')),
+      );
     }
   }
 
@@ -83,6 +128,12 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
       appBar: AppBar(
         title: const Text('Fishing Trips'),
         actions: [
+          if (_currentTripId != null)
+            IconButton(
+              icon: const Icon(Icons.clear),
+              onPressed: _clearCurrentTrip,
+              tooltip: 'Clear Current Trip',
+            ),
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _loadTrips,
@@ -125,9 +176,14 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
                   itemBuilder: (context, index) {
                     final trip = _trips[index];
                     final catchCount = trip.id != null ? _catchCounts[trip.id!] ?? 0 : 0;
+                    final isCurrentTrip = _currentTripId == trip.id;
                     
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
+                      elevation: isCurrentTrip ? 4 : 1,
+                      color: isCurrentTrip 
+                          ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+                          : null,
                       child: InkWell(
                         onTap: () async {
                           final result = await Navigator.push(
@@ -138,6 +194,7 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
                           );
                           if (result == true) {
                             await _loadTrips();
+                            await _loadCurrentTrip();
                           }
                         },
                         child: Padding(
@@ -147,6 +204,23 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
                             children: [
                               Row(
                                 children: [
+                                  if (isCurrentTrip)
+                                    Container(
+                                      margin: const EdgeInsets.only(right: 8),
+                                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                      decoration: BoxDecoration(
+                                        color: Theme.of(context).colorScheme.primary,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: const Text(
+                                        'CURRENT',
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ),
                                   Expanded(
                                     child: Text(
                                       trip.name,
@@ -155,6 +229,18 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
                                           ),
                                     ),
                                   ),
+                                  if (!isCurrentTrip)
+                                    IconButton(
+                                      icon: const Icon(Icons.star_border),
+                                      onPressed: () => _setCurrentTrip(trip),
+                                      tooltip: 'Set as Current Trip',
+                                    )
+                                  else
+                                    IconButton(
+                                      icon: const Icon(Icons.star),
+                                      onPressed: () => _clearCurrentTrip(),
+                                      tooltip: 'Clear Current Trip',
+                                    ),
                                   IconButton(
                                     icon: const Icon(Icons.delete),
                                     onPressed: () => _deleteTrip(trip),

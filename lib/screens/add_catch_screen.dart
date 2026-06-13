@@ -7,6 +7,7 @@ import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
 import '../models/fishing_trip.dart';
+import '../services/current_trip_service.dart';
 
 class AddCatchScreen extends StatefulWidget {
   final Catch? catchToEdit;
@@ -45,6 +46,18 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _locationController.text = widget.catchToEdit!.location ?? '';
       _dateCaught = widget.catchToEdit!.dateCaught;
       _selectedTripId = widget.catchToEdit!.tripId;
+    } else {
+      // For new catches, pre-select the current trip if set
+      _loadCurrentTrip();
+    }
+  }
+
+  Future<void> _loadCurrentTrip() async {
+    final currentTripId = await CurrentTripService.getCurrentTripId();
+    if (mounted) {
+      setState(() {
+        _selectedTripId = currentTripId;
+      });
     }
   }
 
