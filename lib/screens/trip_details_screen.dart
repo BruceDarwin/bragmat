@@ -4,7 +4,6 @@ import '../database/database_helper.dart';
 import '../models/fishing_trip.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
-import '../models/catch_media.dart';
 import 'catch_details_screen.dart';
 import 'add_trip_screen.dart';
 
@@ -108,6 +107,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                   setState(() {
                     _trip = updatedTrip;
                   });
+                  await _loadData();
                 }
               }
             },

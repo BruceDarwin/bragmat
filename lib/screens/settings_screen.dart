@@ -7,6 +7,7 @@ import 'dart:io';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
+import '../models/fishing_trip.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -379,11 +380,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Create CSV content
       final csvContent = StringBuffer();
       // Header row
-      csvContent.writeln('Fish Type,Size (cm),Date Caught,Location,Notes,Photo Path,Photo Date/Time,Latitude,Longitude,Fishing Buddy');
+      csvContent.writeln('Fish Type,Size (cm),Date Caught,Location,Notes,Photo Path,Photo Date/Time,Latitude,Longitude,Fishing Buddy,Fishing Trip');
       
       // Load fishing buddies for name lookup
       final fishingBuddies = await DatabaseHelper.instance.getFishingBuddies();
       final buddyMap = {for (var buddy in fishingBuddies) buddy.id!: buddy.name};
+      
+      // Load fishing trips for name lookup
+      final fishingTrips = await DatabaseHelper.instance.getFishingTrips();
+      final tripMap = {for (var trip in fishingTrips) trip.id!: trip.name};
       
       // Data rows
       for (final catch_ in catches) {
@@ -399,8 +404,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final fishingBuddy = catch_.fishingBuddyId != null
             ? _escapeCSV(buddyMap[catch_.fishingBuddyId] ?? 'Unknown')
             : '';
+        final fishingTrip = catch_.tripId != null
+            ? _escapeCSV(tripMap[catch_.tripId] ?? 'Unknown')
+            : '';
         
-        csvContent.writeln('$fishType,$size,$dateCaught,$location,$notes,$photoPath,$photoDateTime,$latitude,$longitude,$fishingBuddy');
+        csvContent.writeln('$fishType,$size,$dateCaught,$location,$notes,$photoPath,$photoDateTime,$latitude,$longitude,$fishingBuddy,$fishingTrip');
       }
 
       // Generate filename with timestamp

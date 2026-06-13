@@ -221,13 +221,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         if (lat != null && latRef != null && lon != null && lonRef != null) {
           latitude = _convertToDecimalDegrees(lat, latRef);
           longitude = _convertToDecimalDegrees(lon, lonRef);
-          debugPrint('Extracted GPS - Latitude: $latitude, Longitude: $longitude');
         }
-      } else {
-        debugPrint('No GPS data found in photo EXIF');
       }
     } catch (e) {
-      debugPrint('Error reading EXIF data: $e');
+      // If EXIF reading fails, continue without GPS data
     }
     
     return {'latitude': latitude, 'longitude': longitude};

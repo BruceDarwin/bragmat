@@ -470,9 +470,10 @@ class DatabaseHelper {
       largestFishByTrip = trip.name;
     }
     
-    // Average catches per trip
+    // Average catches per trip (only count catches assigned to trips)
+    final catchesWithTrips = tripCatches.values.fold<int>(0, (sum, count) => sum + count);
     final averageCatchesPerTrip = totalTrips > 0 
-        ? totalCatches / totalTrips 
+        ? catchesWithTrips / totalTrips 
         : 0.0;
     
     return {
@@ -624,6 +625,14 @@ class DatabaseHelper {
 
   Future<int> deleteFishingTrip(int id) async {
     final db = await instance.database;
+    // First, set trip_id to NULL for all catches associated with this trip
+    await db.update(
+      'catches',
+      {'trip_id': null},
+      where: 'trip_id = ?',
+      whereArgs: [id],
+    );
+    // Then delete the trip
     return await db.delete(
       'fishing_trips',
       where: 'id = ?',
