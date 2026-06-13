@@ -1,10 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import '../database/database_helper.dart';
 import '../models/fishing_trip.dart';
 import '../models/catch.dart';
+import '../models/trip_media.dart';
 import 'catch_details_screen.dart';
 import 'add_trip_screen.dart';
+import 'photo_viewer_screen.dart';
 
 class TripDetailsScreen extends StatefulWidget {
   final FishingTrip trip;
@@ -20,7 +23,9 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   List<Catch> _catches = [];
   Map<int, String> _fishingBuddyNames = {};
   Map<int, String> _primaryMediaPaths = {};
+  List<TripMedia> _tripMedia = [];
   bool _isLoading = true;
+  final ImagePicker _imagePicker = ImagePicker();
 
   @override
   void initState() {
@@ -35,6 +40,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     final catches = await DatabaseHelper.instance.getCatchesForTrip(_trip.id!);
     final buddies = await DatabaseHelper.instance.getFishingBuddies();
     final buddyMap = {for (var buddy in buddies) buddy.id!: buddy.name};
+    final tripMedia = await DatabaseHelper.instance.getMediaForTrip(_trip.id!);
 
     // Load primary media paths for all catches
     final mediaMap = <int, String>{};
@@ -52,6 +58,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         _catches = catches;
         _fishingBuddyNames = buddyMap;
         _primaryMediaPaths = mediaMap;
+        _tripMedia = tripMedia;
         _isLoading = false;
       });
     }
@@ -83,6 +90,33 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   Catch? _getLargestFish() {
     if (_catches.isEmpty) return null;
     return _catches.reduce((a, b) => a.lengthCm > b.lengthCm ? a : b);
+  }
+
+  Future<void> _addTripPhoto() async {
+    if (_trip.id == null) return;
+
+    final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
+    if (image == null) return;
+
+    final tripMedia = TripMedia(
+      tripId: _trip.id!,
+      filePath: image.path,
+      mediaType: 'photo',
+      role: _tripMedia.isEmpty ? 'primary' : 'other',
+    );
+
+    await DatabaseHelper.instance.insertTripMedia(tripMedia);
+    await _loadData();
+  }
+
+  Future<void> _deleteTripPhoto(int mediaId) async {
+    await DatabaseHelper.instance.deleteTripMedia(mediaId);
+    await _loadData();
+  }
+
+  Future<void> _setPrimaryTripPhoto(int mediaId) async {
+    await DatabaseHelper.instance.setPrimaryTripMedia(mediaId);
+    await _loadData();
   }
 
   @override
@@ -213,6 +247,173 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                           ],
                         ],
                       ),
+                    ),
+                  ),
+
+                  // Trip Photos Section
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Trip Photos (${_tripMedia.length})',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add_a_photo),
+                              onPressed: _addTripPhoto,
+                              tooltip: 'Add Photo',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        if (_tripMedia.isEmpty)
+                          Center(
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.photo_library,
+                                  size: 48,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'No trip photos yet',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: Colors.grey[600],
+                                      ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          GridView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 3,
+                              crossAxisSpacing: 8,
+                              mainAxisSpacing: 8,
+                            ),
+                            itemCount: _tripMedia.length,
+                            itemBuilder: (context, index) {
+                              final media = _tripMedia[index];
+                              return Stack(
+                                children: [
+                                  GestureDetector(
+                                    onTap: () {
+                                      Navigator.push(
+                                        context,
+                                        MaterialPageRoute(
+                                          builder: (_) => PhotoViewerScreen(imagePath: media.filePath),
+                                        ),
+                                      );
+                                    },
+                                    child: Hero(
+                                      tag: 'trip_photo_${media.id}',
+                                      child: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: Image.file(
+                                          File(media.filePath),
+                                          width: double.infinity,
+                                          height: double.infinity,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return Container(
+                                              color: Colors.grey[300],
+                                              child: const Icon(Icons.image_not_supported),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                  if (media.role == 'primary')
+                                    Positioned(
+                                      top: 4,
+                                      left: 4,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.blue,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: const Text(
+                                          'Cover',
+                                          style: TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  Positioned(
+                                    top: 4,
+                                    right: 4,
+                                    child: PopupMenuButton<String>(
+                                      icon: Container(
+                                        padding: const EdgeInsets.all(4),
+                                        decoration: BoxDecoration(
+                                          color: Colors.black54,
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                        child: const Icon(
+                                          Icons.more_vert,
+                                          color: Colors.white,
+                                          size: 16,
+                                        ),
+                                      ),
+                                      onSelected: (value) async {
+                                        if (value == 'delete') {
+                                          final confirmed = await showDialog<bool>(
+                                            context: context,
+                                            builder: (context) => AlertDialog(
+                                              title: const Text('Delete Photo'),
+                                              content: const Text('Are you sure you want to delete this photo?'),
+                                              actions: [
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(context, false),
+                                                  child: const Text('Cancel'),
+                                                ),
+                                                TextButton(
+                                                  onPressed: () => Navigator.pop(context, true),
+                                                  child: const Text('Delete'),
+                                                ),
+                                              ],
+                                            ),
+                                          );
+                                          if (confirmed == true) {
+                                            await _deleteTripPhoto(media.id!);
+                                          }
+                                        } else if (value == 'primary') {
+                                          await _setPrimaryTripPhoto(media.id!);
+                                        }
+                                      },
+                                      itemBuilder: (context) => [
+                                        if (media.role != 'primary')
+                                          const PopupMenuItem(
+                                            value: 'primary',
+                                            child: Text('Set as Cover'),
+                                          ),
+                                        const PopupMenuItem(
+                                          value: 'delete',
+                                          child: Text('Delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                      ],
                     ),
                   ),
 

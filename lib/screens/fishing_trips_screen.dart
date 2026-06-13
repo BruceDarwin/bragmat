@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/fishing_trip.dart';
+import '../models/trip_media.dart';
 import '../services/current_trip_service.dart';
 import 'trip_details_screen.dart';
 import 'add_trip_screen.dart';
@@ -15,6 +17,7 @@ class FishingTripsScreen extends StatefulWidget {
 class _FishingTripsScreenState extends State<FishingTripsScreen> {
   List<FishingTrip> _trips = [];
   Map<int, int> _catchCounts = {};
+  Map<int, String> _coverMediaPaths = {};
   bool _isLoading = true;
   int? _currentTripId;
 
@@ -39,10 +42,16 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
     
     // Load catch counts for each trip
     final counts = <int, int>{};
+    final coverPaths = <int, String>{};
     for (final trip in trips) {
       if (trip.id != null) {
         final count = await DatabaseHelper.instance.getCatchCountForTrip(trip.id!);
         counts[trip.id!] = count;
+        
+        final coverMedia = await DatabaseHelper.instance.getCoverMediaForTrip(trip.id!);
+        if (coverMedia != null) {
+          coverPaths[trip.id!] = coverMedia.filePath;
+        }
       }
     }
     
@@ -50,6 +59,7 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
       setState(() {
         _trips = trips;
         _catchCounts = counts;
+        _coverMediaPaths = coverPaths;
         _isLoading = false;
       });
     }
@@ -202,6 +212,29 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
+                              if (_coverMediaPaths[trip.id] != null) ...[
+                                ClipRRect(
+                                  borderRadius: BorderRadius.circular(8),
+                                  child: Image.file(
+                                    File(_coverMediaPaths[trip.id]!),
+                                    width: double.infinity,
+                                    height: 120,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (context, error, stackTrace) {
+                                      return Container(
+                                        width: double.infinity,
+                                        height: 120,
+                                        decoration: BoxDecoration(
+                                          color: Colors.grey[300],
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: const Icon(Icons.image_not_supported),
+                                      );
+                                    },
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                              ],
                               Row(
                                 children: [
                                   if (isCurrentTrip)

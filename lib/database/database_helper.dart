@@ -4,6 +4,7 @@ import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
 import '../models/fishing_trip.dart';
+import '../models/trip_media.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -23,7 +24,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 10,
+      version: 11,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -85,6 +86,21 @@ class DatabaseHelper {
         location TEXT,
         notes TEXT,
         created_at TEXT NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE trip_media (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id INTEGER NOT NULL,
+        file_path TEXT NOT NULL,
+        media_type TEXT NOT NULL DEFAULT 'photo',
+        role TEXT NOT NULL DEFAULT 'other',
+        date_taken TEXT,
+        latitude REAL,
+        longitude REAL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
       )
     ''');
 
@@ -212,6 +228,23 @@ class DatabaseHelper {
       } catch (e) {
         // Column might already exist, ignore error
       }
+    }
+    if (oldVersion < 11) {
+      // Add trip_media table
+      await db.execute('''
+        CREATE TABLE trip_media (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL,
+          file_path TEXT NOT NULL,
+          media_type TEXT NOT NULL DEFAULT 'photo',
+          role TEXT NOT NULL DEFAULT 'other',
+          date_taken TEXT,
+          latitude REAL,
+          longitude REAL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
+        )
+      ''');
     }
   }
 
@@ -600,6 +633,110 @@ class DatabaseHelper {
     // Set the new primary
     return await db.update(
       'catch_media',
+      {'role': 'primary'},
+      where: 'id = ?',
+      whereArgs: [mediaId],
+    );
+  }
+
+  // TRIP MEDIA
+  Future<int> insertTripMedia(TripMedia media) async {
+    final db = await instance.database;
+    return await db.insert('trip_media', media.toMap());
+  }
+
+  Future<int> insertTripMediaFromMap(Map<String, dynamic> map) async {
+    final db = await instance.database;
+    return await db.insert('trip_media', map);
+  }
+
+  Future<List<TripMedia>> getMediaForTrip(int tripId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'trip_media',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+      orderBy: 'created_at DESC',
+    );
+    return result.map((json) => TripMedia.fromMap(json)).toList();
+  }
+
+  Future<TripMedia?> getPrimaryMediaForTrip(int tripId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'trip_media',
+      where: 'trip_id = ? AND role = ?',
+      whereArgs: [tripId, 'primary'],
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return TripMedia.fromMap(result.first);
+  }
+
+  Future<TripMedia?> getCoverMediaForTrip(int tripId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'trip_media',
+      where: 'trip_id = ? AND (role = ? OR role = ?)',
+      whereArgs: [tripId, 'primary', 'cover'],
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return TripMedia.fromMap(result.first);
+  }
+
+  Future<int> updateTripMedia(TripMedia media) async {
+    final db = await instance.database;
+    return await db.update(
+      'trip_media',
+      media.toMap(),
+      where: 'id = ?',
+      whereArgs: [media.id],
+    );
+  }
+
+  Future<int> deleteTripMedia(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'trip_media',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteAllMediaForTrip(int tripId) async {
+    final db = await instance.database;
+    return await db.delete(
+      'trip_media',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+  }
+
+  Future<int> setPrimaryTripMedia(int mediaId) async {
+    final db = await instance.database;
+    // First, get the media item to find its trip_id
+    final mediaResult = await db.query(
+      'trip_media',
+      where: 'id = ?',
+      whereArgs: [mediaId],
+      limit: 1,
+    );
+    if (mediaResult.isEmpty) return 0;
+    
+    final tripId = mediaResult.first['trip_id'] as int;
+    
+    // Remove primary role from all media for this trip
+    await db.update(
+      'trip_media',
+      {'role': 'other'},
+      where: 'trip_id = ? AND role = ?',
+      whereArgs: [tripId, 'primary'],
+    );
+    
+    // Set the new primary
+    return await db.update(
+      'trip_media',
       {'role': 'primary'},
       where: 'id = ?',
       whereArgs: [mediaId],

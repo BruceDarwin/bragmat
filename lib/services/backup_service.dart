@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../database/database_helper.dart';
+import '../models/trip_media.dart';
 import '../services/current_trip_service.dart';
 
 class BackupService {
@@ -27,6 +28,15 @@ class BackupService {
       }
     }
 
+    // Get trip media for all trips
+    final tripMediaMap = <String, List<Map<String, dynamic>>>{};
+    for (final trip in fishingTrips) {
+      if (trip.id != null) {
+        final media = await db.getMediaForTrip(trip.id!);
+        tripMediaMap[trip.id!.toString()] = media.map((m) => m.toMap()).toList();
+      }
+    }
+
     // Create backup object
     final backup = {
       'version': _backupVersion,
@@ -37,6 +47,7 @@ class BackupService {
         'fishTypes': fishTypes,
         'fishingBuddies': fishingBuddies.map((b) => b.toMap()).toList(),
         'fishingTrips': fishingTrips.map((t) => t.toMap()).toList(),
+        'tripMedia': tripMediaMap,
         'currentTripId': currentTripId,
       },
     };
@@ -179,7 +190,25 @@ class BackupService {
         }
       }
     }
-    
+
+    // Restore trip media
+    final tripMedia = data['tripMedia'] as Map<String, dynamic>?;
+    if (tripMedia != null) {
+      for (final entry in tripMedia.entries) {
+        final oldTripId = int.parse(entry.key);
+        final newTripId = tripIdMap[oldTripId];
+        if (newTripId != null) {
+          final mediaList = entry.value as List<dynamic>;
+          for (final mediaData in mediaList) {
+            final mediaMap = mediaData as Map<String, dynamic>;
+            mediaMap['trip_id'] = newTripId;
+            mediaMap.remove('id');
+            await db.insertTripMedia(TripMedia.fromMap(mediaMap));
+          }
+        }
+      }
+    }
+
     // Restore current trip setting
     final currentTripId = data['currentTripId'] as int?;
     if (currentTripId != null && tripIdMap.containsKey(currentTripId)) {
@@ -197,7 +226,14 @@ class BackupService {
         await db.deleteAllMediaForCatch(catchItem.id!);
       }
     }
-    
+
+    final trips = await db.getFishingTrips();
+    for (final trip in trips) {
+      if (trip.id != null) {
+        await db.deleteAllMediaForTrip(trip.id!);
+      }
+    }
+
     await db.deleteAllCatches();
     await db.deleteAllFishingTrips();
     await db.deleteAllFishingBuddies();
