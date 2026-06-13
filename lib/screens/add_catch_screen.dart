@@ -23,6 +23,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   final _lengthController = TextEditingController();
   final _notesController = TextEditingController();
   final _locationController = TextEditingController();
+  final _latitudeController = TextEditingController();
+  final _longitudeController = TextEditingController();
   DateTime? _dateCaught;
   List<CatchMedia> _mediaItems = [];
   String? _selectedFishType;
@@ -46,6 +48,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _locationController.text = widget.catchToEdit!.location ?? '';
       _dateCaught = widget.catchToEdit!.dateCaught;
       _selectedTripId = widget.catchToEdit!.tripId;
+      _latitudeController.text = widget.catchToEdit!.latitude?.toString() ?? '';
+      _longitudeController.text = widget.catchToEdit!.longitude?.toString() ?? '';
     } else {
       // For new catches, pre-select the current trip if set
       _loadCurrentTrip();
@@ -263,6 +267,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     final length = int.tryParse(_lengthController.text) ?? 0;
     final notes = _notesController.text;
     final location = _locationController.text.trim();
+    final latitude = double.tryParse(_latitudeController.text);
+    final longitude = double.tryParse(_longitudeController.text);
 
     if (fishType.isEmpty) {
       return;
@@ -281,6 +287,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         location: location.isEmpty ? null : location,
         fishingBuddyId: _selectedFishingBuddyId,
         tripId: _selectedTripId,
+        latitude: latitude,
+        longitude: longitude,
       );
       await DatabaseHelper.instance.updateCatch(updatedCatch);
       savedCatch = updatedCatch;
@@ -302,6 +310,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         location: location.isEmpty ? null : location,
         fishingBuddyId: _selectedFishingBuddyId,
         tripId: _selectedTripId,
+        latitude: latitude,
+        longitude: longitude,
       );
       final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
       savedCatch = newCatch.copyWith(id: catchId);
@@ -509,6 +519,32 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
             TextField(
               controller: _locationController,
               decoration: const InputDecoration(labelText: 'Location'),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _latitudeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Latitude (optional)',
+                      hintText: 'e.g., -33.8688',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextField(
+                    controller: _longitudeController,
+                    decoration: const InputDecoration(
+                      labelText: 'Longitude (optional)',
+                      hintText: 'e.g., 151.2093',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             TextField(

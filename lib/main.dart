@@ -4,6 +4,7 @@ import 'screens/add_catch_screen.dart';
 import 'screens/settings_screen.dart';
 import 'screens/statistics_screen.dart';
 import 'screens/fishing_trips_screen.dart';
+import 'screens/catch_map_screen.dart';
 import 'theme.dart';
 
 void main() {
@@ -56,6 +57,8 @@ class MainScreenState extends State<MainScreen> {
       case 3:
         return const FishingTripsScreen();
       case 4:
+        return const CatchMapScreen();
+      case 5:
         return const SettingsScreen();
       default:
         return const CatchListScreen();
@@ -85,6 +88,10 @@ class MainScreenState extends State<MainScreen> {
           BottomNavigationBarItem(
             icon: Icon(Icons.directions_boat),
             label: 'Trips',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.map),
+            label: 'Map',
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.settings),
