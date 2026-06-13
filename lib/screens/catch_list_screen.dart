@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
+import '../models/fishing_buddy.dart';
 import 'catch_details_screen.dart';
 
 class CatchListScreen extends StatefulWidget {
@@ -15,11 +16,21 @@ class _CatchListScreenState extends State<CatchListScreen> {
   List<Catch> _catches = [];
   List<Catch> _filteredCatches = [];
   String? _selectedFishTypeFilter;
+  Map<int, String> _fishingBuddyNames = {};
 
   @override
   void initState() {
     super.initState();
     _loadCatches();
+    _loadFishingBuddyNames();
+  }
+
+  Future<void> _loadFishingBuddyNames() async {
+    final buddies = await DatabaseHelper.instance.getFishingBuddies();
+    final buddyMap = {for (var buddy in buddies) buddy.id!: buddy.name};
+    setState(() {
+      _fishingBuddyNames = buddyMap;
+    });
   }
 
   Future<void> _loadCatches() async {
@@ -145,6 +156,13 @@ class _CatchListScreenState extends State<CatchListScreen> {
                             Text(
                               '${catchItem.dateCaught!.day}/${catchItem.dateCaught!.month}/${catchItem.dateCaught!.year}',
                               style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          if (catchItem.fishingBuddyId != null && _fishingBuddyNames[catchItem.fishingBuddyId] != 'Me')
+                            Text(
+                              _fishingBuddyNames[catchItem.fishingBuddyId] ?? 'Unknown',
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[600],
+                              ),
                             ),
                           if (catchItem.location != null && catchItem.location!.isNotEmpty)
                             Text(

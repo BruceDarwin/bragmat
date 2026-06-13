@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
+import '../models/fishing_buddy.dart';
 
 class AddCatchScreen extends StatefulWidget {
   final Catch? catchToEdit;
@@ -26,11 +27,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   double? _longitude;
   String? _selectedFishType;
   List<String> _fishTypes = [];
+  int? _selectedFishingBuddyId;
+  List<FishingBuddy> _fishingBuddies = [];
 
   @override
   void initState() {
     super.initState();
     _loadFishTypes();
+    _loadFishingBuddies();
     if (widget.catchToEdit != null) {
       _fishTypeController.text = widget.catchToEdit!.fishType;
       _lengthController.text = widget.catchToEdit!.lengthCm.toString();
@@ -60,6 +64,26 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         }
         // Set selected fish type to the trimmed value
         _selectedFishType = currentFishType.isEmpty ? null : currentFishType;
+      }
+    });
+  }
+
+  Future<void> _loadFishingBuddies() async {
+    final buddies = await DatabaseHelper.instance.getFishingBuddies();
+    final meBuddy = await DatabaseHelper.instance.getMeFishingBuddy();
+    setState(() {
+      _fishingBuddies = buddies;
+      // Default to "Me"
+      if (_selectedFishingBuddyId == null && meBuddy != null) {
+        _selectedFishingBuddyId = meBuddy.id;
+      }
+      // If editing, set the selected fishing buddy
+      if (widget.catchToEdit != null && widget.catchToEdit!.fishingBuddyId != null) {
+        final buddy = buddies.firstWhere(
+          (b) => b.id == widget.catchToEdit!.fishingBuddyId,
+          orElse: () => meBuddy!,
+        );
+        _selectedFishingBuddyId = buddy.id;
       }
     });
   }
@@ -208,6 +232,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         latitude: _latitude,
         longitude: _longitude,
         location: location.isEmpty ? null : location,
+        fishingBuddyId: _selectedFishingBuddyId,
       );
       await DatabaseHelper.instance.updateCatch(updatedCatch);
       savedCatch = updatedCatch;
@@ -223,6 +248,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         latitude: _latitude,
         longitude: _longitude,
         location: location.isEmpty ? null : location,
+        fishingBuddyId: _selectedFishingBuddyId,
       );
       await DatabaseHelper.instance.insertCatch(newCatch);
       savedCatch = newCatch;
@@ -285,6 +311,24 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
               ),
               trailing: const Icon(Icons.calendar_today),
               onTap: _selectDate,
+            ),
+            const SizedBox(height: 24),
+            DropdownButtonFormField<int>(
+              value: _selectedFishingBuddyId,
+              decoration: const InputDecoration(labelText: 'Fishing Buddy'),
+              items: [
+                ..._fishingBuddies.map((buddy) {
+                  return DropdownMenuItem(
+                    value: buddy.id,
+                    child: Text(buddy.name),
+                  );
+                }),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _selectedFishingBuddyId = value;
+                });
+              },
             ),
             const SizedBox(height: 24),
             DropdownButtonFormField<String>(

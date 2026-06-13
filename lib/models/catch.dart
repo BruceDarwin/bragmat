@@ -10,6 +10,7 @@ class Catch {
   final double? latitude;
   final double? longitude;
   final String? location;
+  final int? fishingBuddyId;
 
   Catch({
     this.id,
@@ -23,6 +24,7 @@ class Catch {
     this.latitude,
     this.longitude,
     this.location,
+    this.fishingBuddyId,
   });
 
   Map<String, dynamic> toMap() {
@@ -38,6 +40,7 @@ class Catch {
       'latitude': latitude,
       'longitude': longitude,
       'location': location,
+      'fishing_buddy_id': fishingBuddyId,
     };
   }
 
@@ -60,6 +63,7 @@ factory Catch.fromMap(Map<String, dynamic> map) {
     latitude: map['latitude'] as double?,
     longitude: map['longitude'] as double?,
     location: map['location'] as String?,
+    fishingBuddyId: map['fishing_buddy_id'] as int?,
   );
 }
 }

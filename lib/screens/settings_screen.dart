@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:file_picker/file_picker.dart';
+// import 'package:file_picker/file_picker.dart'; // Temporarily disabled due to build issue
 import 'dart:io';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
+import '../models/fishing_buddy.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -17,12 +18,14 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   List<String> _fishTypes = [];
   List<Catch> _catches = [];
+  List<FishingBuddy> _fishingBuddies = [];
 
   @override
   void initState() {
     super.initState();
     _loadFishTypes();
     _loadStatistics();
+    _loadFishingBuddies();
   }
 
   Future<void> _loadStatistics() async {
@@ -38,6 +41,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final types = await DatabaseHelper.instance.getFishTypes();
     setState(() {
       _fishTypes = types;
+    });
+  }
+
+  Future<void> _loadFishingBuddies() async {
+    final buddies = await DatabaseHelper.instance.getFishingBuddies();
+    setState(() {
+      _fishingBuddies = buddies;
     });
   }
 
@@ -183,6 +193,159 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  // Fishing Buddies CRUD
+  Future<void> _showAddFishingBuddyDialog() async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Fishing Buddy'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Fishing Buddy Name'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && controller.text.trim().isNotEmpty) {
+      final name = controller.text.trim();
+      // Check for duplicates (case-insensitive, ignoring extra spaces)
+      final normalized = name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+      final exists = _fishingBuddies.any((buddy) =>
+        buddy.name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') == normalized);
+
+      if (!exists) {
+        final result = await DatabaseHelper.instance.insertFishingBuddy(name);
+        if (result != -1) {
+          _loadFishingBuddies();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Fishing buddy added')),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Fishing buddy already exists')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showEditFishingBuddyDialog(FishingBuddy buddy) async {
+    final controller = TextEditingController(text: buddy.name);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Fishing Buddy'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Fishing Buddy Name'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && controller.text.trim().isNotEmpty) {
+      final newName = controller.text.trim();
+      if (newName != buddy.name) {
+        // Check for duplicates (case-insensitive, ignoring extra spaces)
+        final normalized = newName.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+        final exists = _fishingBuddies.any((b) =>
+          b.name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') == normalized && b.id != buddy.id);
+
+        if (!exists) {
+          await DatabaseHelper.instance.updateFishingBuddy(buddy.id!, newName);
+          _loadFishingBuddies();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Fishing buddy updated')),
+            );
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Fishing buddy already exists')),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _showDeleteFishingBuddyDialog(FishingBuddy buddy) async {
+    // Prevent deleting "Me"
+    if (buddy.name == 'Me') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot delete "Me" fishing buddy')),
+        );
+      }
+      return;
+    }
+
+    final isUsed = await DatabaseHelper.instance.isFishingBuddyUsed(buddy.id!);
+    if (isUsed) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Cannot delete: fishing buddy is in use')),
+        );
+      }
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Fishing Buddy'),
+        content: Text('Are you sure you want to delete "${buddy.name}"?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await DatabaseHelper.instance.deleteFishingBuddy(buddy.id!);
+      _loadFishingBuddies();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Fishing buddy deleted')),
+        );
+      }
+    }
+  }
+
   Future<void> _exportCatchesToCSV() async {
     debugPrint('=== Export Catches to CSV started ===');
     
@@ -216,7 +379,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Create CSV content
       final csvContent = StringBuffer();
       // Header row
-      csvContent.writeln('Fish Type,Size (cm),Date Caught,Location,Notes,Photo Path,Photo Date/Time,Latitude,Longitude');
+      csvContent.writeln('Fish Type,Size (cm),Date Caught,Location,Notes,Photo Path,Photo Date/Time,Latitude,Longitude,Fishing Buddy');
+      
+      // Load fishing buddies for name lookup
+      final fishingBuddies = await DatabaseHelper.instance.getFishingBuddies();
+      final buddyMap = {for (var buddy in fishingBuddies) buddy.id!: buddy.name};
       
       // Data rows
       for (final catch_ in catches) {
@@ -229,8 +396,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         final photoDateTime = catch_.photoDateTime?.toString() ?? '';
         final latitude = catch_.latitude?.toString() ?? '';
         final longitude = catch_.longitude?.toString() ?? '';
+        final fishingBuddy = catch_.fishingBuddyId != null
+            ? _escapeCSV(buddyMap[catch_.fishingBuddyId] ?? 'Unknown')
+            : '';
         
-        csvContent.writeln('$fishType,$size,$dateCaught,$location,$notes,$photoPath,$photoDateTime,$latitude,$longitude');
+        csvContent.writeln('$fishType,$size,$dateCaught,$location,$notes,$photoPath,$photoDateTime,$latitude,$longitude,$fishingBuddy');
       }
 
       // Generate filename with timestamp
@@ -316,222 +486,245 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return value;
   }
 
-  Future<void> _importCatchesFromCSV() async {
-    debugPrint('=== Import Catches from CSV started ===');
-    
-    try {
-      // Pick CSV file
-      final result = await FilePicker.platform.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['csv'],
-      );
+  // Temporarily disabled due to file_picker build issue
+  // Future<void> _importCatchesFromCSV() async {
+  //   debugPrint('=== Import Catches from CSV started ===');
+  //   
+  //   try {
+  //     // Pick CSV file
+  //     final result = await FilePicker.platform.pickFiles(
+  //       type: FileType.custom,
+  //       allowedExtensions: ['csv'],
+  //     );
 
-      if (result == null || result.files.isEmpty) {
-        debugPrint('No file selected');
-        return;
-      }
+  //     if (result == null || result.files.isEmpty) {
+  //       debugPrint('No file selected');
+  //       return;
+  //     }
 
-      final file = result.files.first;
-      debugPrint('Selected file: ${file.name}');
-      
-      if (file.path == null) {
-        debugPrint('ERROR: File path is null');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not read file')),
-          );
-        }
-        return;
-      }
+  //     final file = result.files.first;
+  //     debugPrint('Selected file: ${file.name}');
+  //     
+  //     if (file.path == null) {
+  //       debugPrint('ERROR: File path is null');
+  //       if (mounted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           const SnackBar(content: Text('Could not read file')),
+  //         );
+  //       }
+  //       return;
+  //     }
 
-      // Read file
-      final csvFile = File(file.path!);
-      final csvContent = await csvFile.readAsString();
-      debugPrint('File read successfully');
+  //     // Read file
+  //     final csvFile = File(file.path!);
+  //     final csvContent = await csvFile.readAsString();
+  //     debugPrint('File read successfully');
 
-      // Parse CSV
-      final lines = csvContent.split('\n');
-      if (lines.isEmpty) {
-        debugPrint('ERROR: File is empty');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('File is empty')),
-          );
-        }
-        return;
-      }
+  //     // Parse CSV
+  //     final lines = csvContent.split('\n');
+  //     if (lines.isEmpty) {
+  //       debugPrint('ERROR: File is empty');
+  //       if (mounted) {
+  //         ScaffoldMessenger.of(context).showSnackBar(
+  //           const SnackBar(content: Text('File is empty')),
+  //         );
+  //       }
+  //       return;
+  //     }
 
-      // Get existing catches for duplicate detection
-      final existingCatches = await DatabaseHelper.instance.getCatches();
-      debugPrint('Existing catches: ${existingCatches.length}');
+  //     // Get existing catches for duplicate detection
+  //     final existingCatches = await DatabaseHelper.instance.getCatches();
+  //     debugPrint('Existing catches: ${existingCatches.length}');
 
-      // Statistics
-      int rowsRead = 0;
-      int catchesImported = 0;
-      int rowsSkipped = 0;
-      List<String> errors = [];
+  //     // Statistics
+  //     int rowsRead = 0;
+  //     int catchesImported = 0;
+  //     int rowsSkipped = 0;
+  //     List<String> errors = [];
 
-      // Skip header row
-      final dataLines = lines.skip(1).toList();
-      rowsRead = dataLines.length;
+  //     // Skip header row
+  //     final dataLines = lines.skip(1).toList();
+  //     rowsRead = dataLines.length;
 
-      for (int i = 0; i < dataLines.length; i++) {
-        final line = dataLines[i].trim();
-        if (line.isEmpty) {
-          rowsSkipped++;
-          continue;
-        }
+  //     for (int i = 0; i < dataLines.length; i++) {
+  //       final line = dataLines[i].trim();
+  //       if (line.isEmpty) {
+  //         rowsSkipped++;
+  //         continue;
+  //       }
 
-        // Parse CSV line (handle quoted values)
-        final values = _parseCSVLine(line);
+  //       // Parse CSV line (handle quoted values)
+  //       final values = _parseCSVLine(line);
         
-        if (values.length < 2) {
-          errors.add('Row ${i + 2}: Invalid format (expected at least 2 columns)');
-          rowsSkipped++;
-          continue;
-        }
+  //       if (values.length < 2) {
+  //         errors.add('Row ${i + 2}: Invalid format (expected at least 2 columns)');
+  //         rowsSkipped++;
+  //         continue;
+  //       }
 
-        // Extract fields
-        final fishType = values[0].trim();
-        final size = int.tryParse(values[1].trim()) ?? 0;
-        final dateCaughtStr = values.length > 2 ? values[2].trim() : '';
-        final location = values.length > 3 ? values[3].trim() : '';
-        final notes = values.length > 4 ? values[4].trim() : '';
-        final photoPath = values.length > 5 ? values[5].trim() : '';
-        final photoDateTimeStr = values.length > 6 ? values[6].trim() : '';
-        final latitudeStr = values.length > 7 ? values[7].trim() : '';
-        final longitudeStr = values.length > 8 ? values[8].trim() : '';
+  //       // Extract fields
+  //       final fishType = values[0].trim();
+  //       final size = int.tryParse(values[1].trim()) ?? 0;
+  //       final dateCaughtStr = values.length > 2 ? values[2].trim() : '';
+  //       final location = values.length > 3 ? values[3].trim() : '';
+  //       final notes = values.length > 4 ? values[4].trim() : '';
+  //       final photoPath = values.length > 5 ? values[5].trim() : '';
+  //       final photoDateTimeStr = values.length > 6 ? values[6].trim() : '';
+  //       final latitudeStr = values.length > 7 ? values[7].trim() : '';
+  //       final longitudeStr = values.length > 8 ? values[8].trim() : '';
+  //       final fishingBuddyStr = values.length > 9 ? values[9].trim() : '';
 
-        // Validate required fields
-        if (fishType.isEmpty) {
-          errors.add('Row ${i + 2}: Fish type is required');
-          rowsSkipped++;
-          continue;
-        }
+  //       // Validate required fields
+  //       if (fishType.isEmpty) {
+  //         errors.add('Row ${i + 2}: Fish type is required');
+  //         rowsSkipped++;
+  //         continue;
+  //       }
 
-        // Parse date
-        DateTime? dateCaught;
-        if (dateCaughtStr.isNotEmpty) {
-          try {
-            dateCaught = DateTime.parse(dateCaughtStr);
-          } catch (e) {
-            debugPrint('Row ${i + 2}: Could not parse date: $dateCaughtStr');
-          }
-        }
+  //       // Parse date
+  //       DateTime? dateCaught;
+  //       if (dateCaughtStr.isNotEmpty) {
+  //         try {
+  //           dateCaught = DateTime.parse(dateCaughtStr);
+  //         } catch (e) {
+  //           debugPrint('Row ${i + 2}: Could not parse date: $dateCaughtStr');
+  //         }
+  //       }
 
-        // Parse photo date/time
-        DateTime? photoDateTime;
-        if (photoDateTimeStr.isNotEmpty) {
-          try {
-            photoDateTime = DateTime.parse(photoDateTimeStr);
-          } catch (e) {
-            debugPrint('Row ${i + 2}: Could not parse photo date/time: $photoDateTimeStr');
-          }
-        }
+  //       // Parse photo date/time
+  //       DateTime? photoDateTime;
+  //       if (photoDateTimeStr.isNotEmpty) {
+  //         try {
+  //           photoDateTime = DateTime.parse(photoDateTimeStr);
+  //         } catch (e) {
+  //           debugPrint('Row ${i + 2}: Could not parse photo date/time: $photoDateTimeStr');
+  //         }
+  //       }
 
-        // Parse coordinates
-        double? latitude;
-        if (latitudeStr.isNotEmpty) {
-          latitude = double.tryParse(latitudeStr);
-        }
-        double? longitude;
-        if (longitudeStr.isNotEmpty) {
-          longitude = double.tryParse(longitudeStr);
-        }
+  //       // Parse coordinates
+  //       double? latitude;
+  //       if (latitudeStr.isNotEmpty) {
+  //         latitude = double.tryParse(latitudeStr);
+  //       }
+  //       double? longitude;
+  //       if (longitudeStr.isNotEmpty) {
+  //         longitude = double.tryParse(longitudeStr);
+  //       }
 
-        // Check for duplicates (fish type + size + date combination)
-        final isDuplicate = existingCatches.any((existing) {
-          final existingDate = existing.dateCaught ?? existing.createdAt;
-          final importDate = dateCaught ?? DateTime.now();
-          return existing.fishType == fishType &&
-                 existing.lengthCm == size &&
-                 existingDate.year == importDate.year &&
-                 existingDate.month == importDate.month &&
-                 existingDate.day == importDate.day;
-        });
+  //       // Handle fishing buddy
+  //       int? fishingBuddyId;
+  //       if (fishingBuddyStr.isNotEmpty) {
+  //         // Look up fishing buddy by name
+  //         final buddy = await DatabaseHelper.instance.getFishingBuddyByName(fishingBuddyStr);
+  //         if (buddy != null) {
+  //           fishingBuddyId = buddy.id;
+  //         } else {
+  //           // Create new fishing buddy if it doesn't exist
+  //           final insertedId = await DatabaseHelper.instance.insertFishingBuddy(fishingBuddyStr);
+  //           if (insertedId != -1) {
+  //             fishingBuddyId = insertedId;
+  //           }
+  //         }
+  //       } else {
+  //         // Default to "Me" if no fishing buddy specified
+  //         final meBuddy = await DatabaseHelper.instance.getMeFishingBuddy();
+  //         fishingBuddyId = meBuddy?.id;
+  //       }
 
-        if (isDuplicate) {
-          errors.add('Row ${i + 2}: Duplicate catch (fish type: $fishType, size: $size)');
-          rowsSkipped++;
-          continue;
-        }
+  //       // Check for duplicates (fish type + size + date combination)
+  //       final isDuplicate = existingCatches.any((existing) {
+  //         final existingDate = existing.dateCaught ?? existing.createdAt;
+  //         final importDate = dateCaught ?? DateTime.now();
+  //         return existing.fishType == fishType &&
+  //                existing.lengthCm == size &&
+  //                existingDate.year == importDate.year &&
+  //                existingDate.month == importDate.month &&
+  //                existingDate.day == importDate.day;
+  //       });
 
-        // Create catch object
-        final newCatch = Catch(
-          fishType: fishType,
-          lengthCm: size,
-          notes: notes.isEmpty ? null : notes,
-          createdAt: DateTime.now(),
-          dateCaught: dateCaught,
-          imagePath: photoPath.isEmpty ? null : photoPath,
-          photoDateTime: photoDateTime,
-          latitude: latitude,
-          longitude: longitude,
-          location: location.isEmpty ? null : location,
-        );
+  //       if (isDuplicate) {
+  //         errors.add('Row ${i + 2}: Duplicate catch (fish type: $fishType, size: $size)');
+  //         rowsSkipped++;
+  //         continue;
+  //       }
 
-        // Insert into database
-        await DatabaseHelper.instance.insertCatch(newCatch);
-        catchesImported++;
-        debugPrint('Imported catch: $fishType');
-      }
+  //       // Create catch object
+  //       final newCatch = Catch(
+  //         fishType: fishType,
+  //         lengthCm: size,
+  //         notes: notes.isEmpty ? null : notes,
+  //         createdAt: DateTime.now(),
+  //         dateCaught: dateCaught,
+  //         imagePath: photoPath.isEmpty ? null : photoPath,
+  //         photoDateTime: photoDateTime,
+  //         latitude: latitude,
+  //         longitude: longitude,
+  //         location: location.isEmpty ? null : location,
+  //         fishingBuddyId: fishingBuddyId,
+  //       );
 
-      debugPrint('Import complete: $catchesImported imported, $rowsSkipped skipped, ${errors.length} errors');
+  //       // Insert into database
+  //       await DatabaseHelper.instance.insertCatch(newCatch);
+  //       catchesImported++;
+  //       debugPrint('Imported catch: $fishType');
+  //     }
 
-      if (mounted) {
-        showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: const Text('Import Complete'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Rows read: $rowsRead'),
-                Text('Catches imported: $catchesImported'),
-                Text('Rows skipped: $rowsSkipped'),
-                if (errors.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  const Text('Errors:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    height: 150,
-                    child: ListView.builder(
-                      shrinkWrap: true,
-                      itemCount: errors.length > 10 ? 10 : errors.length,
-                      itemBuilder: (context, index) => Text(
-                        errors[index],
-                        style: const TextStyle(fontSize: 12, color: Colors.red),
-                      ),
-                    ),
-                  ),
-                  if (errors.length > 10)
-                    Text('... and ${errors.length - 10} more errors', style: const TextStyle(fontSize: 12)),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  _loadStatistics(); // Refresh statistics
-                },
-                child: const Text('OK'),
-              ),
-            ],
-          ),
-        );
-      }
-    } catch (e) {
-      debugPrint('ERROR: Import failed: $e');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Import failed: $e')),
-        );
-      }
-    }
-    debugPrint('=== Import Catches from CSV completed ===');
-  }
+  //     debugPrint('Import complete: $catchesImported imported, $rowsSkipped skipped, ${errors.length} errors');
+
+  //     if (mounted) {
+  //       showDialog(
+  //         context: context,
+  //         builder: (context) => AlertDialog(
+  //           title: const Text('Import Complete'),
+  //           content: Column(
+  //             mainAxisSize: MainAxisSize.min,
+  //             crossAxisAlignment: CrossAxisAlignment.start,
+  //             children: [
+  //               Text('Rows read: $rowsRead'),
+  //               Text('Catches imported: $catchesImported'),
+  //               Text('Rows skipped: $rowsSkipped'),
+  //               if (errors.isNotEmpty) ...[
+  //                 const SizedBox(height: 8),
+  //                 const Text('Errors:', style: TextStyle(fontWeight: FontWeight.bold)),
+  //                 const SizedBox(height: 4),
+  //                 SizedBox(
+  //                   height: 150,
+  //                   child: ListView.builder(
+  //                     shrinkWrap: true,
+  //                     itemCount: errors.length > 10 ? 10 : errors.length,
+  //                     itemBuilder: (context, index) => Text(
+  //                       errors[index],
+  //                       style: const TextStyle(fontSize: 12, color: Colors.red),
+  //                     ),
+  //                   ),
+  //                 ),
+  //                 if (errors.length > 10)
+  //                   Text('... and ${errors.length - 10} more errors', style: const TextStyle(fontSize: 12)),
+  //               ],
+  //             ],
+  //           ),
+  //           actions: [
+  //             TextButton(
+  //               onPressed: () {
+  //                 Navigator.pop(context);
+  //                 _loadStatistics(); // Refresh statistics
+  //               },
+  //               child: const Text('OK'),
+  //             ),
+  //           ],
+  //         ),
+  //       );
+  //     }
+  //   } catch (e) {
+  //     debugPrint('ERROR: Import failed: $e');
+  //     if (mounted) {
+  //       ScaffoldMessenger.of(context).showSnackBar(
+  //         SnackBar(content: Text('Import failed: $e')),
+  //       );
+  //     }
+  //   }
+  //   debugPrint('=== Import Catches from CSV completed ===');
+  // }
 
   List<String> _parseCSVLine(String line) {
     final values = <String>[];
@@ -682,6 +875,53 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
+          // Fishing Buddies Section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Fishing Buddies',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _showAddFishingBuddyDialog,
+                    icon: const Icon(Icons.add),
+                    label: const Text('Add Fishing Buddy'),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_fishingBuddies.isEmpty)
+                    const Text('No fishing buddies yet'),
+                  ..._fishingBuddies.map((buddy) {
+                    return ListTile(
+                      title: Text(buddy.name),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit),
+                            onPressed: () => _showEditFishingBuddyDialog(buddy),
+                          ),
+                          IconButton(
+                            icon: const Icon(Icons.delete),
+                            onPressed: () => _showDeleteFishingBuddyDialog(buddy),
+                          ),
+                        ],
+                      ),
+                    );
+                  }),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
           // Data Management Section
           Card(
             child: Padding(
@@ -702,11 +942,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: const Text('Export Catches'),
                     onTap: _exportCatchesToCSV,
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.file_download),
-                    title: const Text('Import Catches'),
-                    onTap: _importCatchesFromCSV,
-                  ),
+                  // Temporarily disabled due to file_picker build issue
+                  // ListTile(
+                  //   leading: const Icon(Icons.file_download),
+                  //   title: const Text('Import Catches'),
+                  //   onTap: _importCatchesFromCSV,
+                  // ),
+                  _buildComingSoonMenuItem(Icons.file_download, 'Import Catches (Temporarily Disabled)'),
                   _buildComingSoonMenuItem(Icons.backup, 'Backup and Restore'),
                 ],
               ),

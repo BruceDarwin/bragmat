@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/catch.dart';
+import '../models/fishing_buddy.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -20,7 +21,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 7,
+      version: 8,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -39,12 +40,20 @@ class DatabaseHelper {
         photo_datetime TEXT,
         latitude REAL,
         longitude REAL,
-        location TEXT
+        location TEXT,
+        fishing_buddy_id INTEGER
       )
     ''');
 
     await db.execute('''
       CREATE TABLE fish_types (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE fishing_buddies (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL
       )
@@ -56,6 +65,9 @@ class DatabaseHelper {
     await db.insert('fish_types', {'name': 'Saratoga'});
     await db.insert('fish_types', {'name': 'Jewfish'});
     await db.insert('fish_types', {'name': 'Queenfish'});
+
+    // Insert default "Me" fishing buddy
+    await db.insert('fishing_buddies', {'name': 'Me'});
   }
 
   Future _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -90,6 +102,23 @@ class DatabaseHelper {
       // Add location column if it doesn't exist (for databases at version 6 without location)
       try {
         await db.execute('ALTER TABLE catches ADD COLUMN location TEXT');
+      } catch (e) {
+        // Column might already exist, ignore error
+      }
+    }
+    if (oldVersion < 8) {
+      // Add fishing_buddies table
+      await db.execute('''
+        CREATE TABLE fishing_buddies (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL
+        )
+      ''');
+      // Insert default "Me" fishing buddy
+      await db.insert('fishing_buddies', {'name': 'Me'});
+      // Add fishing_buddy_id column to catches table
+      try {
+        await db.execute('ALTER TABLE catches ADD COLUMN fishing_buddy_id INTEGER');
       } catch (e) {
         // Column might already exist, ignore error
       }
@@ -184,5 +213,67 @@ class DatabaseHelper {
       where: 'name = ?',
       whereArgs: [name],
     );
+  }
+
+  // FISHING BUDDIES
+  Future<List<FishingBuddy>> getFishingBuddies() async {
+    final db = await instance.database;
+    final result = await db.query('fishing_buddies', orderBy: 'name');
+    return result.map((json) => FishingBuddy.fromMap(json)).toList();
+  }
+
+  Future<int> insertFishingBuddy(String name) async {
+    final db = await instance.database;
+    try {
+      return await db.insert('fishing_buddies', {'name': name});
+    } catch (e) {
+      // If fishing buddy already exists, return -1
+      return -1;
+    }
+  }
+
+  Future<bool> isFishingBuddyUsed(int id) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'catches',
+      where: 'fishing_buddy_id = ?',
+      whereArgs: [id],
+    );
+    return result.isNotEmpty;
+  }
+
+  Future<int> updateFishingBuddy(int id, String newName) async {
+    final db = await instance.database;
+    return await db.update(
+      'fishing_buddies',
+      {'name': newName},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteFishingBuddy(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'fishing_buddies',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<FishingBuddy?> getFishingBuddyByName(String name) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'fishing_buddies',
+      where: 'name = ?',
+      whereArgs: [name],
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return FishingBuddy.fromMap(result.first);
+  }
+
+  Future<FishingBuddy?> getMeFishingBuddy() async {
+    return await getFishingBuddyByName('Me');
   }
 }

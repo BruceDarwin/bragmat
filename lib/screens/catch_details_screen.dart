@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
+import '../models/fishing_buddy.dart';
 import 'add_catch_screen.dart';
 import 'photo_viewer_screen.dart';
 
@@ -16,11 +17,28 @@ class CatchDetailsScreen extends StatefulWidget {
 
 class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
   late Catch _catchItem;
+  String? _fishingBuddyName;
 
   @override
   void initState() {
     super.initState();
     _catchItem = widget.catchItem;
+    _loadFishingBuddyName();
+  }
+
+  Future<void> _loadFishingBuddyName() async {
+    if (_catchItem.fishingBuddyId != null) {
+      final buddies = await DatabaseHelper.instance.getFishingBuddies();
+      final buddy = buddies.firstWhere(
+        (b) => b.id == _catchItem.fishingBuddyId,
+        orElse: () => FishingBuddy(name: 'Unknown'),
+      );
+      if (mounted) {
+        setState(() {
+          _fishingBuddyName = buddy.name;
+        });
+      }
+    }
   }
 
   Future<void> _showDeleteDialog(BuildContext context) async {
@@ -113,6 +131,17 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
+                  if (_fishingBuddyName != null && _fishingBuddyName != 'Me')
+                    Padding(
+                      padding: const EdgeInsets.only(top: 8),
+                      child: Text(
+                        'Caught by $_fishingBuddyName',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: Colors.grey[600],
+                          fontStyle: FontStyle.italic,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 24),
                   _buildSection('Basic Info', [
                     if (_catchItem.dateCaught != null)
