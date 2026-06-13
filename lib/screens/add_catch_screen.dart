@@ -73,17 +73,25 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     final meBuddy = await DatabaseHelper.instance.getMeFishingBuddy();
     setState(() {
       _fishingBuddies = buddies;
-      // Default to "Me"
+      // Default to "Me" only if "Me" is in the list
       if (_selectedFishingBuddyId == null && meBuddy != null) {
-        _selectedFishingBuddyId = meBuddy.id;
+        final meInList = buddies.any((b) => b.id == meBuddy.id);
+        if (meInList) {
+          _selectedFishingBuddyId = meBuddy.id;
+        }
       }
-      // If editing, set the selected fishing buddy
+      // If editing, set the selected fishing buddy only if it's in the list
       if (widget.catchToEdit != null && widget.catchToEdit!.fishingBuddyId != null) {
         final buddy = buddies.firstWhere(
           (b) => b.id == widget.catchToEdit!.fishingBuddyId,
           orElse: () => meBuddy!,
         );
-        _selectedFishingBuddyId = buddy.id;
+        // Only set if the buddy is actually in the list
+        if (buddies.any((b) => b.id == buddy.id)) {
+          _selectedFishingBuddyId = buddy.id;
+        } else {
+          _selectedFishingBuddyId = null;
+        }
       }
     });
   }
@@ -316,14 +324,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
             DropdownButtonFormField<int>(
               value: _selectedFishingBuddyId,
               decoration: const InputDecoration(labelText: 'Fishing Buddy'),
-              items: [
-                ..._fishingBuddies.map((buddy) {
-                  return DropdownMenuItem(
-                    value: buddy.id,
-                    child: Text(buddy.name),
-                  );
-                }),
-              ],
+              items: _fishingBuddies.isEmpty
+                  ? []
+                  : _fishingBuddies.map((buddy) {
+                      return DropdownMenuItem(
+                        value: buddy.id,
+                        child: Text(buddy.name),
+                      );
+                    }).toList(),
               onChanged: (value) {
                 setState(() {
                   _selectedFishingBuddyId = value;
