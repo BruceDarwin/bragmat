@@ -1,0 +1,223 @@
+import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
+import '../database/database_helper.dart';
+import '../services/current_trip_service.dart';
+
+class BackupService {
+  static const String _backupVersion = '1.0';
+  
+  static Future<Map<String, dynamic>> createBackup() async {
+    final db = DatabaseHelper.instance;
+
+    debugPrint('Backup: Starting data collection...');
+
+    // Get all data
+    final catches = await db.getCatches();
+    debugPrint('Backup: Got ${catches.length} catches');
+
+    final fishTypes = await db.getFishTypes();
+    debugPrint('Backup: Got ${fishTypes.length} fish types');
+
+    final fishingBuddies = await db.getFishingBuddies();
+    debugPrint('Backup: Got ${fishingBuddies.length} fishing buddies');
+
+    final fishingTrips = await db.getFishingTrips();
+    debugPrint('Backup: Got ${fishingTrips.length} fishing trips');
+
+    final currentTripId = await CurrentTripService.getCurrentTripId();
+    debugPrint('Backup: Current trip ID: $currentTripId');
+
+    // Get catch media for all catches
+    debugPrint('Backup: Collecting catch media...');
+    final mediaMap = <String, List<Map<String, dynamic>>>{};
+    for (final catchItem in catches) {
+      if (catchItem.id != null) {
+        final media = await db.getMediaForCatch(catchItem.id!);
+        mediaMap[catchItem.id!.toString()] = media.map((m) => m.toMap()).toList();
+      }
+    }
+    debugPrint('Backup: Got media for ${mediaMap.length} catches');
+
+    // Create backup object
+    debugPrint('Backup: Creating backup map...');
+    final backup = {
+      'version': _backupVersion,
+      'timestamp': DateTime.now().toIso8601String(),
+      'data': {
+        'catches': catches.map((c) => c.toMap()).toList(),
+        'catchMedia': mediaMap,
+        'fishTypes': fishTypes,
+        'fishingBuddies': fishingBuddies.map((b) => b.toMap()).toList(),
+        'fishingTrips': fishingTrips.map((t) => t.toMap()).toList(),
+        'currentTripId': currentTripId,
+      },
+    };
+
+    debugPrint('Backup: Backup map created successfully');
+    return backup;
+  }
+  
+  static Future<String> exportBackup() async {
+    final backup = await createBackup();
+    final json = jsonEncode(backup);
+    
+    // Get downloads directory
+    final directory = await getDownloadsDirectory();
+    if (directory == null) {
+      throw Exception('Could not access downloads directory');
+    }
+    
+    // Generate filename with timestamp
+    final timestamp = DateTime.now().toString().replaceAll(':', '-').replaceAll(' ', '_').split('.')[0];
+    final filename = 'bragmat_backup_$timestamp.json';
+    final filePath = '${directory.path}/$filename';
+    
+    // Write file
+    final file = File(filePath);
+    await file.writeAsString(json);
+    
+    return filePath;
+  }
+  
+  static Future<void> shareBackup() async {
+    final filePath = await exportBackup();
+    await Share.shareXFiles(
+      [XFile(filePath)],
+      subject: 'Bragmat Backup',
+      text: 'Bragmat data backup',
+    );
+  }
+  
+  static Future<void> restoreBackup(String filePath, {bool overwrite = false}) async {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw Exception('Backup file not found');
+    }
+    
+    final json = await file.readAsString();
+    final backup = jsonDecode(json) as Map<String, dynamic>;
+    
+    // Validate backup version
+    final version = backup['version'] as String?;
+    if (version == null) {
+      throw Exception('Invalid backup file: missing version');
+    }
+    
+    final data = backup['data'] as Map<String, dynamic>;
+    final db = DatabaseHelper.instance;
+    
+    if (!overwrite) {
+      // Check if there's existing data
+      final existingCatches = await db.getCatches();
+      if (existingCatches.isNotEmpty) {
+        throw Exception('Database is not empty. Use overwrite option to replace existing data.');
+      }
+    } else {
+      // Clear existing data
+      await _clearAllData(db);
+    }
+    
+    // Restore fish types
+    final fishTypes = data['fishTypes'] as List<dynamic>?;
+    if (fishTypes != null) {
+      for (final type in fishTypes) {
+        await db.insertFishType(type as String);
+      }
+    }
+    
+    // Restore fishing buddies
+    final fishingBuddies = data['fishingBuddies'] as List<dynamic>?;
+    if (fishingBuddies != null) {
+      for (final buddyData in fishingBuddies) {
+        final buddyMap = buddyData as Map<String, dynamic>;
+        // Check if buddy already exists by name
+        final existingBuddy = await db.getFishingBuddyByName(buddyMap['name'] as String);
+        if (existingBuddy == null) {
+          await db.insertFishingBuddy(buddyMap['name'] as String);
+        }
+      }
+    }
+    
+    // Restore fishing trips
+    final fishingTrips = data['fishingTrips'] as List<dynamic>?;
+    final tripIdMap = <int, int>{}; // Maps old trip IDs to new trip IDs
+    if (fishingTrips != null) {
+      for (final tripData in fishingTrips) {
+        final tripMap = tripData as Map<String, dynamic>;
+        final oldTripId = tripMap['id'] as int;
+        // Remove old ID for insertion
+        tripMap.remove('id');
+        final newTripId = await db.insertFishingTripFromMap(tripMap);
+        tripIdMap[oldTripId] = newTripId;
+      }
+    }
+    
+    // Restore catches
+    final catches = data['catches'] as List<dynamic>?;
+    final catchIdMap = <int, int>{}; // Maps old catch IDs to new catch IDs
+    if (catches != null) {
+      for (final catchData in catches) {
+        final catchMap = catchData as Map<String, dynamic>;
+        final oldCatchId = catchMap['id'] as int;
+        final oldTripId = catchMap['trip_id'] as int?;
+        
+        // Map old trip ID to new trip ID
+        if (oldTripId != null && tripIdMap.containsKey(oldTripId)) {
+          catchMap['trip_id'] = tripIdMap[oldTripId];
+        } else {
+          catchMap['trip_id'] = null;
+        }
+        
+        // Remove old ID for insertion
+        catchMap.remove('id');
+        final newCatchId = await db.insertCatchFromMap(catchMap);
+        catchIdMap[oldCatchId] = newCatchId;
+      }
+    }
+    
+    // Restore catch media
+    final catchMedia = data['catchMedia'] as Map<String, dynamic>?;
+    if (catchMedia != null) {
+      for (final entry in catchMedia.entries) {
+        final oldCatchId = int.parse(entry.key);
+        final newCatchId = catchIdMap[oldCatchId];
+        if (newCatchId != null) {
+          final mediaList = entry.value as List<dynamic>;
+          for (final mediaData in mediaList) {
+            final mediaMap = mediaData as Map<String, dynamic>;
+            mediaMap['catch_id'] = newCatchId;
+            mediaMap.remove('id');
+            await db.insertCatchMediaFromMap(mediaMap);
+          }
+        }
+      }
+    }
+    
+    // Restore current trip setting
+    final currentTripId = data['currentTripId'] as int?;
+    if (currentTripId != null && tripIdMap.containsKey(currentTripId)) {
+      await CurrentTripService.setCurrentTrip(tripIdMap[currentTripId]);
+    } else {
+      await CurrentTripService.clearCurrentTrip();
+    }
+  }
+  
+  static Future<void> _clearAllData(DatabaseHelper db) async {
+    // Delete in reverse order of dependencies
+    final catches = await db.getCatches();
+    for (final catchItem in catches) {
+      if (catchItem.id != null) {
+        await db.deleteAllMediaForCatch(catchItem.id!);
+      }
+    }
+    
+    await db.deleteAllCatches();
+    await db.deleteAllFishingTrips();
+    await db.deleteAllFishingBuddies();
+    await db.deleteAllFishTypes();
+    await CurrentTripService.clearCurrentTrip();
+  }
+}

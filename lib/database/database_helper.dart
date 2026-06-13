@@ -221,6 +221,11 @@ class DatabaseHelper {
     return await db.insert('catches', catchItem.toMap());
   }
 
+  Future<int> insertCatchFromMap(Map<String, dynamic> map) async {
+    final db = await instance.database;
+    return await db.insert('catches', map);
+  }
+
   // READ
   Future<List<Catch>> getCatches() async {
     final db = await instance.database;
@@ -305,6 +310,11 @@ class DatabaseHelper {
     );
   }
 
+  Future<int> deleteAllFishTypes() async {
+    final db = await instance.database;
+    return await db.delete('fish_types');
+  }
+
   // FISHING BUDDIES
   Future<List<FishingBuddy>> getFishingBuddies() async {
     final db = await instance.database;
@@ -349,6 +359,11 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  Future<int> deleteAllFishingBuddies() async {
+    final db = await instance.database;
+    return await db.delete('fishing_buddies');
   }
 
   Future<FishingBuddy?> getFishingBuddyByName(String name) async {
@@ -505,6 +520,11 @@ class DatabaseHelper {
     return await db.insert('catch_media', media.toMap());
   }
 
+  Future<int> insertCatchMediaFromMap(Map<String, dynamic> map) async {
+    final db = await instance.database;
+    return await db.insert('catch_media', map);
+  }
+
   Future<List<CatchMedia>> getMediaForCatch(int catchId) async {
     final db = await instance.database;
     final result = await db.query(
@@ -592,6 +612,11 @@ class DatabaseHelper {
     return await db.insert('fishing_trips', trip.toMap());
   }
 
+  Future<int> insertFishingTripFromMap(Map<String, dynamic> map) async {
+    final db = await instance.database;
+    return await db.insert('fishing_trips', map);
+  }
+
   Future<List<FishingTrip>> getFishingTrips() async {
     final db = await instance.database;
     final result = await db.query(
@@ -658,5 +683,15 @@ class DatabaseHelper {
       [tripId],
     );
     return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  Future<int> deleteAllCatches() async {
+    final db = await instance.database;
+    return await db.delete('catches');
+  }
+
+  Future<int> deleteAllFishingTrips() async {
+    final db = await instance.database;
+    return await db.delete('fishing_trips');
   }
 }

@@ -2,12 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
-// import 'package:file_picker/file_picker.dart'; // Temporarily disabled due to build issue
 import 'dart:io';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
 import '../models/fishing_trip.dart';
+import '../services/backup_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -766,6 +766,155 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return values;
   }
 
+  Future<void> _backupData() async {
+    try {
+      await BackupService.shareBackup();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup created and shared successfully')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Backup failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _restoreData() async {
+    // Show instructions dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore Backup'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('To restore a backup:'),
+            SizedBox(height: 8),
+            Text('1. Copy your backup JSON file to the Downloads folder'),
+            SizedBox(height: 4),
+            Text('2. The file must be named: bragmat_backup_*.json'),
+            SizedBox(height: 4),
+            Text('3. The most recent backup will be used'),
+            SizedBox(height: 16),
+            Text('Warning: This will replace your current data if it exists.',
+              style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Continue'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    try {
+      // Find backup file in downloads
+      final directory = await getDownloadsDirectory();
+      if (directory == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not access downloads directory')),
+          );
+        }
+        return;
+      }
+
+      // Find most recent backup file
+      final files = directory.listSync().whereType<File>().toList();
+      final backupFiles = files
+          .where((f) => f.path.contains('bragmat_backup_') && f.path.endsWith('.json'))
+          .toList();
+
+      if (backupFiles.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No backup file found in Downloads folder')),
+          );
+        }
+        return;
+      }
+
+      // Sort by last modified, most recent first
+      backupFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
+      final backupFile = backupFiles.first;
+
+      // Check if database has data
+      final existingCatches = await DatabaseHelper.instance.getCatches();
+      final hasExistingData = existingCatches.isNotEmpty;
+
+      // Show confirmation with file name
+      final restoreConfirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Restore Backup'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Restore from this file?'),
+              const SizedBox(height: 8),
+              Text('File: ${backupFile.path.split('/').last}'),
+              const SizedBox(height: 8),
+              if (hasExistingData) ...[
+                const Text(
+                  'Warning: Your current data will be replaced.',
+                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Restore'),
+            ),
+          ],
+        ),
+      );
+
+      if (restoreConfirmed != true) {
+        return;
+      }
+
+      await BackupService.restoreBackup(backupFile.path, overwrite: hasExistingData);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Backup restored successfully')),
+        );
+        // Reload data
+        _loadStatistics();
+        _loadFishTypes();
+        _loadFishingBuddies();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Restore failed: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final mostRecentCatch = _catches.isNotEmpty
@@ -829,6 +978,51 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     mostRecentCatch != null
                         ? '${mostRecentCatch.dateCaught?.toString().split(' ')[0] ?? mostRecentCatch.createdAt.toString().split(' ')[0]}'
                         : 'No catches yet',
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Backup & Restore Section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Backup & Restore',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _backupData,
+                    icon: const Icon(Icons.backup),
+                    label: const Text('Backup Data'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton.icon(
+                    onPressed: _restoreData,
+                    icon: const Icon(Icons.restore),
+                    label: const Text('Restore Data'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Backup creates a JSON file with all your data. Restore imports a backup file.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[600],
+                    ),
                   ),
                 ],
               ),
