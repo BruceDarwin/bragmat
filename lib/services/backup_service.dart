@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../database/database_helper.dart';
@@ -12,26 +11,14 @@ class BackupService {
   static Future<Map<String, dynamic>> createBackup() async {
     final db = DatabaseHelper.instance;
 
-    debugPrint('Backup: Starting data collection...');
-
     // Get all data
     final catches = await db.getCatches();
-    debugPrint('Backup: Got ${catches.length} catches');
-
     final fishTypes = await db.getFishTypes();
-    debugPrint('Backup: Got ${fishTypes.length} fish types');
-
     final fishingBuddies = await db.getFishingBuddies();
-    debugPrint('Backup: Got ${fishingBuddies.length} fishing buddies');
-
     final fishingTrips = await db.getFishingTrips();
-    debugPrint('Backup: Got ${fishingTrips.length} fishing trips');
-
     final currentTripId = await CurrentTripService.getCurrentTripId();
-    debugPrint('Backup: Current trip ID: $currentTripId');
 
     // Get catch media for all catches
-    debugPrint('Backup: Collecting catch media...');
     final mediaMap = <String, List<Map<String, dynamic>>>{};
     for (final catchItem in catches) {
       if (catchItem.id != null) {
@@ -39,10 +26,8 @@ class BackupService {
         mediaMap[catchItem.id!.toString()] = media.map((m) => m.toMap()).toList();
       }
     }
-    debugPrint('Backup: Got media for ${mediaMap.length} catches');
 
     // Create backup object
-    debugPrint('Backup: Creating backup map...');
     final backup = {
       'version': _backupVersion,
       'timestamp': DateTime.now().toIso8601String(),
@@ -56,7 +41,6 @@ class BackupService {
       },
     };
 
-    debugPrint('Backup: Backup map created successfully');
     return backup;
   }
   

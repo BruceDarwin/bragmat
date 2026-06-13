@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'dart:io';
@@ -348,14 +347,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _exportCatchesToCSV() async {
-    debugPrint('=== Export Catches to CSV started ===');
-    
     try {
       final catches = await DatabaseHelper.instance.getCatches();
-      debugPrint('Retrieved ${catches.length} catches from database');
       
       if (catches.isEmpty) {
-        debugPrint('No catches to export');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('No catches to export')),
@@ -367,7 +362,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Get downloads directory
       final directory = await getDownloadsDirectory();
       if (directory == null) {
-        debugPrint('ERROR: Could not access downloads directory');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Could not access downloads directory')),
@@ -375,7 +369,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         }
         return;
       }
-      debugPrint('Downloads directory: ${directory.path}');
 
       // Create CSV content
       final csvContent = StringBuffer();
@@ -415,20 +408,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final timestamp = DateTime.now().toString().replaceAll(':', '-').replaceAll(' ', '_').split('.')[0];
       final filename = 'bragmat_catches_$timestamp.csv';
       final filePath = '${directory.path}/$filename';
-      debugPrint('Export file path: $filePath');
       
       // Write file
       final file = File(filePath);
       await file.writeAsString(csvContent.toString());
-      debugPrint('File written successfully');
 
       // Verify file exists
       if (await file.exists()) {
-        debugPrint('File verified to exist at: $filePath');
         final fileSize = await file.length();
-        debugPrint('File size: $fileSize bytes');
-      } else {
-        debugPrint('ERROR: File does not exist after write');
       }
 
       if (mounted) {
@@ -457,13 +444,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               TextButton(
                 onPressed: () async {
                   Navigator.pop(context);
-                  debugPrint('Initiating share action for: $filePath');
                   await Share.shareXFiles(
                     [XFile(filePath)],
                     subject: 'Bragmat Catches Export',
                     text: 'Exported $filename',
                   );
-                  debugPrint('Share action completed');
                 },
                 child: const Text('Share CSV'),
               ),
@@ -476,14 +461,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     } catch (e) {
-      debugPrint('ERROR: Export failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Export failed: $e')),
         );
       }
     }
-    debugPrint('=== Export Catches to CSV completed ===');
   }
 
   String _escapeCSV(String value) {
