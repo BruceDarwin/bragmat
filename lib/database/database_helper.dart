@@ -276,4 +276,88 @@ class DatabaseHelper {
   Future<FishingBuddy?> getMeFishingBuddy() async {
     return await getFishingBuddyByName('Me');
   }
+
+  // STATISTICS
+  Future<Map<String, dynamic>> getStatistics() async {
+    final db = await instance.database;
+    final catches = await getCatches();
+    final buddies = await getFishingBuddies();
+    
+    // Create buddy ID to name map
+    final buddyMap = {for (var buddy in buddies) buddy.id!: buddy.name};
+    
+    // Total catches
+    final totalCatches = catches.length;
+    
+    if (totalCatches == 0) {
+      return {
+        'totalCatches': 0,
+        'largestFish': null,
+        'averageLength': 0.0,
+        'mostCommonFishType': null,
+        'mostCommonFishingBuddy': null,
+        'mostRecentCatch': null,
+      };
+    }
+    
+    // Largest fish
+    final largestFish = catches.reduce((a, b) => a.lengthCm > b.lengthCm ? a : b);
+    final largestFishBuddy = largestFish.fishingBuddyId != null
+        ? buddyMap[largestFish.fishingBuddyId]
+        : null;
+    
+    // Average length
+    final totalLength = catches.fold<int>(0, (sum, c) => sum + c.lengthCm);
+    final averageLength = totalLength / totalCatches;
+    
+    // Most common fish type
+    final fishTypeCounts = <String, int>{};
+    for (final catch_ in catches) {
+      fishTypeCounts[catch_.fishType] = (fishTypeCounts[catch_.fishType] ?? 0) + 1;
+    }
+    final mostCommonFishType = fishTypeCounts.entries
+        .reduce((a, b) => a.value > b.value ? a : b).key;
+    
+    // Most common fishing buddy
+    final buddyCounts = <String, int>{};
+    for (final catch_ in catches) {
+      if (catch_.fishingBuddyId != null) {
+        final buddyName = buddyMap[catch_.fishingBuddyId] ?? 'Unknown';
+        buddyCounts[buddyName] = (buddyCounts[buddyName] ?? 0) + 1;
+      }
+    }
+    String? mostCommonFishingBuddy;
+    if (buddyCounts.isNotEmpty) {
+      mostCommonFishingBuddy = buddyCounts.entries
+          .reduce((a, b) => a.value > b.value ? a : b).key;
+    }
+    
+    // Most recent catch
+    final mostRecentCatch = catches.reduce((a, b) {
+      final aDate = a.dateCaught ?? a.createdAt;
+      final bDate = b.dateCaught ?? b.createdAt;
+      return aDate.isAfter(bDate) ? a : b;
+    });
+    final mostRecentCatchBuddy = mostRecentCatch.fishingBuddyId != null
+        ? buddyMap[mostRecentCatch.fishingBuddyId]
+        : null;
+    
+    return {
+      'totalCatches': totalCatches,
+      'largestFish': {
+        'fishType': largestFish.fishType,
+        'length': largestFish.lengthCm,
+        'fishingBuddy': largestFishBuddy,
+      },
+      'averageLength': averageLength,
+      'mostCommonFishType': mostCommonFishType,
+      'mostCommonFishingBuddy': mostCommonFishingBuddy,
+      'mostRecentCatch': {
+        'fishType': mostRecentCatch.fishType,
+        'length': mostRecentCatch.lengthCm,
+        'date': mostRecentCatch.dateCaught ?? mostRecentCatch.createdAt,
+        'fishingBuddy': mostRecentCatchBuddy,
+      },
+    };
+  }
 }
