@@ -11,6 +11,7 @@ class Catch {
   final double? longitude;
   final String? location;
   final int? fishingBuddyId;
+  final int? tripId;
 
   Catch({
     this.id,
@@ -25,6 +26,7 @@ class Catch {
     this.longitude,
     this.location,
     this.fishingBuddyId,
+    this.tripId,
   });
 
   Map<String, dynamic> toMap() {
@@ -41,6 +43,7 @@ class Catch {
       'longitude': longitude,
       'location': location,
       'fishing_buddy_id': fishingBuddyId,
+      'trip_id': tripId,
     };
   }
 
@@ -64,6 +67,39 @@ factory Catch.fromMap(Map<String, dynamic> map) {
     longitude: map['longitude'] as double?,
     location: map['location'] as String?,
     fishingBuddyId: map['fishing_buddy_id'] as int?,
+    tripId: map['trip_id'] as int?,
   );
 }
+
+  Catch copyWith({
+    int? id,
+    String? fishType,
+    int? lengthCm,
+    String? notes,
+    DateTime? createdAt,
+    DateTime? dateCaught,
+    String? imagePath,
+    DateTime? photoDateTime,
+    double? latitude,
+    double? longitude,
+    String? location,
+    int? fishingBuddyId,
+    int? tripId,
+  }) {
+    return Catch(
+      id: id ?? this.id,
+      fishType: fishType ?? this.fishType,
+      lengthCm: lengthCm ?? this.lengthCm,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+      dateCaught: dateCaught ?? this.dateCaught,
+      imagePath: imagePath ?? this.imagePath,
+      photoDateTime: photoDateTime ?? this.photoDateTime,
+      latitude: latitude ?? this.latitude,
+      longitude: longitude ?? this.longitude,
+      location: location ?? this.location,
+      fishingBuddyId: fishingBuddyId ?? this.fishingBuddyId,
+      tripId: tripId ?? this.tripId,
+    );
+  }
 }

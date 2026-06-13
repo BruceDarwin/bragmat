@@ -5,6 +5,8 @@ import 'package:exif/exif.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
+import '../models/catch_media.dart';
+import '../models/fishing_trip.dart';
 
 class AddCatchScreen extends StatefulWidget {
   final Catch? catchToEdit;
@@ -21,30 +23,48 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   final _notesController = TextEditingController();
   final _locationController = TextEditingController();
   DateTime? _dateCaught;
-  String? _imagePath;
-  DateTime? _photoDateTime;
-  double? _latitude;
-  double? _longitude;
+  List<CatchMedia> _mediaItems = [];
   String? _selectedFishType;
   List<String> _fishTypes = [];
   int? _selectedFishingBuddyId;
   List<FishingBuddy> _fishingBuddies = [];
+  int? _selectedTripId;
+  List<FishingTrip> _fishingTrips = [];
 
   @override
   void initState() {
     super.initState();
     _loadFishTypes();
     _loadFishingBuddies();
+    _loadFishingTrips();
     if (widget.catchToEdit != null) {
+      _loadMediaForCatch();
       _fishTypeController.text = widget.catchToEdit!.fishType;
       _lengthController.text = widget.catchToEdit!.lengthCm.toString();
       _notesController.text = widget.catchToEdit!.notes ?? '';
       _locationController.text = widget.catchToEdit!.location ?? '';
       _dateCaught = widget.catchToEdit!.dateCaught;
-      _imagePath = widget.catchToEdit!.imagePath;
-      _photoDateTime = widget.catchToEdit!.photoDateTime;
-      _latitude = widget.catchToEdit!.latitude;
-      _longitude = widget.catchToEdit!.longitude;
+      _selectedTripId = widget.catchToEdit!.tripId;
+    }
+  }
+
+  Future<void> _loadMediaForCatch() async {
+    if (widget.catchToEdit?.id != null) {
+      final media = await DatabaseHelper.instance.getMediaForCatch(widget.catchToEdit!.id!);
+      if (mounted) {
+        setState(() {
+          _mediaItems = media;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadFishingTrips() async {
+    final trips = await DatabaseHelper.instance.getFishingTrips();
+    if (mounted) {
+      setState(() {
+        _fishingTrips = trips;
+      });
     }
   }
 
@@ -158,17 +178,35 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
+      final photoDateTime = DateTime.now();
+      double? latitude;
+      double? longitude;
+      
+      // Extract GPS data
+      final gpsData = await _extractGpsData(pickedFile.path);
+      latitude = gpsData['latitude'];
+      longitude = gpsData['longitude'];
+      
       setState(() {
-        _imagePath = pickedFile.path;
-        _photoDateTime = DateTime.now();
-        _latitude = null;
-        _longitude = null;
+        // If this is the first photo, mark it as primary
+        final role = _mediaItems.isEmpty ? 'primary' : 'other';
+        _mediaItems.add(CatchMedia(
+          catchId: 0, // Will be set when saving
+          filePath: pickedFile.path,
+          mediaType: 'photo',
+          role: role,
+          dateTaken: photoDateTime,
+          latitude: latitude,
+          longitude: longitude,
+        ));
       });
-      await _extractGpsData(pickedFile.path);
     }
   }
 
-  Future<void> _extractGpsData(String imagePath) async {
+  Future<Map<String, double?>> _extractGpsData(String imagePath) async {
+    double? latitude;
+    double? longitude;
+    
     try {
       final file = File(imagePath);
       final bytes = await file.readAsBytes();
@@ -181,14 +219,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         final lonRef = data['GPSLongitudeRef'];
 
         if (lat != null && latRef != null && lon != null && lonRef != null) {
-          final latitude = _convertToDecimalDegrees(lat, latRef);
-          final longitude = _convertToDecimalDegrees(lon, lonRef);
-
-          setState(() {
-            _latitude = latitude;
-            _longitude = longitude;
-          });
-
+          latitude = _convertToDecimalDegrees(lat, latRef);
+          longitude = _convertToDecimalDegrees(lon, lonRef);
           debugPrint('Extracted GPS - Latitude: $latitude, Longitude: $longitude');
         }
       } else {
@@ -196,8 +228,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       }
     } catch (e) {
       debugPrint('Error reading EXIF data: $e');
-      // If EXIF reading fails, continue without GPS data
     }
+    
+    return {'latitude': latitude, 'longitude': longitude};
   }
 
   double _convertToDecimalDegrees(dynamic value, dynamic ref) {
@@ -235,15 +268,20 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         notes: notes,
         createdAt: widget.catchToEdit!.createdAt,
         dateCaught: _dateCaught,
-        imagePath: _imagePath,
-        photoDateTime: _photoDateTime,
-        latitude: _latitude,
-        longitude: _longitude,
         location: location.isEmpty ? null : location,
         fishingBuddyId: _selectedFishingBuddyId,
+        tripId: _selectedTripId,
       );
       await DatabaseHelper.instance.updateCatch(updatedCatch);
       savedCatch = updatedCatch;
+      
+      // Delete existing media and re-add
+      await DatabaseHelper.instance.deleteAllMediaForCatch(widget.catchToEdit!.id!);
+      for (final media in _mediaItems) {
+        await DatabaseHelper.instance.insertCatchMedia(
+          media.copyWith(catchId: widget.catchToEdit!.id),
+        );
+      }
     } else {
       final newCatch = Catch(
         fishType: fishType,
@@ -251,15 +289,19 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         notes: notes,
         createdAt: DateTime.now(),
         dateCaught: _dateCaught,
-        imagePath: _imagePath,
-        photoDateTime: _photoDateTime,
-        latitude: _latitude,
-        longitude: _longitude,
         location: location.isEmpty ? null : location,
         fishingBuddyId: _selectedFishingBuddyId,
+        tripId: _selectedTripId,
       );
-      await DatabaseHelper.instance.insertCatch(newCatch);
-      savedCatch = newCatch;
+      final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
+      savedCatch = newCatch.copyWith(id: catchId);
+      
+      // Save media items with the new catch ID
+      for (final media in _mediaItems) {
+        await DatabaseHelper.instance.insertCatchMedia(
+          media.copyWith(catchId: catchId),
+        );
+      }
     }
 
     if (!mounted) return;
@@ -293,21 +335,85 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (_imagePath != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.file(
-                  File(_imagePath!),
-                  height: 150,
-                  width: double.infinity,
-                  fit: BoxFit.cover,
+            if (_mediaItems.isNotEmpty)
+              GridView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 3,
+                  crossAxisSpacing: 8,
+                  mainAxisSpacing: 8,
                 ),
+                itemCount: _mediaItems.length,
+                itemBuilder: (context, index) {
+                  final media = _mediaItems[index];
+                  return Stack(
+                    children: [
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.file(
+                          File(media.filePath),
+                          height: 100,
+                          width: double.infinity,
+                          fit: BoxFit.cover,
+                        ),
+                      ),
+                      if (media.role == 'primary')
+                        Positioned(
+                          top: 4,
+                          left: 4,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: Colors.blue,
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: const Text(
+                              'Primary',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: GestureDetector(
+                          onTap: () {
+                            setState(() {
+                              _mediaItems.removeAt(index);
+                              // If we removed the primary, set the first remaining as primary
+                              if (media.role == 'primary' && _mediaItems.isNotEmpty) {
+                                _mediaItems[0] = _mediaItems[0].copyWith(role: 'primary');
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.all(4),
+                            decoration: BoxDecoration(
+                              color: Colors.black54,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.close,
+                              color: Colors.white,
+                              size: 16,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
               onPressed: _pickImage,
               icon: const Icon(Icons.photo_library),
-              label: Text(_imagePath != null ? 'Change Photo' : 'Add Photo'),
+              label: Text(_mediaItems.isEmpty ? 'Add Photo' : 'Add Another Photo'),
             ),
             const SizedBox(height: 24),
             ListTile(
@@ -319,6 +425,24 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
               ),
               trailing: const Icon(Icons.calendar_today),
               onTap: _selectDate,
+            ),
+            const SizedBox(height: 24),
+            DropdownButtonFormField<int>(
+              value: _selectedTripId,
+              decoration: const InputDecoration(labelText: 'Fishing Trip'),
+              items: _fishingTrips.isEmpty
+                  ? []
+                  : _fishingTrips.map((trip) {
+                      return DropdownMenuItem(
+                        value: trip.id,
+                        child: Text(trip.name),
+                      );
+                    }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedTripId = value;
+                });
+              },
             ),
             const SizedBox(height: 24),
             DropdownButtonFormField<int>(

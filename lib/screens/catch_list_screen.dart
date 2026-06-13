@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
+import '../models/catch_media.dart';
 import 'catch_details_screen.dart';
 
 class CatchListScreen extends StatefulWidget {
@@ -17,6 +18,7 @@ class _CatchListScreenState extends State<CatchListScreen> {
   List<Catch> _filteredCatches = [];
   String? _selectedFishTypeFilter;
   Map<int, String> _fishingBuddyNames = {};
+  Map<int, String> _primaryMediaPaths = {};
 
   @override
   void initState() {
@@ -41,8 +43,21 @@ class _CatchListScreenState extends State<CatchListScreen> {
       final bDate = b.dateCaught ?? b.createdAt;
       return bDate.compareTo(aDate);
     });
+    
+    // Load primary media paths for all catches
+    final mediaMap = <int, String>{};
+    for (final catchItem in data) {
+      if (catchItem.id != null) {
+        final primaryMedia = await DatabaseHelper.instance.getPrimaryMediaForCatch(catchItem.id!);
+        if (primaryMedia != null) {
+          mediaMap[catchItem.id!] = primaryMedia.filePath;
+        }
+      }
+    }
+    
     setState(() {
       _catches = data;
+      _primaryMediaPaths = mediaMap;
       _applyFilter();
     });
   }
@@ -114,11 +129,11 @@ class _CatchListScreenState extends State<CatchListScreen> {
                 padding: const EdgeInsets.all(12),
                 child: Row(
                   children: [
-                    if (catchItem.imagePath != null)
+                    if (_primaryMediaPaths[catchItem.id] != null)
                       ClipRRect(
                         borderRadius: BorderRadius.circular(8),
                         child: Image.file(
-                          File(catchItem.imagePath!),
+                          File(_primaryMediaPaths[catchItem.id]!),
                           width: 80,
                           height: 80,
                           fit: BoxFit.cover,

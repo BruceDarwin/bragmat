@@ -128,6 +128,33 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
           // Most Recent Catch
           _buildMostRecentCatchCard(),
+          const SizedBox(height: 16),
+
+          // Trip Statistics Section
+          _buildStatCard(
+            icon: Icons.directions_boat,
+            title: 'Total Trips',
+            value: _statistics!['totalTrips'].toString(),
+            subtitle: 'All time',
+          ),
+          const SizedBox(height: 16),
+
+          // Most Productive Trip
+          _buildStatCard(
+            icon: Icons.emoji_events,
+            title: 'Most Productive Trip',
+            value: _statistics!['mostProductiveTrip'] as String? ?? 'N/A',
+            subtitle: 'By catches',
+          ),
+          const SizedBox(height: 16),
+
+          // Average Catches Per Trip
+          _buildStatCard(
+            icon: Icons.analytics,
+            title: 'Avg Catches Per Trip',
+            value: '${(_statistics!['averageCatchesPerTrip'] as double).toStringAsFixed(1)}',
+            subtitle: 'Per trip',
+          ),
         ],
       ),
     );
