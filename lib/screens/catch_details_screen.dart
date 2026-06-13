@@ -6,6 +6,7 @@ import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
 import 'add_catch_screen.dart';
 import 'photo_viewer_screen.dart';
+import 'catch_map_screen.dart';
 
 class CatchDetailsScreen extends StatefulWidget {
   final Catch catchItem;
@@ -98,6 +99,19 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
       appBar: AppBar(
         title: const Text('Catch Details'),
         actions: [
+          if (_catchItem.latitude != null && _catchItem.longitude != null)
+            IconButton(
+              icon: const Icon(Icons.map),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => CatchMapScreen(centerOnCatch: _catchItem),
+                  ),
+                );
+              },
+              tooltip: 'View on Map',
+            ),
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () async {

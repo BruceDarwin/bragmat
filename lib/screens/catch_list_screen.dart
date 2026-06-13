@@ -2,9 +2,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
-import '../models/fishing_buddy.dart';
-import '../models/catch_media.dart';
-import '../models/fishing_trip.dart';
 import '../services/current_trip_service.dart';
 import 'catch_details_screen.dart';
 

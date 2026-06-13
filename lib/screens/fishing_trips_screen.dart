@@ -182,7 +182,7 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
                       margin: const EdgeInsets.only(bottom: 12),
                       elevation: isCurrentTrip ? 4 : 1,
                       color: isCurrentTrip 
-                          ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+                          ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3)
                           : null,
                       child: InkWell(
                         onTap: () async {

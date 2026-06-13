@@ -5,7 +5,6 @@ import 'dart:io';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
-import '../models/fishing_trip.dart';
 import '../services/backup_service.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -959,7 +958,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildInfoRow(
                     'Most Recent Catch',
                     mostRecentCatch != null
-                        ? '${mostRecentCatch.dateCaught?.toString().split(' ')[0] ?? mostRecentCatch.createdAt.toString().split(' ')[0]}'
+                        ? mostRecentCatch.dateCaught?.toString().split(' ')[0] ?? mostRecentCatch.createdAt.toString().split(' ')[0]
                         : 'No catches yet',
                   ),
                 ],

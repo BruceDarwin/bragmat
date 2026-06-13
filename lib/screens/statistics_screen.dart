@@ -152,7 +152,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           _buildStatCard(
             icon: Icons.analytics,
             title: 'Avg Catches Per Trip',
-            value: '${(_statistics!['averageCatchesPerTrip'] as double).toStringAsFixed(1)}',
+            value: (_statistics!['averageCatchesPerTrip'] as double).toStringAsFixed(1),
             subtitle: 'Per trip',
           ),
         ],
@@ -174,7 +174,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             Container(
               padding: const EdgeInsets.all(12),
               decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Icon(
@@ -235,7 +235,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
@@ -302,7 +302,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(

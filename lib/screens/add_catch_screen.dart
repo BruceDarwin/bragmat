@@ -448,7 +448,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
             ),
             const SizedBox(height: 24),
             DropdownButtonFormField<int>(
-              value: _selectedTripId,
+              initialValue: _selectedTripId,
               decoration: const InputDecoration(labelText: 'Fishing Trip'),
               items: _fishingTrips.isEmpty
                   ? []
@@ -466,7 +466,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
             ),
             const SizedBox(height: 24),
             DropdownButtonFormField<int>(
-              value: _selectedFishingBuddyId,
+              initialValue: _selectedFishingBuddyId,
               decoration: const InputDecoration(labelText: 'Fishing Buddy'),
               items: _fishingBuddies.isEmpty
                   ? []
@@ -484,7 +484,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
             ),
             const SizedBox(height: 24),
             DropdownButtonFormField<String>(
-              value: _selectedFishType,
+              initialValue: _selectedFishType,
               decoration: const InputDecoration(labelText: 'Fish Type'),
               items: [
                 ..._fishTypes.map((type) {

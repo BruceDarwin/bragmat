@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/fishing_trip.dart';
 import '../models/catch.dart';
-import '../models/fishing_buddy.dart';
 import 'catch_details_screen.dart';
 import 'add_trip_screen.dart';
 
