@@ -116,15 +116,15 @@ class MainScreenState extends State<MainScreen> {
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.list),
-              label: 'My Catches',
+              label: 'Catches',
             ),
             NavigationDestination(
               icon: Icon(Icons.add),
-              label: 'Add Catch',
+              label: 'Add',
             ),
             NavigationDestination(
               icon: Icon(Icons.bar_chart),
-              label: 'Statistics',
+              label: 'Stats',
             ),
             NavigationDestination(
               icon: Icon(Icons.directions_boat),

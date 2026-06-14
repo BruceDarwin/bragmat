@@ -152,13 +152,13 @@ class AppTheme {
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return TextStyle(
-              fontSize: 13,
+              fontSize: 12,
               fontWeight: FontWeight.w600,
               color: palette.primary,
             );
           }
           return TextStyle(
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.w500,
             color: palette.mutedTeal,
           );
@@ -166,17 +166,17 @@ class AppTheme {
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
             return IconThemeData(
-              size: 28,
+              size: 26,
               color: palette.primary,
             );
           }
           return IconThemeData(
-            size: 24,
-            color: palette.mutedTeal,
-          );
+            size: 22,
+              color: palette.mutedTeal,
+            );
         }),
         elevation: 0,
-        height: 80,
+        height: 90,
       ),
       dividerTheme: const DividerThemeData(
         color: Colors.grey,
