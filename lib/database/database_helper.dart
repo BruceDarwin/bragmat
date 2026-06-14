@@ -6,6 +6,7 @@ import '../models/catch_media.dart';
 import '../models/fishing_trip.dart';
 import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
+import '../models/journal_media.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -25,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 12,
+      version: 13,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -116,6 +117,21 @@ class DatabaseHelper {
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
         FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE journal_media (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        journal_entry_id INTEGER NOT NULL,
+        file_path TEXT NOT NULL,
+        media_type TEXT NOT NULL DEFAULT 'photo',
+        is_primary INTEGER NOT NULL DEFAULT 0,
+        date_taken TEXT,
+        latitude REAL,
+        longitude REAL,
+        created_at TEXT NOT NULL,
+        FOREIGN KEY (journal_entry_id) REFERENCES trip_journal (id) ON DELETE CASCADE
       )
     ''');
 
@@ -274,6 +290,23 @@ class DatabaseHelper {
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
           FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
+        )
+      ''');
+    }
+    if (oldVersion < 13) {
+      // Add journal_media table
+      await db.execute('''
+        CREATE TABLE journal_media (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          journal_entry_id INTEGER NOT NULL,
+          file_path TEXT NOT NULL,
+          media_type TEXT NOT NULL DEFAULT 'photo',
+          is_primary INTEGER NOT NULL DEFAULT 0,
+          date_taken TEXT,
+          latitude REAL,
+          longitude REAL,
+          created_at TEXT NOT NULL,
+          FOREIGN KEY (journal_entry_id) REFERENCES trip_journal (id) ON DELETE CASCADE
         )
       ''');
     }
@@ -867,6 +900,98 @@ class DatabaseHelper {
     );
     if (result.isEmpty) return null;
     return TripJournal.fromMap(result.first);
+  }
+
+  // JOURNAL MEDIA CRUD
+  Future<int> insertJournalMedia(JournalMedia media) async {
+    final db = await instance.database;
+    return await db.insert('journal_media', media.toMap());
+  }
+
+  Future<int> insertJournalMediaFromMap(Map<String, dynamic> map) async {
+    final db = await instance.database;
+    return await db.insert('journal_media', map);
+  }
+
+  Future<List<JournalMedia>> getMediaForJournalEntry(int journalEntryId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'journal_media',
+      where: 'journal_entry_id = ?',
+      whereArgs: [journalEntryId],
+      orderBy: 'created_at DESC',
+    );
+    return result.map((json) => JournalMedia.fromMap(json)).toList();
+  }
+
+  Future<JournalMedia?> getPrimaryMediaForJournalEntry(int journalEntryId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'journal_media',
+      where: 'journal_entry_id = ? AND is_primary = ?',
+      whereArgs: [journalEntryId, 1],
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return JournalMedia.fromMap(result.first);
+  }
+
+  Future<int> updateJournalMedia(JournalMedia media) async {
+    final db = await instance.database;
+    return await db.update(
+      'journal_media',
+      media.toMap(),
+      where: 'id = ?',
+      whereArgs: [media.id],
+    );
+  }
+
+  Future<int> deleteJournalMedia(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'journal_media',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteAllMediaForJournalEntry(int journalEntryId) async {
+    final db = await instance.database;
+    return await db.delete(
+      'journal_media',
+      where: 'journal_entry_id = ?',
+      whereArgs: [journalEntryId],
+    );
+  }
+
+  Future<int> setPrimaryJournalMedia(int mediaId) async {
+    final db = await instance.database;
+    // First, get the media item to find its journal_entry_id
+    final mediaResult = await db.query(
+      'journal_media',
+      where: 'id = ?',
+      whereArgs: [mediaId],
+      limit: 1,
+    );
+    if (mediaResult.isEmpty) return 0;
+    
+    final journalEntryId = mediaResult.first['journal_entry_id'] as int;
+    
+    // Remove primary flag from all media for this journal entry
+    await db.update(
+      'journal_media',
+      {'is_primary': 0},
+      where: 'journal_entry_id = ? AND is_primary = ?',
+      whereArgs: [journalEntryId, 1],
+    );
+    
+    // Set the new primary
+    return await db.update(
+      'journal_media',
+      {'is_primary': 1},
+      where: 'id = ?',
+      whereArgs: [mediaId],
+    );
   }
 
   // FISHING TRIP CRUD

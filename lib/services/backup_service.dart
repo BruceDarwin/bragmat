@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import '../database/database_helper.dart';
 import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
+import '../models/journal_media.dart';
 import '../services/current_trip_service.dart';
 
 class BackupService {
@@ -47,6 +48,20 @@ class BackupService {
       }
     }
 
+    // Get journal media for all journal entries
+    final journalMediaMap = <String, List<Map<String, dynamic>>>{};
+    for (final trip in fishingTrips) {
+      if (trip.id != null) {
+        final journal = await db.getJournalForTrip(trip.id!);
+        for (final entry in journal) {
+          if (entry.id != null) {
+            final media = await db.getMediaForJournalEntry(entry.id!);
+            journalMediaMap[entry.id!.toString()] = media.map((m) => m.toMap()).toList();
+          }
+        }
+      }
+    }
+
     // Create backup object
     final backup = {
       'version': _backupVersion,
@@ -59,6 +74,7 @@ class BackupService {
         'fishingTrips': fishingTrips.map((t) => t.toMap()).toList(),
         'tripMedia': tripMediaMap,
         'tripJournal': tripJournalMap,
+        'journalMedia': journalMediaMap,
         'currentTripId': currentTripId,
       },
     };
@@ -222,6 +238,7 @@ class BackupService {
 
     // Restore trip journal
     final tripJournal = data['tripJournal'] as Map<String, dynamic>?;
+    final journalIdMap = <int, int>{}; // Maps old journal IDs to new journal IDs
     if (tripJournal != null) {
       for (final entry in tripJournal.entries) {
         final oldTripId = int.parse(entry.key);
@@ -230,9 +247,29 @@ class BackupService {
           final journalList = entry.value as List<dynamic>;
           for (final journalData in journalList) {
             final journalMap = journalData as Map<String, dynamic>;
+            final oldJournalId = journalMap['id'] as int;
             journalMap['trip_id'] = newTripId;
             journalMap.remove('id');
-            await db.insertTripJournal(TripJournal.fromMap(journalMap));
+            final newJournalId = await db.insertTripJournal(TripJournal.fromMap(journalMap));
+            journalIdMap[oldJournalId] = newJournalId;
+          }
+        }
+      }
+    }
+
+    // Restore journal media
+    final journalMedia = data['journalMedia'] as Map<String, dynamic>?;
+    if (journalMedia != null) {
+      for (final entry in journalMedia.entries) {
+        final oldJournalId = int.parse(entry.key);
+        final newJournalId = journalIdMap[oldJournalId];
+        if (newJournalId != null) {
+          final mediaList = entry.value as List<dynamic>;
+          for (final mediaData in mediaList) {
+            final mediaMap = mediaData as Map<String, dynamic>;
+            mediaMap['journal_entry_id'] = newJournalId;
+            mediaMap.remove('id');
+            await db.insertJournalMedia(JournalMedia.fromMap(mediaMap));
           }
         }
       }
@@ -260,6 +297,12 @@ class BackupService {
     for (final trip in trips) {
       if (trip.id != null) {
         await db.deleteAllMediaForTrip(trip.id!);
+        final journal = await db.getJournalForTrip(trip.id!);
+        for (final entry in journal) {
+          if (entry.id != null) {
+            await db.deleteAllMediaForJournalEntry(entry.id!);
+          }
+        }
         await db.deleteAllJournalForTrip(trip.id!);
       }
     }

@@ -6,6 +6,7 @@ import '../models/fishing_trip.dart';
 import '../models/catch.dart';
 import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
+import '../models/journal_media.dart';
 import 'catch_details_screen.dart';
 import 'add_trip_screen.dart';
 import 'photo_viewer_screen.dart';
@@ -27,6 +28,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   Map<int, String> _primaryMediaPaths = {};
   List<TripMedia> _tripMedia = [];
   List<TripJournal> _journalEntries = [];
+  Map<int, String> _journalPrimaryMediaPaths = {};
   bool _isLoading = true;
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _searchController = TextEditingController();
@@ -58,6 +60,17 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
       }
     }
 
+    // Load primary media paths for all journal entries
+    final journalMediaMap = <int, String>{};
+    for (final journal in journalEntries) {
+      if (journal.id != null) {
+        final primaryMedia = await DatabaseHelper.instance.getPrimaryMediaForJournalEntry(journal.id!);
+        if (primaryMedia != null) {
+          journalMediaMap[journal.id!] = primaryMedia.filePath;
+        }
+      }
+    }
+
     if (mounted) {
       setState(() {
         _catches = catches;
@@ -65,6 +78,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         _primaryMediaPaths = mediaMap;
         _tripMedia = tripMedia;
         _journalEntries = journalEntries;
+        _journalPrimaryMediaPaths = journalMediaMap;
         _isLoading = false;
       });
     }
@@ -589,45 +603,75 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                                   onTap: () => _editJournalEntry(entry),
                                   child: Padding(
                                     padding: const EdgeInsets.all(12),
-                                    child: Column(
+                                    child: Row(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Row(
-                                          children: [
-                                            Icon(
-                                              _getJournalIcon(entry.journalType),
-                                              size: 20,
-                                              color: Colors.grey[600],
+                                        if (_journalPrimaryMediaPaths[entry.id] != null)
+                                          ClipRRect(
+                                            borderRadius: BorderRadius.circular(8),
+                                            child: Image.file(
+                                              File(_journalPrimaryMediaPaths[entry.id]!),
+                                              width: 60,
+                                              height: 60,
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) {
+                                                return Container(
+                                                  width: 60,
+                                                  height: 60,
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.grey[300],
+                                                    borderRadius: BorderRadius.circular(8),
+                                                  ),
+                                                  child: const Icon(Icons.image_not_supported),
+                                                );
+                                              },
                                             ),
-                                            const SizedBox(width: 8),
-                                            Text(
-                                              _formatJournalDateTime(entry.journalDateTime),
-                                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                          ),
+                                        if (_journalPrimaryMediaPaths[entry.id] != null)
+                                          const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment: CrossAxisAlignment.start,
+                                            children: [
+                                              Row(
+                                                children: [
+                                                  Icon(
+                                                    _getJournalIcon(entry.journalType),
+                                                    size: 20,
                                                     color: Colors.grey[600],
                                                   ),
-                                            ),
-                                            const Spacer(),
-                                            Text(
-                                              TripJournal.getJournalTypeDisplayName(entry.journalType),
-                                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                    color: Colors.grey[500],
+                                                  const SizedBox(width: 8),
+                                                  Text(
+                                                    _formatJournalDateTime(entry.journalDateTime),
+                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                          color: Colors.grey[600],
+                                                        ),
                                                   ),
-                                            ),
-                                          ],
-                                        ),
-                                        const SizedBox(height: 8),
-                                        Text(
-                                          entry.title,
-                                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                                fontWeight: FontWeight.bold,
+                                                  const Spacer(),
+                                                  Text(
+                                                    TripJournal.getJournalTypeDisplayName(entry.journalType),
+                                                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                          color: Colors.grey[500],
+                                                        ),
+                                                  ),
+                                                ],
                                               ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _getJournalPreview(entry.entryText),
-                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                                color: Colors.grey[600],
+                                              const SizedBox(height: 8),
+                                              Text(
+                                                entry.title,
+                                                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                      fontWeight: FontWeight.bold,
+                                                    ),
                                               ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                _getJournalPreview(entry.entryText),
+                                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                      color: Colors.grey[600],
+                                                    ),
+                                              ),
+                                            ],
+                                          ),
                                         ),
                                       ],
                                     ),
