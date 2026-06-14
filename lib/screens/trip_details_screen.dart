@@ -5,9 +5,11 @@ import '../database/database_helper.dart';
 import '../models/fishing_trip.dart';
 import '../models/catch.dart';
 import '../models/trip_media.dart';
+import '../models/trip_journal.dart';
 import 'catch_details_screen.dart';
 import 'add_trip_screen.dart';
 import 'photo_viewer_screen.dart';
+import 'journal_entry_screen.dart';
 
 class TripDetailsScreen extends StatefulWidget {
   final FishingTrip trip;
@@ -24,8 +26,10 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   Map<int, String> _fishingBuddyNames = {};
   Map<int, String> _primaryMediaPaths = {};
   List<TripMedia> _tripMedia = [];
+  List<TripJournal> _journalEntries = [];
   bool _isLoading = true;
   final ImagePicker _imagePicker = ImagePicker();
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
@@ -41,6 +45,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     final buddies = await DatabaseHelper.instance.getFishingBuddies();
     final buddyMap = {for (var buddy in buddies) buddy.id!: buddy.name};
     final tripMedia = await DatabaseHelper.instance.getMediaForTrip(_trip.id!);
+    final journalEntries = await DatabaseHelper.instance.getJournalForTrip(_trip.id!);
 
     // Load primary media paths for all catches
     final mediaMap = <int, String>{};
@@ -59,6 +64,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         _fishingBuddyNames = buddyMap;
         _primaryMediaPaths = mediaMap;
         _tripMedia = tripMedia;
+        _journalEntries = journalEntries;
         _isLoading = false;
       });
     }
@@ -74,7 +80,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   }
 
   String _getTripStats() {
-    if (_catches.isEmpty) return 'No catches';
+    if (_catches.isEmpty && _journalEntries.isEmpty) return 'No catches or journal entries';
     
     final totalFish = _catches.length;
     final species = _catches.map((c) => c.fishType).toSet().length;
@@ -83,8 +89,24 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         .map((c) => c.fishingBuddyId)
         .toSet()
         .length;
+    final journalCount = _journalEntries.length;
     
-    return '$totalFish fish, $species species, $buddies anglers';
+    String stats = '';
+    if (totalFish > 0) {
+      stats += '$totalFish fish, $species species, $buddies anglers';
+    }
+    if (journalCount > 0) {
+      if (stats.isNotEmpty) stats += ', ';
+      stats += '$journalCount journal entr${journalCount == 1 ? 'y' : 'ies'}';
+      
+      // Add most recent journal entry date
+      if (_journalEntries.isNotEmpty) {
+        final mostRecent = _journalEntries.first;
+        stats += ' (latest: ${_formatJournalDateTime(mostRecent.journalDateTime)})';
+      }
+    }
+    
+    return stats.isEmpty ? 'No catches or journal entries' : stats;
   }
 
   Catch? _getLargestFish() {
@@ -117,6 +139,87 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   Future<void> _setPrimaryTripPhoto(int mediaId) async {
     await DatabaseHelper.instance.setPrimaryTripMedia(mediaId);
     await _loadData();
+  }
+
+  Future<void> _addJournalEntry() async {
+    if (_trip.id == null) return;
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JournalEntryScreen(tripId: _trip.id!),
+      ),
+    );
+    if (result == true) {
+      await _loadData();
+    }
+  }
+
+  Future<void> _editJournalEntry(TripJournal journal) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => JournalEntryScreen(
+          tripId: _trip.id!,
+          journalToEdit: journal,
+        ),
+      ),
+    );
+    if (result == true) {
+      await _loadData();
+    }
+  }
+
+  Future<void> _searchJournalEntries(String query) async {
+    if (_trip.id == null) return;
+
+    if (query.isEmpty) {
+      final entries = await DatabaseHelper.instance.getJournalForTrip(_trip.id!);
+      if (mounted) {
+        setState(() {
+          _journalEntries = entries;
+        });
+      }
+    } else {
+      final entries = await DatabaseHelper.instance.searchJournalForTrip(_trip.id!, query);
+      if (mounted) {
+        setState(() {
+          _journalEntries = entries;
+        });
+      }
+    }
+  }
+
+  String _formatJournalDateTime(DateTime dateTime) {
+    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+  }
+
+  String _getJournalPreview(String text) {
+    if (text.length <= 100) return text;
+    return '${text.substring(0, 100)}...';
+  }
+
+  IconData _getJournalIcon(String type) {
+    switch (type) {
+      case 'general':
+        return Icons.note;
+      case 'fishing_report':
+        return Icons.report;
+      case 'weather':
+        return Icons.cloud;
+      case 'tide':
+        return Icons.water;
+      case 'wildlife':
+        return Icons.pets;
+      case 'campsite':
+        return Icons.cabin;
+      case 'boat_equipment':
+        return Icons.directions_boat;
+      case 'other':
+        return Icons.label;
+      default:
+        return Icons.note;
+    }
   }
 
   @override
@@ -410,6 +513,126 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                                     ),
                                   ),
                                 ],
+                              );
+                            },
+                          ),
+                      ],
+                    ),
+                  ),
+
+                  // Journal Section
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Journal (${_journalEntries.length})',
+                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.add),
+                              onPressed: _addJournalEntry,
+                              tooltip: 'Add Entry',
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        // Search bar
+                        TextField(
+                          controller: _searchController,
+                          decoration: InputDecoration(
+                            hintText: 'Search journal entries...',
+                            prefixIcon: const Icon(Icons.search),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                          ),
+                          onChanged: _searchJournalEntries,
+                        ),
+                        const SizedBox(height: 12),
+                        if (_journalEntries.isEmpty)
+                          Center(
+                            child: Column(
+                              children: [
+                                Icon(
+                                  Icons.book,
+                                  size: 48,
+                                  color: Colors.grey[400],
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'No journal entries yet',
+                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                        color: Colors.grey[600],
+                                      ),
+                                ),
+                              ],
+                            ),
+                          )
+                        else
+                          ListView.builder(
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            itemCount: _journalEntries.length,
+                            itemBuilder: (context, index) {
+                              final entry = _journalEntries[index];
+                              return Card(
+                                margin: const EdgeInsets.only(bottom: 8),
+                                child: InkWell(
+                                  onTap: () => _editJournalEntry(entry),
+                                  child: Padding(
+                                    padding: const EdgeInsets.all(12),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Row(
+                                          children: [
+                                            Icon(
+                                              _getJournalIcon(entry.journalType),
+                                              size: 20,
+                                              color: Colors.grey[600],
+                                            ),
+                                            const SizedBox(width: 8),
+                                            Text(
+                                              _formatJournalDateTime(entry.journalDateTime),
+                                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                    color: Colors.grey[600],
+                                                  ),
+                                            ),
+                                            const Spacer(),
+                                            Text(
+                                              TripJournal.getJournalTypeDisplayName(entry.journalType),
+                                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                    color: Colors.grey[500],
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                        const SizedBox(height: 8),
+                                        Text(
+                                          entry.title,
+                                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _getJournalPreview(entry.entryText),
+                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                color: Colors.grey[600],
+                                              ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
                               );
                             },
                           ),

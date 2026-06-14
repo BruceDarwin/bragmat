@@ -4,6 +4,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../database/database_helper.dart';
 import '../models/trip_media.dart';
+import '../models/trip_journal.dart';
 import '../services/current_trip_service.dart';
 
 class BackupService {
@@ -37,6 +38,15 @@ class BackupService {
       }
     }
 
+    // Get trip journal for all trips
+    final tripJournalMap = <String, List<Map<String, dynamic>>>{};
+    for (final trip in fishingTrips) {
+      if (trip.id != null) {
+        final journal = await db.getJournalForTrip(trip.id!);
+        tripJournalMap[trip.id!.toString()] = journal.map((j) => j.toMap()).toList();
+      }
+    }
+
     // Create backup object
     final backup = {
       'version': _backupVersion,
@@ -48,6 +58,7 @@ class BackupService {
         'fishingBuddies': fishingBuddies.map((b) => b.toMap()).toList(),
         'fishingTrips': fishingTrips.map((t) => t.toMap()).toList(),
         'tripMedia': tripMediaMap,
+        'tripJournal': tripJournalMap,
         'currentTripId': currentTripId,
       },
     };
@@ -209,6 +220,24 @@ class BackupService {
       }
     }
 
+    // Restore trip journal
+    final tripJournal = data['tripJournal'] as Map<String, dynamic>?;
+    if (tripJournal != null) {
+      for (final entry in tripJournal.entries) {
+        final oldTripId = int.parse(entry.key);
+        final newTripId = tripIdMap[oldTripId];
+        if (newTripId != null) {
+          final journalList = entry.value as List<dynamic>;
+          for (final journalData in journalList) {
+            final journalMap = journalData as Map<String, dynamic>;
+            journalMap['trip_id'] = newTripId;
+            journalMap.remove('id');
+            await db.insertTripJournal(TripJournal.fromMap(journalMap));
+          }
+        }
+      }
+    }
+
     // Restore current trip setting
     final currentTripId = data['currentTripId'] as int?;
     if (currentTripId != null && tripIdMap.containsKey(currentTripId)) {
@@ -231,6 +260,7 @@ class BackupService {
     for (final trip in trips) {
       if (trip.id != null) {
         await db.deleteAllMediaForTrip(trip.id!);
+        await db.deleteAllJournalForTrip(trip.id!);
       }
     }
 

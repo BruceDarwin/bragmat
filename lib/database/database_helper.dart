@@ -5,6 +5,7 @@ import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
 import '../models/fishing_trip.dart';
 import '../models/trip_media.dart';
+import '../models/trip_journal.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -24,7 +25,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 11,
+      version: 12,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -100,6 +101,20 @@ class DatabaseHelper {
         latitude REAL,
         longitude REAL,
         created_at TEXT NOT NULL,
+        FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE trip_journal (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id INTEGER NOT NULL,
+        journal_date_time TEXT NOT NULL,
+        journal_type TEXT NOT NULL DEFAULT 'general',
+        title TEXT NOT NULL,
+        entry_text TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
         FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
       )
     ''');
@@ -242,6 +257,22 @@ class DatabaseHelper {
           latitude REAL,
           longitude REAL,
           created_at TEXT NOT NULL,
+          FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
+        )
+      ''');
+    }
+    if (oldVersion < 12) {
+      // Add trip_journal table
+      await db.execute('''
+        CREATE TABLE trip_journal (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL,
+          journal_date_time TEXT NOT NULL,
+          journal_type TEXT NOT NULL DEFAULT 'general',
+          title TEXT NOT NULL,
+          entry_text TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
           FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
         )
       ''');
@@ -741,6 +772,101 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [mediaId],
     );
+  }
+
+  // TRIP JOURNAL CRUD
+  Future<int> insertTripJournal(TripJournal journal) async {
+    final db = await instance.database;
+    return await db.insert('trip_journal', journal.toMap());
+  }
+
+  Future<int> insertTripJournalFromMap(Map<String, dynamic> map) async {
+    final db = await instance.database;
+    return await db.insert('trip_journal', map);
+  }
+
+  Future<List<TripJournal>> getJournalForTrip(int tripId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'trip_journal',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+      orderBy: 'journal_date_time DESC',
+    );
+    return result.map((json) => TripJournal.fromMap(json)).toList();
+  }
+
+  Future<List<TripJournal>> searchJournalForTrip(int tripId, String query) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'trip_journal',
+      where: 'trip_id = ? AND (title LIKE ? OR entry_text LIKE ?)',
+      whereArgs: [tripId, '%$query%', '%$query%'],
+      orderBy: 'journal_date_time DESC',
+    );
+    return result.map((json) => TripJournal.fromMap(json)).toList();
+  }
+
+  Future<TripJournal?> getTripJournal(int id) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'trip_journal',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return TripJournal.fromMap(result.first);
+  }
+
+  Future<int> updateTripJournal(TripJournal journal) async {
+    final db = await instance.database;
+    return await db.update(
+      'trip_journal',
+      journal.toMap(),
+      where: 'id = ?',
+      whereArgs: [journal.id],
+    );
+  }
+
+  Future<int> deleteTripJournal(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'trip_journal',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<int> deleteAllJournalForTrip(int tripId) async {
+    final db = await instance.database;
+    return await db.delete(
+      'trip_journal',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+  }
+
+  Future<int> getJournalCountForTrip(int tripId) async {
+    final db = await instance.database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM trip_journal WHERE trip_id = ?',
+      [tripId],
+    );
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+
+  Future<TripJournal?> getMostRecentJournalForTrip(int tripId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'trip_journal',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+      orderBy: 'journal_date_time DESC',
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return TripJournal.fromMap(result.first);
   }
 
   // FISHING TRIP CRUD
