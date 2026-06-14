@@ -331,6 +331,17 @@ class DatabaseHelper {
     return result.map((json) => Catch.fromMap(json)).toList();
   }
 
+  Future<Catch?> getCatch(int id) async {
+    final db = await instance.database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'catches',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    if (maps.isEmpty) return null;
+    return Catch.fromMap(maps.first);
+  }
+
   // UPDATE
   Future<int> updateCatch(Catch catchItem) async {
     final db = await instance.database;
@@ -516,13 +527,32 @@ class DatabaseHelper {
     final totalLength = catches.fold<int>(0, (sum, c) => sum + c.lengthCm);
     final averageLength = totalLength / totalCatches;
     
-    // Most common fish type
-    final fishTypeCounts = <String, int>{};
+    // Fish type statistics (count and average length)
+    final fishTypeStats = <String, Map<String, int>>{};
     for (final catch_ in catches) {
-      fishTypeCounts[catch_.fishType] = (fishTypeCounts[catch_.fishType] ?? 0) + 1;
+      final stats = fishTypeStats[catch_.fishType] ?? {'count': 0, 'totalLength': 0};
+      stats['count'] = stats['count']! + 1;
+      stats['totalLength'] = stats['totalLength']! + catch_.lengthCm;
+      fishTypeStats[catch_.fishType] = stats;
     }
-    final mostCommonFishType = fishTypeCounts.entries
-        .reduce((a, b) => a.value > b.value ? a : b).key;
+    
+    // Get top 5 fish types by count with average length
+    final sortedFishTypes = fishTypeStats.entries.toList()
+      ..sort((a, b) => b.value['count']!.compareTo(a.value['count']!));
+    final topFishTypes = sortedFishTypes.take(5).map((entry) {
+      final count = entry.value['count']!;
+      final avgLength = entry.value['totalLength']! / count;
+      return {
+        'fishType': entry.key,
+        'count': count,
+        'averageLength': avgLength,
+      };
+    }).toList();
+    
+    // Most common fish type (for backward compatibility)
+    final mostCommonFishType = sortedFishTypes.isNotEmpty 
+        ? sortedFishTypes.first.key 
+        : null;
     
     // Most common fishing buddy
     final buddyCounts = <String, int>{};
@@ -588,12 +618,21 @@ class DatabaseHelper {
         ? catchesWithTrips / totalTrips 
         : 0.0;
     
+    // Get primary photo for largest fish
+    String? largestFishPhotoPath;
+    if (largestFish.id != null) {
+      final media = await getPrimaryMediaForCatch(largestFish.id!);
+      largestFishPhotoPath = media?.filePath;
+    }
+    
     return {
       'totalCatches': totalCatches,
       'largestFish': {
+        'id': largestFish.id,
         'fishType': largestFish.fishType,
         'length': largestFish.lengthCm,
         'fishingBuddy': largestFishBuddy,
+        'photoPath': largestFishPhotoPath,
       },
       'averageLength': averageLength,
       'mostCommonFishType': mostCommonFishType,
@@ -608,6 +647,7 @@ class DatabaseHelper {
       'mostProductiveTrip': mostProductiveTrip,
       'largestFishByTrip': largestFishByTrip,
       'averageCatchesPerTrip': averageCatchesPerTrip,
+      'topFishTypes': topFishTypes,
     };
   }
 

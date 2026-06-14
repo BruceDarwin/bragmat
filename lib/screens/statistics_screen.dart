@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 import '../database/database_helper.dart';
+import 'catch_details_screen.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -99,22 +101,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           _buildLargestFishCard(),
           const SizedBox(height: 16),
 
-          // Average Length
-          _buildStatCard(
-            icon: Icons.straighten,
-            title: 'Average Length',
-            value: '${(_statistics!['averageLength'] as double).toStringAsFixed(1)} cm',
-            subtitle: 'Per fish',
-          ),
-          const SizedBox(height: 16),
-
-          // Most Common Fish Type
-          _buildStatCard(
-            icon: Icons.set_meal,
-            title: 'Most Common Fish',
-            value: _statistics!['mostCommonFishType'] as String? ?? 'N/A',
-            subtitle: 'By count',
-          ),
+          // Average Length by Fish Type
+          _buildFishTypeStatsCard(),
           const SizedBox(height: 16),
 
           // Most Common Fishing Buddy
@@ -220,9 +208,130 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final largestFish = _statistics!['largestFish'] as Map<String, dynamic>?;
     if (largestFish == null) return const SizedBox.shrink();
 
+    final fishId = largestFish['id'] as int?;
     final fishType = largestFish['fishType'] as String;
     final length = largestFish['length'] as int;
     final fishingBuddy = largestFish['fishingBuddy'] as String?;
+    final photoPath = largestFish['photoPath'] as String?;
+
+    return GestureDetector(
+      onTap: fishId != null
+          ? () async {
+              final catchItem = await DatabaseHelper.instance.getCatch(fishId!);
+              if (catchItem != null && mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CatchDetailsScreen(catchItem: catchItem),
+                  ),
+                );
+              }
+            }
+          : null,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // Show photo if available, otherwise show icon
+                  if (photoPath != null && File(photoPath).existsSync())
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(photoPath),
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: 60,
+                            height: 60,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.emoji_events,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 28,
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                  else
+                    Container(
+                      width: 60,
+                      height: 60,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.emoji_events,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 28,
+                      ),
+                    ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Largest Fish',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          fishType,
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (fishId != null)
+                    Icon(
+                      Icons.chevron_right,
+                      color: Colors.grey[400],
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildDetailItem(Icons.straighten, '$length cm', 'Length'),
+                  if (fishingBuddy != null)
+                    _buildDetailItem(Icons.person, fishingBuddy, 'Caught by'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFishTypeStatsCard() {
+    final topFishTypes = _statistics!['topFishTypes'] as List?;
+    if (topFishTypes == null || topFishTypes.isEmpty) {
+      return _buildStatCard(
+        icon: Icons.straighten,
+        title: 'Average Length',
+        value: '${(_statistics!['averageLength'] as double).toStringAsFixed(1)} cm',
+        subtitle: 'Overall',
+      );
+    }
 
     return Card(
       child: Padding(
@@ -239,7 +348,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Icon(
-                    Icons.emoji_events,
+                    Icons.straighten,
                     color: Theme.of(context).colorScheme.primary,
                     size: 28,
                   ),
@@ -250,16 +359,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Largest Fish',
+                        'Average Length by Fish Type',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               color: Colors.grey[600],
-                            ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        fishType,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
                             ),
                       ),
                     ],
@@ -267,15 +369,46 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildDetailItem(Icons.straighten, '$length cm', 'Length'),
-                if (fishingBuddy != null)
-                  _buildDetailItem(Icons.person, fishingBuddy, 'Caught by'),
-              ],
-            ),
+            const SizedBox(height: 16),
+            ...topFishTypes.take(5).map((fishType) {
+              final fishName = fishType['fishType'] as String;
+              final count = fishType['count'] as int;
+              final avgLength = fishType['averageLength'] as double;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            fishName,
+                            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
+                          ),
+                          Text(
+                            '$count caught',
+                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                  color: Colors.grey[600],
+                                ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Text(
+                      '${avgLength.toStringAsFixed(1)} cm',
+                      style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
           ],
         ),
       ),
