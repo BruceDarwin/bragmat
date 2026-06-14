@@ -130,7 +130,7 @@ class AppTheme {
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: white,
-        selectedItemColor: goldAccent,
+        selectedItemColor: primaryGreen,
         unselectedItemColor: const Color(0xFF5A7A6A), // Muted teal
         selectedLabelStyle: const TextStyle(
           fontSize: 13,
@@ -150,6 +150,38 @@ class AppTheme {
         ),
         showUnselectedLabels: true,
         enableFeedback: true,
+      ),
+      navigationBarTheme: NavigationBarThemeData(
+        backgroundColor: white,
+        indicatorColor: goldAccent.withOpacity(0.3), // Subtle gold pill
+        labelTextStyle: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: primaryGreen,
+            );
+          }
+          return const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+            color: Color(0xFF5A7A6A), // Muted teal
+          );
+        }),
+        iconTheme: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) {
+            return const IconThemeData(
+              size: 28,
+              color: primaryGreen,
+            );
+          }
+          return const IconThemeData(
+            size: 24,
+            color: Color(0xFF5A7A6A), // Muted teal
+          );
+        }),
+        elevation: 0,
+        height: 80,
       ),
       dividerTheme: const DividerThemeData(
         color: Colors.grey,
