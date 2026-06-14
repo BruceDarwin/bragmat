@@ -6,26 +6,54 @@ import 'screens/statistics_screen.dart';
 import 'screens/fishing_trips_screen.dart';
 import 'screens/catch_map_screen.dart';
 import 'theme.dart';
+import 'services/theme_service.dart';
 
 void main() {
   runApp(const BragmatApp());
 }
 
-class BragmatApp extends StatelessWidget {
+class BragmatApp extends StatefulWidget {
   const BragmatApp({super.key});
+
+  @override
+  State<BragmatApp> createState() => _BragmatAppState();
+}
+
+class _BragmatAppState extends State<BragmatApp> {
+  final ThemeService _themeService = ThemeService();
+
+  @override
+  void initState() {
+    super.initState();
+    _themeService.addListener(_onThemeChanged);
+  }
+
+  @override
+  void dispose() {
+    _themeService.removeListener(_onThemeChanged);
+    super.dispose();
+  }
+
+  void _onThemeChanged() {
+    setState(() {
+      // Theme will be rebuilt with new palette
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Bragmat',
-      theme: AppTheme.lightTheme,
-      home: const MainScreen(),
+      theme: AppTheme.lightTheme(palette: _themeService.currentPalette),
+      home: MainScreen(themeService: _themeService),
     );
   }
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({super.key});
+  final ThemeService themeService;
+
+  const MainScreen({super.key, required this.themeService});
 
   @override
   State<MainScreen> createState() => MainScreenState();

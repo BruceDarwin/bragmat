@@ -1,40 +1,35 @@
 import 'package:flutter/material.dart';
+import 'theme/color_palette.dart';
 
 class AppTheme {
-  static const Color primaryGreen = Color(0xFF183800);
-  static const Color goldAccent = Color(0xFFdfb10a);
-  static const Color teal = Color(0xFF439779);
-  static const Color lightBackground = Color(0xFFcde6e4);
-  static const Color white = Color(0xFFffffff);
-
-  static ThemeData get lightTheme {
+  static ThemeData lightTheme({ColorPalette palette = ColorPalette.bragmat}) {
     return ThemeData(
       useMaterial3: true,
       colorScheme: ColorScheme.fromSeed(
-        seedColor: primaryGreen,
+        seedColor: palette.primary,
         brightness: Brightness.light,
-        primary: primaryGreen,
-        secondary: teal,
-        tertiary: goldAccent,
-        surface: lightBackground,
+        primary: palette.primary,
+        secondary: palette.secondary,
+        tertiary: palette.tertiary,
+        surface: palette.surface,
       ),
-      scaffoldBackgroundColor: lightBackground,
-      appBarTheme: const AppBarTheme(
+      scaffoldBackgroundColor: palette.background,
+      appBarTheme: AppBarTheme(
         centerTitle: false,
         elevation: 2,
-        backgroundColor: primaryGreen,
-        foregroundColor: white,
+        backgroundColor: palette.primary,
+        foregroundColor: palette.white,
         titleTextStyle: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
-          color: white,
+          color: palette.white,
         ),
-        iconTheme: IconThemeData(color: white),
+        iconTheme: IconThemeData(color: palette.white),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: primaryGreen,
-          foregroundColor: white,
+          backgroundColor: palette.primary,
+          foregroundColor: palette.white,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
@@ -48,7 +43,7 @@ class AppTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: primaryGreen,
+          foregroundColor: palette.primary,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           textStyle: const TextStyle(
             fontSize: 14,
@@ -64,15 +59,15 @@ class AppTheme {
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide(color: primaryGreen, width: 2),
+          borderSide: BorderSide(color: palette.primary, width: 2),
         ),
         labelStyle: const TextStyle(fontSize: 14),
         filled: true,
-        fillColor: white,
+        fillColor: palette.white,
       ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: goldAccent,
-        foregroundColor: primaryGreen,
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: palette.tertiary,
+        foregroundColor: palette.primary,
         elevation: 4,
       ),
       cardTheme: CardThemeData(
@@ -81,57 +76,57 @@ class AppTheme {
           borderRadius: BorderRadius.circular(16),
         ),
         margin: const EdgeInsets.only(bottom: 12),
-        color: white,
+        color: palette.white,
       ),
-      iconTheme: const IconThemeData(
-        color: primaryGreen,
+      iconTheme: IconThemeData(
+        color: palette.primary,
       ),
-      textTheme: const TextTheme(
+      textTheme: TextTheme(
         displayLarge: TextStyle(
           fontSize: 32,
           fontWeight: FontWeight.bold,
           letterSpacing: -0.5,
-          color: primaryGreen,
+          color: palette.primary,
         ),
         displayMedium: TextStyle(
           fontSize: 28,
           fontWeight: FontWeight.bold,
           letterSpacing: -0.5,
-          color: primaryGreen,
+          color: palette.primary,
         ),
         displaySmall: TextStyle(
           fontSize: 24,
           fontWeight: FontWeight.bold,
           letterSpacing: -0.5,
-          color: primaryGreen,
+          color: palette.primary,
         ),
         headlineMedium: TextStyle(
           fontSize: 20,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.5,
-          color: primaryGreen,
+          color: palette.primary,
         ),
         titleLarge: TextStyle(
           fontSize: 18,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.5,
-          color: primaryGreen,
+          color: palette.primary,
         ),
-        bodyLarge: TextStyle(
+        bodyLarge: const TextStyle(
           fontSize: 16,
           letterSpacing: 0.2,
           color: Colors.black87,
         ),
-        bodyMedium: TextStyle(
+        bodyMedium: const TextStyle(
           fontSize: 14,
           letterSpacing: 0.2,
           color: Colors.black87,
         ),
       ),
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
-        backgroundColor: white,
-        selectedItemColor: primaryGreen,
-        unselectedItemColor: const Color(0xFF5A7A6A), // Muted teal
+        backgroundColor: palette.white,
+        selectedItemColor: palette.primary,
+        unselectedItemColor: palette.mutedTeal,
         selectedLabelStyle: const TextStyle(
           fontSize: 13,
           fontWeight: FontWeight.w600,
@@ -152,32 +147,32 @@ class AppTheme {
         enableFeedback: true,
       ),
       navigationBarTheme: NavigationBarThemeData(
-        backgroundColor: white,
-        indicatorColor: goldAccent.withOpacity(0.3), // Subtle gold pill
+        backgroundColor: palette.white,
+        indicatorColor: palette.tertiary.withOpacity(0.3),
         labelTextStyle: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const TextStyle(
+            return TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: primaryGreen,
+              color: palette.primary,
             );
           }
-          return const TextStyle(
+          return TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w500,
-            color: Color(0xFF5A7A6A), // Muted teal
+            color: palette.mutedTeal,
           );
         }),
         iconTheme: WidgetStateProperty.resolveWith((states) {
           if (states.contains(WidgetState.selected)) {
-            return const IconThemeData(
+            return IconThemeData(
               size: 28,
-              color: primaryGreen,
+              color: palette.primary,
             );
           }
-          return const IconThemeData(
+          return IconThemeData(
             size: 24,
-            color: Color(0xFF5A7A6A), // Muted teal
+            color: palette.mutedTeal,
           );
         }),
         elevation: 0,
