@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import '../database/database_helper.dart';
 import 'catch_details_screen.dart';
+import 'trip_details_screen.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -128,12 +129,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           const SizedBox(height: 16),
 
           // Most Productive Trip
-          _buildStatCard(
-            icon: Icons.emoji_events,
-            title: 'Most Productive Trip',
-            value: _statistics!['mostProductiveTrip'] as String? ?? 'N/A',
-            subtitle: 'By catches',
-          ),
+          _buildMostProductiveTripCard(),
           const SizedBox(height: 16),
 
           // Average Catches Per Trip
@@ -419,69 +415,235 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final mostRecentCatch = _statistics!['mostRecentCatch'] as Map<String, dynamic>?;
     if (mostRecentCatch == null) return const SizedBox.shrink();
 
+    final catchId = mostRecentCatch['id'] as int?;
     final fishType = mostRecentCatch['fishType'] as String;
     final length = mostRecentCatch['length'] as int;
     final date = mostRecentCatch['date'] as DateTime;
     final fishingBuddy = mostRecentCatch['fishingBuddy'] as String?;
+    final photoPath = mostRecentCatch['photoPath'] as String?;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(12),
+    return GestureDetector(
+      onTap: catchId != null
+          ? () async {
+              final catchItem = await DatabaseHelper.instance.getCatch(catchId!);
+              if (catchItem != null && mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => CatchDetailsScreen(catchItem: catchItem),
                   ),
-                  child: Icon(
-                    Icons.access_time,
-                    color: Theme.of(context).colorScheme.primary,
-                    size: 28,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Most Recent Catch',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: Colors.grey[600],
+                );
+              }
+            }
+          : null,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // Show photo if available, otherwise show icon
+                  if (photoPath != null && File(photoPath).existsSync())
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(photoPath),
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: 60,
+                            height: 60,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
                             ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        fishType,
-                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                              fontWeight: FontWeight.bold,
+                            child: Icon(
+                              Icons.access_time,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 28,
                             ),
+                          );
+                        },
                       ),
-                    ],
+                    )
+                  else
+                    Container(
+                      width: 60,
+                      height: 60,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.access_time,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 28,
+                      ),
+                    ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Most Recent Catch',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          fishType,
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _buildDetailItem(Icons.straighten, '$length cm', 'Length'),
-                _buildDetailItem(
-                  Icons.calendar_today,
-                  '${date.day}/${date.month}/${date.year}',
-                  'Date',
-                ),
-                if (fishingBuddy != null)
-                  _buildDetailItem(Icons.person, fishingBuddy, 'Caught by'),
-              ],
-            ),
-          ],
+                  if (catchId != null)
+                    Icon(
+                      Icons.chevron_right,
+                      color: Colors.grey[400],
+                    ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  _buildDetailItem(Icons.straighten, '$length cm', 'Length'),
+                  _buildDetailItem(
+                    Icons.calendar_today,
+                    '${date.day}/${date.month}/${date.year}',
+                    'Date',
+                  ),
+                  if (fishingBuddy != null)
+                    _buildDetailItem(Icons.person, fishingBuddy, 'Caught by'),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMostProductiveTripCard() {
+    final mostProductiveTrip = _statistics!['mostProductiveTrip'] as Map<String, dynamic>?;
+    if (mostProductiveTrip == null) {
+      return _buildStatCard(
+        icon: Icons.emoji_events,
+        title: 'Most Productive Trip',
+        value: 'N/A',
+        subtitle: 'By catches',
+      );
+    }
+
+    final tripId = mostProductiveTrip['id'] as int?;
+    final tripName = mostProductiveTrip['name'] as String?;
+    final photoPath = mostProductiveTrip['photoPath'] as String?;
+
+    return GestureDetector(
+      onTap: tripId != null
+          ? () async {
+              final trip = await DatabaseHelper.instance.getFishingTrip(tripId!);
+              if (trip != null && mounted) {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => TripDetailsScreen(trip: trip),
+                  ),
+                );
+              }
+            }
+          : null,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  // Show photo if available, otherwise show icon
+                  if (photoPath != null && File(photoPath).existsSync())
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.file(
+                        File(photoPath),
+                        width: 60,
+                        height: 60,
+                        fit: BoxFit.cover,
+                        errorBuilder: (context, error, stackTrace) {
+                          return Container(
+                            width: 60,
+                            height: 60,
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: Icon(
+                              Icons.emoji_events,
+                              color: Theme.of(context).colorScheme.primary,
+                              size: 28,
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                  else
+                    Container(
+                      width: 60,
+                      height: 60,
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        Icons.emoji_events,
+                        color: Theme.of(context).colorScheme.primary,
+                        size: 28,
+                      ),
+                    ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Most Productive Trip',
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          tripName ?? 'N/A',
+                          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                fontWeight: FontWeight.bold,
+                              ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (tripId != null)
+                    Icon(
+                      Icons.chevron_right,
+                      color: Colors.grey[400],
+                    ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

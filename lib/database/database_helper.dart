@@ -578,6 +578,13 @@ class DatabaseHelper {
         ? buddyMap[mostRecentCatch.fishingBuddyId]
         : null;
     
+    // Get primary photo for most recent catch
+    String? mostRecentCatchPhotoPath;
+    if (mostRecentCatch.id != null) {
+      final media = await getPrimaryMediaForCatch(mostRecentCatch.id!);
+      mostRecentCatchPhotoPath = media?.filePath;
+    }
+    
     // Trip statistics
     final trips = await getFishingTrips();
     final totalTrips = trips.length;
@@ -591,15 +598,21 @@ class DatabaseHelper {
     }
     
     // Most productive trip
+    int? mostProductiveTripId;
     String? mostProductiveTrip;
+    String? mostProductiveTripPhotoPath;
     if (tripCatches.isNotEmpty) {
-      final mostProductiveTripId = tripCatches.entries
+      mostProductiveTripId = tripCatches.entries
           .reduce((a, b) => a.value > b.value ? a : b).key;
       final trip = trips.firstWhere(
         (t) => t.id == mostProductiveTripId,
         orElse: () => trips.first,
       );
       mostProductiveTrip = trip.name;
+      
+      // Get cover photo for most productive trip
+      final tripMedia = await getPrimaryMediaForTrip(mostProductiveTripId!);
+      mostProductiveTripPhotoPath = tripMedia?.filePath;
     }
     
     // Largest fish by trip (find the trip with the largest fish)
@@ -638,13 +651,19 @@ class DatabaseHelper {
       'mostCommonFishType': mostCommonFishType,
       'mostCommonFishingBuddy': mostCommonFishingBuddy,
       'mostRecentCatch': {
+        'id': mostRecentCatch.id,
         'fishType': mostRecentCatch.fishType,
         'length': mostRecentCatch.lengthCm,
         'date': mostRecentCatch.dateCaught ?? mostRecentCatch.createdAt,
         'fishingBuddy': mostRecentCatchBuddy,
+        'photoPath': mostRecentCatchPhotoPath,
       },
       'totalTrips': totalTrips,
-      'mostProductiveTrip': mostProductiveTrip,
+      'mostProductiveTrip': {
+        'id': mostProductiveTripId,
+        'name': mostProductiveTrip,
+        'photoPath': mostProductiveTripPhotoPath,
+      },
       'largestFishByTrip': largestFishByTrip,
       'averageCatchesPerTrip': averageCatchesPerTrip,
       'topFishTypes': topFishTypes,
