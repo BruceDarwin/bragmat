@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 13,
+      version: 14,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -46,7 +46,8 @@ class DatabaseHelper {
         latitude REAL,
         longitude REAL,
         location TEXT,
-        fishing_buddy_id INTEGER
+        fishing_buddy_id INTEGER,
+        trip_id INTEGER
       )
     ''');
 
@@ -309,6 +310,89 @@ class DatabaseHelper {
           FOREIGN KEY (journal_entry_id) REFERENCES trip_journal (id) ON DELETE CASCADE
         )
       ''');
+    }
+    
+    // Safety check: Ensure trip_id column exists in catches table
+    // This handles cases where a database might be at a higher version but missing the column
+    try {
+      final columns = await db.rawQuery("PRAGMA table_info(catches)");
+      final hasTripId = columns.any((col) => col['name'] == 'trip_id');
+      if (!hasTripId) {
+        await db.execute('ALTER TABLE catches ADD COLUMN trip_id INTEGER');
+      }
+    } catch (e) {
+      // Ignore errors during safety check
+    }
+    
+    // Safety check: Ensure fishing_buddy_id column exists in catches table
+    try {
+      final columns = await db.rawQuery("PRAGMA table_info(catches)");
+      final hasFishingBuddyId = columns.any((col) => col['name'] == 'fishing_buddy_id');
+      if (!hasFishingBuddyId) {
+        await db.execute('ALTER TABLE catches ADD COLUMN fishing_buddy_id INTEGER');
+      }
+    } catch (e) {
+      // Ignore errors during safety check
+    }
+    
+    // Safety check: Ensure location column exists in catches table
+    try {
+      final columns = await db.rawQuery("PRAGMA table_info(catches)");
+      final hasLocation = columns.any((col) => col['name'] == 'location');
+      if (!hasLocation) {
+        await db.execute('ALTER TABLE catches ADD COLUMN location TEXT');
+      }
+    } catch (e) {
+      // Ignore errors during safety check
+    }
+    
+    // Safety check: Ensure latitude column exists in catches table
+    try {
+      final columns = await db.rawQuery("PRAGMA table_info(catches)");
+      final hasLatitude = columns.any((col) => col['name'] == 'latitude');
+      if (!hasLatitude) {
+        await db.execute('ALTER TABLE catches ADD COLUMN latitude REAL');
+      }
+    } catch (e) {
+      // Ignore errors during safety check
+    }
+    
+    // Safety check: Ensure longitude column exists in catches table
+    try {
+      final columns = await db.rawQuery("PRAGMA table_info(catches)");
+      final hasLongitude = columns.any((col) => col['name'] == 'longitude');
+      if (!hasLongitude) {
+        await db.execute('ALTER TABLE catches ADD COLUMN longitude REAL');
+      }
+    } catch (e) {
+      // Ignore errors during safety check
+    }
+    
+    if (oldVersion < 14) {
+      // Force ensure all required columns exist in catches table
+      // This is a safety migration to fix any databases that might be missing columns
+      try {
+        final columns = await db.rawQuery("PRAGMA table_info(catches)");
+        final columnNames = columns.map((col) => col['name'] as String).toSet();
+        
+        if (!columnNames.contains('trip_id')) {
+          await db.execute('ALTER TABLE catches ADD COLUMN trip_id INTEGER');
+        }
+        if (!columnNames.contains('fishing_buddy_id')) {
+          await db.execute('ALTER TABLE catches ADD COLUMN fishing_buddy_id INTEGER');
+        }
+        if (!columnNames.contains('location')) {
+          await db.execute('ALTER TABLE catches ADD COLUMN location TEXT');
+        }
+        if (!columnNames.contains('latitude')) {
+          await db.execute('ALTER TABLE catches ADD COLUMN latitude REAL');
+        }
+        if (!columnNames.contains('longitude')) {
+          await db.execute('ALTER TABLE catches ADD COLUMN longitude REAL');
+        }
+      } catch (e) {
+        // Ignore errors during safety check
+      }
     }
   }
 

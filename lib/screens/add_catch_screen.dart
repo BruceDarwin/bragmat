@@ -195,29 +195,41 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     final picker = ImagePicker();
     final pickedFile = await picker.pickImage(source: ImageSource.gallery);
     if (pickedFile != null) {
-      final photoDateTime = DateTime.now();
-      double? latitude;
-      double? longitude;
-      
-      // Extract GPS data
-      final gpsData = await _extractGpsData(pickedFile.path);
-      latitude = gpsData['latitude'];
-      longitude = gpsData['longitude'];
-      
-      setState(() {
-        // If this is the first photo, mark it as primary
-        final role = _mediaItems.isEmpty ? 'primary' : 'other';
-        _mediaItems.add(CatchMedia(
-          catchId: 0, // Will be set when saving
-          filePath: pickedFile.path,
-          mediaType: 'photo',
-          role: role,
-          dateTaken: photoDateTime,
-          latitude: latitude,
-          longitude: longitude,
-        ));
-      });
+      await _processPickedImage(pickedFile);
     }
+  }
+
+  Future<void> _takePhoto() async {
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.camera);
+    if (pickedFile != null) {
+      await _processPickedImage(pickedFile);
+    }
+  }
+
+  Future<void> _processPickedImage(XFile pickedFile) async {
+    final photoDateTime = DateTime.now();
+    double? latitude;
+    double? longitude;
+    
+    // Extract GPS data
+    final gpsData = await _extractGpsData(pickedFile.path);
+    latitude = gpsData['latitude'];
+    longitude = gpsData['longitude'];
+    
+    setState(() {
+      // If this is the first photo, mark it as primary
+      final role = _mediaItems.isEmpty ? 'primary' : 'other';
+      _mediaItems.add(CatchMedia(
+        catchId: 0, // Will be set when saving
+        filePath: pickedFile.path,
+        mediaType: 'photo',
+        role: role,
+        dateTaken: photoDateTime,
+        latitude: latitude,
+        longitude: longitude,
+      ));
+    });
   }
 
   Future<Map<String, double?>> _extractGpsData(String imagePath) async {
@@ -263,6 +275,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   }
 
   void _saveCatch() async {
+    debugPrint('=== Save Catch Button Tapped ===');
+    
     final fishType = _selectedFishType ?? _fishTypeController.text;
     final length = int.tryParse(_lengthController.text) ?? 0;
     final notes = _notesController.text;
@@ -270,61 +284,104 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     final latitude = double.tryParse(_latitudeController.text);
     final longitude = double.tryParse(_longitudeController.text);
 
+    debugPrint('Form values:');
+    debugPrint('  fishType: $fishType');
+    debugPrint('  length: $length');
+    debugPrint('  notes: $notes');
+    debugPrint('  location: $location');
+    debugPrint('  latitude: $latitude');
+    debugPrint('  longitude: $longitude');
+    debugPrint('  selectedTripId: $_selectedTripId');
+    debugPrint('  selectedFishingBuddyId: $_selectedFishingBuddyId');
+    debugPrint('  dateCaught: $_dateCaught');
+    debugPrint('  mediaItems count: ${_mediaItems.length}');
+    if (_mediaItems.isNotEmpty) {
+      debugPrint('  first media path: ${_mediaItems.first.filePath}');
+    }
+
     if (fishType.isEmpty) {
+      debugPrint('ERROR: fishType is empty, returning');
       return;
     }
 
     Catch? savedCatch;
 
-    if (widget.catchToEdit != null) {
-      final updatedCatch = Catch(
-        id: widget.catchToEdit!.id,
-        fishType: fishType,
-        lengthCm: length,
-        notes: notes,
-        createdAt: widget.catchToEdit!.createdAt,
-        dateCaught: _dateCaught,
-        location: location.isEmpty ? null : location,
-        fishingBuddyId: _selectedFishingBuddyId,
-        tripId: _selectedTripId,
-        latitude: latitude,
-        longitude: longitude,
-      );
-      await DatabaseHelper.instance.updateCatch(updatedCatch);
-      savedCatch = updatedCatch;
-      
-      // Delete existing media and re-add
-      await DatabaseHelper.instance.deleteAllMediaForCatch(widget.catchToEdit!.id!);
-      for (final media in _mediaItems) {
-        await DatabaseHelper.instance.insertCatchMedia(
-          media.copyWith(catchId: widget.catchToEdit!.id),
+    try {
+      if (widget.catchToEdit != null) {
+        debugPrint('Editing existing catch: ${widget.catchToEdit!.id}');
+        final updatedCatch = Catch(
+          id: widget.catchToEdit!.id,
+          fishType: fishType,
+          lengthCm: length,
+          notes: notes,
+          createdAt: widget.catchToEdit!.createdAt,
+          dateCaught: _dateCaught,
+          location: location.isEmpty ? null : location,
+          fishingBuddyId: _selectedFishingBuddyId,
+          tripId: _selectedTripId,
+          latitude: latitude,
+          longitude: longitude,
+        );
+        debugPrint('Catch object before update: ${updatedCatch.toMap()}');
+        await DatabaseHelper.instance.updateCatch(updatedCatch);
+        debugPrint('Update successful');
+        savedCatch = updatedCatch;
+        
+        // Delete existing media and re-add
+        debugPrint('Deleting existing media for catch ${widget.catchToEdit!.id}');
+        await DatabaseHelper.instance.deleteAllMediaForCatch(widget.catchToEdit!.id!);
+        debugPrint('Media deleted, adding ${_mediaItems.length} media items');
+        for (final media in _mediaItems) {
+          final mediaToInsert = media.copyWith(catchId: widget.catchToEdit!.id);
+          debugPrint('Inserting media: ${mediaToInsert.toMap()}');
+          await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
+        }
+        debugPrint('All media inserted');
+      } else {
+        debugPrint('Creating new catch');
+        final newCatch = Catch(
+          fishType: fishType,
+          lengthCm: length,
+          notes: notes,
+          createdAt: DateTime.now(),
+          dateCaught: _dateCaught,
+          location: location.isEmpty ? null : location,
+          fishingBuddyId: _selectedFishingBuddyId,
+          tripId: _selectedTripId,
+          latitude: latitude,
+          longitude: longitude,
+        );
+        debugPrint('Catch object before insert: ${newCatch.toMap()}');
+        final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
+        debugPrint('Insert successful, catchId: $catchId');
+        savedCatch = newCatch.copyWith(id: catchId);
+        
+        // Save media items with the new catch ID
+        debugPrint('Adding ${_mediaItems.length} media items to catch $catchId');
+        for (final media in _mediaItems) {
+          final mediaToInsert = media.copyWith(catchId: catchId);
+          debugPrint('Inserting media: ${mediaToInsert.toMap()}');
+          await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
+        }
+        debugPrint('All media inserted');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('ERROR saving catch: $e');
+      debugPrint('Stack trace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error saving catch: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
-    } else {
-      final newCatch = Catch(
-        fishType: fishType,
-        lengthCm: length,
-        notes: notes,
-        createdAt: DateTime.now(),
-        dateCaught: _dateCaught,
-        location: location.isEmpty ? null : location,
-        fishingBuddyId: _selectedFishingBuddyId,
-        tripId: _selectedTripId,
-        latitude: latitude,
-        longitude: longitude,
-      );
-      final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
-      savedCatch = newCatch.copyWith(id: catchId);
-      
-      // Save media items with the new catch ID
-      for (final media in _mediaItems) {
-        await DatabaseHelper.instance.insertCatchMedia(
-          media.copyWith(catchId: catchId),
-        );
-      }
+      return;
     }
 
     if (!mounted) return;
+
+    debugPrint('Save successful, navigating away');
 
     // Only pop if editing (catchToEdit != null)
     // When adding from bottom nav, use callback to switch to My Catches
@@ -430,10 +487,24 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                 },
               ),
             const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: _pickImage,
-              icon: const Icon(Icons.photo_library),
-              label: Text(_mediaItems.isEmpty ? 'Add Photo' : 'Add Another Photo'),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _pickImage,
+                    icon: const Icon(Icons.photo_library),
+                    label: Text(_mediaItems.isEmpty ? 'Add Photo' : 'Add Photo'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _takePhoto,
+                    icon: const Icon(Icons.camera_alt),
+                    label: Text(_mediaItems.isEmpty ? 'Take Photo' : 'Take Photo'),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             ListTile(
