@@ -26,7 +26,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 14,
+      version: 15,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -47,7 +47,8 @@ class DatabaseHelper {
         longitude REAL,
         location TEXT,
         fishing_buddy_id INTEGER,
-        trip_id INTEGER
+        trip_id INTEGER,
+        coordinate_source TEXT
       )
     ''');
 
@@ -310,6 +311,14 @@ class DatabaseHelper {
           FOREIGN KEY (journal_entry_id) REFERENCES trip_journal (id) ON DELETE CASCADE
         )
       ''');
+    }
+    if (oldVersion < 15) {
+      // Add coordinate_source column to catches table
+      try {
+        await db.execute('ALTER TABLE catches ADD COLUMN coordinate_source TEXT');
+      } catch (e) {
+        // Column might already exist, ignore error
+      }
     }
     
     // Safety check: Ensure trip_id column exists in catches table

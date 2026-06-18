@@ -293,6 +293,8 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                       if (_catchItem.latitude != null && _catchItem.longitude != null)
                         _buildDetailRow('GPS Location',
                             '${_catchItem.latitude!.toStringAsFixed(6)}, ${_catchItem.longitude!.toStringAsFixed(6)}'),
+                      if (_catchItem.latitude != null && _catchItem.longitude != null)
+                        _buildDetailRow('Coordinate Source', _getCoordinateSource()),
                     ]),
                   if (_catchItem.notes != null && _catchItem.notes!.isNotEmpty)
                     _buildSection('Notes', [
@@ -346,5 +348,27 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
         ],
       ),
     );
+  }
+
+  String _getCoordinateSource() {
+    // Use the coordinateSource field from the catch
+    if (_catchItem.coordinateSource != null && _catchItem.coordinateSource!.isNotEmpty) {
+      return _catchItem.coordinateSource!;
+    }
+    
+    // Fallback: Check if any media item has GPS coordinates that match the catch coordinates
+    if (_mediaItems.isNotEmpty) {
+      for (final media in _mediaItems) {
+        if (media.latitude != null && media.longitude != null) {
+          // Check if media coordinates match catch coordinates (within small tolerance)
+          final latDiff = (media.latitude! - (_catchItem.latitude ?? 0)).abs();
+          final lonDiff = (media.longitude! - (_catchItem.longitude ?? 0)).abs();
+          if (latDiff < 0.000001 && lonDiff < 0.000001) {
+            return 'Photo EXIF';
+          }
+        }
+      }
+    }
+    return 'Manual';
   }
 }

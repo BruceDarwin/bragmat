@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
+import 'package:geolocator/geolocator.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
@@ -33,6 +34,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   List<FishingBuddy> _fishingBuddies = [];
   int? _selectedTripId;
   List<FishingTrip> _fishingTrips = [];
+  String? _coordinateSource;
 
   @override
   void initState() {
@@ -50,6 +52,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _selectedTripId = widget.catchToEdit!.tripId;
       _latitudeController.text = widget.catchToEdit!.latitude?.toString() ?? '';
       _longitudeController.text = widget.catchToEdit!.longitude?.toString() ?? '';
+      _coordinateSource = widget.catchToEdit!.coordinateSource;
     } else {
       // For new catches, pre-select the current trip if set
       _loadCurrentTrip();
@@ -192,54 +195,139 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   }
 
   Future<void> _pickImage() async {
+    debugPrint('=== Photo Source: Gallery ===');
+    debugPrint('Current media items count: ${_mediaItems.length}');
+    debugPrint('Mounted: $mounted');
+    
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.gallery,
+      imageQuality: 100, // Don't compress
+    );
+    
+    debugPrint('Gallery pick returned: ${pickedFile != null}');
     if (pickedFile != null) {
-      await _processPickedImage(pickedFile);
+      debugPrint('Image path from image_picker: ${pickedFile.path}');
+      final file = File(pickedFile.path);
+      await _processPickedFile(file, 'gallery');
     }
+    
+    debugPrint('After gallery pick - media items count: ${_mediaItems.length}');
+    debugPrint('After gallery pick - mounted: $mounted');
   }
 
   Future<void> _takePhoto() async {
+    debugPrint('=== Photo Source: Camera ===');
+    debugPrint('Current media items count: ${_mediaItems.length}');
+    debugPrint('Mounted: $mounted');
+    
     final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.camera);
+    final pickedFile = await picker.pickImage(
+      source: ImageSource.camera,
+      imageQuality: 100, // Don't compress
+    );
+    
+    debugPrint('Camera pick returned: ${pickedFile != null}');
     if (pickedFile != null) {
-      await _processPickedImage(pickedFile);
+      debugPrint('ORIGINAL Image path from image_picker: ${pickedFile.path}');
+      final file = File(pickedFile.path);
+      await _processPickedFile(file, 'camera');
     }
+    
+    debugPrint('After camera pick - media items count: ${_mediaItems.length}');
+    debugPrint('After camera pick - mounted: $mounted');
   }
 
-  Future<void> _processPickedImage(XFile pickedFile) async {
+  Future<void> _processPickedFile(File file, String source) async {
+    debugPrint('=== Processing Picked File ===');
+    debugPrint('Source: $source');
+    
+    final originalPath = file.path;
+    debugPrint('ORIGINAL path: $originalPath');
+    
+    final fileExists = await file.exists();
+    final fileSize = fileExists ? await file.length() : 0;
+    
+    debugPrint('File exists: $fileExists');
+    debugPrint('File size: $fileSize bytes');
+    
+    // Extract GPS data from ORIGINAL file immediately
+    debugPrint('=== Extracting GPS from ORIGINAL file ===');
+    final gpsData = await _extractGpsData(originalPath);
+    final latitude = gpsData['latitude'];
+    final longitude = gpsData['longitude'];
+    debugPrint('GPS from ORIGINAL: lat=$latitude, lon=$longitude');
+    
     final photoDateTime = DateTime.now();
-    double? latitude;
-    double? longitude;
     
-    // Extract GPS data
-    final gpsData = await _extractGpsData(pickedFile.path);
-    latitude = gpsData['latitude'];
-    longitude = gpsData['longitude'];
+    debugPrint('Before setState - media items count: ${_mediaItems.length}');
+    debugPrint('Before setState - mounted: $mounted');
     
-    setState(() {
-      // If this is the first photo, mark it as primary
-      final role = _mediaItems.isEmpty ? 'primary' : 'other';
-      _mediaItems.add(CatchMedia(
-        catchId: 0, // Will be set when saving
-        filePath: pickedFile.path,
-        mediaType: 'photo',
-        role: role,
-        dateTaken: photoDateTime,
-        latitude: latitude,
-        longitude: longitude,
-      ));
-    });
+    if (mounted) {
+      setState(() {
+        // If this is the first photo, mark it as primary
+        final role = _mediaItems.isEmpty ? 'primary' : 'other';
+        _mediaItems.add(CatchMedia(
+          catchId: 0, // Will be set when saving
+          filePath: originalPath,
+          mediaType: 'photo',
+          role: role,
+          dateTaken: photoDateTime,
+          latitude: latitude,
+          longitude: longitude,
+        ));
+        
+        debugPrint('After adding media - media items count: ${_mediaItems.length}');
+        debugPrint('Stored path in CatchMedia: $originalPath');
+        
+        // Auto-populate latitude/longitude fields if GPS data found
+        if (latitude != null && longitude != null) {
+          _latitudeController.text = latitude.toString();
+          _longitudeController.text = longitude.toString();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('GPS coordinates found in photo'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('No GPS coordinates found in photo'),
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+      });
+      
+      debugPrint('After setState - media items count: ${_mediaItems.length}');
+    } else {
+      debugPrint('ERROR: Widget not mounted, cannot setState');
+    }
+    
+    debugPrint('=== End Processing Picked File ===');
   }
 
   Future<Map<String, double?>> _extractGpsData(String imagePath) async {
     double? latitude;
     double? longitude;
     
+    debugPrint('=== EXIF GPS Extraction ===');
+    debugPrint('Image path: $imagePath');
+    
     try {
       final file = File(imagePath);
       final bytes = await file.readAsBytes();
       final data = await readExifFromBytes(bytes);
+
+      debugPrint('EXIF data keys: ${data.keys.toList()}');
+      
+      // Log all GPS-related tags
+      final gpsTags = data.entries.where((e) => e.key.startsWith('GPS')).toList();
+      debugPrint('GPS tags found: ${gpsTags.length}');
+      for (final tag in gpsTags) {
+        debugPrint('  ${tag.key}: ${tag.value}');
+      }
 
       if (data.containsKey('GPSLatitude') && data.containsKey('GPSLongitude')) {
         final lat = data['GPSLatitude'];
@@ -247,14 +335,27 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         final lon = data['GPSLongitude'];
         final lonRef = data['GPSLongitudeRef'];
 
+        debugPrint('GPSLatitude: $lat');
+        debugPrint('GPSLatitudeRef: $latRef');
+        debugPrint('GPSLongitude: $lon');
+        debugPrint('GPSLongitudeRef: $lonRef');
+
         if (lat != null && latRef != null && lon != null && lonRef != null) {
           latitude = _convertToDecimalDegrees(lat, latRef);
           longitude = _convertToDecimalDegrees(lon, lonRef);
+          debugPrint('Extracted coordinates: $latitude, $longitude');
+        } else {
+          debugPrint('GPS data incomplete');
         }
+      } else {
+        debugPrint('No GPSLatitude or GPSLongitude found in EXIF');
       }
     } catch (e) {
-      // If EXIF reading fails, continue without GPS data
+      debugPrint('Error reading EXIF data: $e');
     }
+    
+    debugPrint('Final GPS data: latitude=$latitude, longitude=$longitude');
+    debugPrint('=== End EXIF GPS Extraction ===');
     
     return {'latitude': latitude, 'longitude': longitude};
   }
@@ -272,6 +373,77 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       return -decimal;
     }
     return decimal;
+  }
+
+  Future<void> _getCurrentLocation() async {
+    debugPrint('=== Getting Current Location ===');
+    
+    bool serviceEnabled;
+    LocationPermission permission;
+
+    serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      debugPrint('Location services are disabled');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location services are disabled')),
+        );
+      }
+      return;
+    }
+
+    permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        debugPrint('Location permissions are denied');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Location permission denied')),
+          );
+        }
+        return;
+      }
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      debugPrint('Location permissions are permanently denied');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location permission permanently denied')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.high,
+      );
+      
+      debugPrint('Location captured: ${position.latitude}, ${position.longitude}');
+      
+      if (mounted) {
+        setState(() {
+          _latitudeController.text = position.latitude.toString();
+          _longitudeController.text = position.longitude.toString();
+          _coordinateSource = 'Device GPS';
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Location captured')),
+        );
+      }
+    } catch (e) {
+      debugPrint('Error getting location: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Unable to get current location')),
+        );
+      }
+    }
+    
+    debugPrint('=== End Getting Current Location ===');
   }
 
   void _saveCatch() async {
@@ -321,6 +493,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           tripId: _selectedTripId,
           latitude: latitude,
           longitude: longitude,
+          coordinateSource: _coordinateSource,
         );
         debugPrint('Catch object before update: ${updatedCatch.toMap()}');
         await DatabaseHelper.instance.updateCatch(updatedCatch);
@@ -350,6 +523,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           tripId: _selectedTripId,
           latitude: latitude,
           longitude: longitude,
+          coordinateSource: _coordinateSource,
         );
         debugPrint('Catch object before insert: ${newCatch.toMap()}');
         final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
@@ -616,6 +790,15 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 8),
+            ElevatedButton.icon(
+              onPressed: _getCurrentLocation,
+              icon: const Icon(Icons.location_on),
+              label: const Text('Use Current Location'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 48),
+              ),
             ),
             const SizedBox(height: 16),
             TextField(

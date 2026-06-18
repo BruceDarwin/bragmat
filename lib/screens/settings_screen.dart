@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:exif/exif.dart';
 import 'dart:io';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
@@ -750,19 +752,254 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _backupData() async {
     try {
-      await BackupService.shareBackup();
+      debugPrint('=== Backup Data Started ===');
+      final filePath = await BackupService.exportBackup();
+      debugPrint('Backup file created at: $filePath');
+      
+      final file = File(filePath);
+      final fileExists = await file.exists();
+      final fileSize = fileExists ? await file.length() : 0;
+      final fileName = filePath.split('/').last;
+      
+      debugPrint('File exists: $fileExists');
+      debugPrint('File size: $fileSize bytes');
+      debugPrint('File name: $fileName');
+      
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup created and shared successfully')),
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Backup Created'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('Backup file created successfully.'),
+                const SizedBox(height: 16),
+                const Text('File name:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                SelectableText(
+                  fileName,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                const Text('File path:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                SelectableText(
+                  filePath,
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text('File size: ${(fileSize / 1024).toStringAsFixed(2)} KB'),
+                const SizedBox(height: 16),
+                const Text(
+                  'Note: If you cannot find this file in Downloads, use the Share button below to save it to another location.',
+                  style: TextStyle(fontSize: 12, color: Colors.orange),
+                ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context);
+                  await Share.shareXFiles(
+                    [XFile(filePath)],
+                    subject: 'Bragmat Backup',
+                    text: 'Bragmat data backup',
+                  );
+                },
+                child: const Text('Share Backup'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
         );
       }
+      
+      debugPrint('=== Backup Data Completed ===');
     } catch (e) {
+      debugPrint('Backup failed: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Backup failed: $e')),
         );
       }
     }
+  }
+
+  Future<void> _testPhotoGPS() async {
+    debugPrint('=== Test Photo GPS Started ===');
+    
+    final picker = ImagePicker();
+    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
+    
+    if (pickedFile == null) {
+      debugPrint('No photo selected');
+      return;
+    }
+    
+    debugPrint('Photo selected: ${pickedFile.path}');
+    
+    final file = File(pickedFile.path);
+    final fileExists = await file.exists();
+    final fileSize = fileExists ? await file.length() : 0;
+    
+    debugPrint('File exists: $fileExists');
+    debugPrint('File size: $fileSize bytes');
+    
+    if (!fileExists) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('File not found')),
+        );
+      }
+      return;
+    }
+    
+    // Read EXIF data
+    Map<String, dynamic>? exifData;
+    try {
+      final bytes = await file.readAsBytes();
+      exifData = await readExifFromBytes(bytes);
+      debugPrint('EXIF data keys: ${exifData.keys.toList()}');
+    } catch (e) {
+      debugPrint('Error reading EXIF: $e');
+      exifData = null;
+    }
+    
+    // Extract GPS data
+    double? latitude;
+    double? longitude;
+    String? dateTaken;
+    List<String> gpsTags = [];
+    
+    if (exifData != null) {
+      // Get date taken
+      if (exifData.containsKey('DateTimeOriginal')) {
+        dateTaken = exifData['DateTimeOriginal'].toString();
+        debugPrint('DateTimeOriginal: $dateTaken');
+      }
+      
+      // Get GPS tags
+      final allGpsTags = exifData.entries.where((e) => e.key.startsWith('GPS')).toList();
+      for (final tag in allGpsTags) {
+        gpsTags.add('${tag.key}: ${tag.value}');
+        debugPrint('GPS tag: ${tag.key} = ${tag.value}');
+      }
+      
+      // Try to extract coordinates
+      if (exifData.containsKey('GPSLatitude') && exifData.containsKey('GPSLongitude')) {
+        final lat = exifData['GPSLatitude'];
+        final latRef = exifData['GPSLatitudeRef'];
+        final lon = exifData['GPSLongitude'];
+        final lonRef = exifData['GPSLongitudeRef'];
+        
+        debugPrint('GPSLatitude: $lat');
+        debugPrint('GPSLatitudeRef: $latRef');
+        debugPrint('GPSLongitude: $lon');
+        debugPrint('GPSLongitudeRef: $lonRef');
+        
+        if (lat != null && latRef != null && lon != null && lonRef != null) {
+          latitude = _convertToDecimalDegrees(lat, latRef);
+          longitude = _convertToDecimalDegrees(lon, lonRef);
+          debugPrint('Extracted coordinates: $latitude, $longitude');
+        }
+      }
+    }
+    
+    debugPrint('=== Test Photo GPS Completed ===');
+    
+    if (mounted) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Photo GPS Test Results'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('File path:', style: TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
+                SelectableText(
+                  pickedFile.path,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
+                ),
+                const SizedBox(height: 12),
+                Text('File size: ${(fileSize / 1024).toStringAsFixed(2)} KB'),
+                const SizedBox(height: 12),
+                const Text('EXIF metadata:', style: TextStyle(fontWeight: FontWeight.bold)),
+                Text(exifData != null ? 'Yes (${exifData.length} tags)' : 'No'),
+                const SizedBox(height: 12),
+                if (dateTaken != null) ...[
+                  const Text('Date taken:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  Text(dateTaken),
+                  const SizedBox(height: 12),
+                ],
+                const Text('GPS coordinates:', style: TextStyle(fontWeight: FontWeight.bold)),
+                if (latitude != null && longitude != null) ...[
+                  Text('Latitude: ${latitude.toStringAsFixed(6)}'),
+                  Text('Longitude: ${longitude.toStringAsFixed(6)}'),
+                ] else ...[
+                  const Text('No GPS coordinates found'),
+                  const SizedBox(height: 12),
+                  const Text('GPS tags found:', style: TextStyle(fontWeight: FontWeight.bold)),
+                  if (gpsTags.isEmpty)
+                    const Text('None')
+                  else
+                    ...gpsTags.map((tag) => Padding(
+                      padding: const EdgeInsets.only(bottom: 2),
+                      child: Text(tag, style: const TextStyle(fontSize: 11)),
+                    )),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  double _convertToDecimalDegrees(dynamic value, dynamic ref) {
+    if (value is! List) return 0.0;
+    
+    final degrees = _convertRational(value[0]);
+    final minutes = _convertRational(value[1]);
+    final seconds = _convertRational(value[2]);
+    
+    var decimal = degrees + (minutes / 60) + (seconds / 3600);
+    
+    if (ref == 'S' || ref == 'W') {
+      decimal = -decimal;
+    }
+    
+    return decimal;
+  }
+
+  double _convertRational(dynamic value) {
+    if (value is List && value.length >= 2) {
+      final numerator = value[0] is int ? value[0] as int : int.tryParse(value[0].toString()) ?? 0;
+      final denominator = value[1] is int ? value[1] as int : int.tryParse(value[1].toString()) ?? 1;
+      if (denominator != 0) {
+        return numerator / denominator;
+      }
+    }
+    return 0.0;
   }
 
   Future<void> _restoreData() async {
@@ -1002,6 +1239,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   const SizedBox(height: 8),
                   Text(
                     'Backup creates a JSON file with all your data. Restore imports a backup file.',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Diagnostic Tools Section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Diagnostic Tools',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _testPhotoGPS,
+                    icon: const Icon(Icons.gps_fixed),
+                    label: const Text('Test Photo GPS'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Test whether a photo contains EXIF GPS coordinates. Select a photo from gallery to view its GPS metadata.',
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       color: Colors.grey[600],
                     ),

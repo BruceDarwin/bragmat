@@ -12,6 +12,7 @@ class Catch {
   final String? location;
   final int? fishingBuddyId;
   final int? tripId;
+  final String? coordinateSource;
 
   Catch({
     this.id,
@@ -27,6 +28,7 @@ class Catch {
     this.location,
     this.fishingBuddyId,
     this.tripId,
+    this.coordinateSource,
   });
 
   Map<String, dynamic> toMap() {
@@ -44,6 +46,7 @@ class Catch {
       'location': location,
       'fishing_buddy_id': fishingBuddyId,
       'trip_id': tripId,
+      'coordinate_source': coordinateSource,
     };
   }
 
@@ -68,6 +71,7 @@ factory Catch.fromMap(Map<String, dynamic> map) {
     location: map['location'] as String?,
     fishingBuddyId: map['fishing_buddy_id'] as int?,
     tripId: map['trip_id'] as int?,
+    coordinateSource: map['coordinate_source'] as String?,
   );
 }
 
@@ -85,6 +89,7 @@ factory Catch.fromMap(Map<String, dynamic> map) {
     String? location,
     int? fishingBuddyId,
     int? tripId,
+    String? coordinateSource,
   }) {
     return Catch(
       id: id ?? this.id,
@@ -100,6 +105,7 @@ factory Catch.fromMap(Map<String, dynamic> map) {
       location: location ?? this.location,
       fishingBuddyId: fishingBuddyId ?? this.fishingBuddyId,
       tripId: tripId ?? this.tripId,
+      coordinateSource: coordinateSource ?? this.coordinateSource,
     );
   }
 }
