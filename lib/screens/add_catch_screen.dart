@@ -61,6 +61,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     } else {
       // For new catches, pre-select the current trip if set
       _loadCurrentTrip();
+      // Set date caught to current date and time
+      _dateCaught = DateTime.now();
     }
   }
 
@@ -223,7 +225,35 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     );
     if (picked != null) {
       setState(() {
-        _dateCaught = picked;
+        // Preserve the time from the existing dateCaught, or use current time
+        final existingTime = _dateCaught;
+        _dateCaught = DateTime(
+          picked.year,
+          picked.month,
+          picked.day,
+          existingTime?.hour ?? DateTime.now().hour,
+          existingTime?.minute ?? DateTime.now().minute,
+        );
+      });
+    }
+  }
+
+  Future<void> _selectTime() async {
+    final picked = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(_dateCaught ?? DateTime.now()),
+    );
+    if (picked != null) {
+      setState(() {
+        // Preserve the date from the existing dateCaught, or use current date
+        final existingDate = _dateCaught;
+        _dateCaught = DateTime(
+          existingDate?.year ?? DateTime.now().year,
+          existingDate?.month ?? DateTime.now().month,
+          existingDate?.day ?? DateTime.now().day,
+          picked.hour,
+          picked.minute,
+        );
       });
     }
   }
@@ -764,6 +794,16 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
               ),
               trailing: const Icon(Icons.calendar_today),
               onTap: _selectDate,
+            ),
+            ListTile(
+              title: const Text('Time Caught'),
+              subtitle: Text(
+                _dateCaught != null
+                    ? '${_dateCaught!.hour.toString().padLeft(2, '0')}:${_dateCaught!.minute.toString().padLeft(2, '0')}'
+                    : 'Not set',
+              ),
+              trailing: const Icon(Icons.access_time),
+              onTap: _selectTime,
             ),
             const SizedBox(height: 24),
             DropdownButtonFormField<int>(

@@ -283,11 +283,11 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                   _buildSection('Basic Info', [
                     if (_catchItem.dateCaught != null)
                       _buildDetailRow('Date Caught',
-                          '${_catchItem.dateCaught!.day}/${_catchItem.dateCaught!.month}/${_catchItem.dateCaught!.year}'),
+                          '${_catchItem.dateCaught!.day}/${_catchItem.dateCaught!.month}/${_catchItem.dateCaught!.year} ${_catchItem.dateCaught!.hour.toString().padLeft(2, '0')}:${_catchItem.dateCaught!.minute.toString().padLeft(2, '0')}'),
                     _buildDetailRow('Length', '${_catchItem.lengthCm} cm'),
                     if (_catchItem.photoDateTime != null)
                       _buildDetailRow('Photo Taken',
-                          '${_catchItem.photoDateTime!.day}/${_catchItem.photoDateTime!.month}/${_catchItem.photoDateTime!.year} ${_catchItem.photoDateTime!.hour}:${_catchItem.photoDateTime!.minute.toString().padLeft(2, '0')}'),
+                          '${_catchItem.photoDateTime!.day}/${_catchItem.photoDateTime!.month}/${_catchItem.photoDateTime!.year} ${_catchItem.photoDateTime!.hour.toString().padLeft(2, '0')}:${_catchItem.photoDateTime!.minute.toString().padLeft(2, '0')}'),
                   ]),
                   if (_catchItem.location != null && _catchItem.location!.isNotEmpty ||
                       (_catchItem.latitude != null && _catchItem.longitude != null))
