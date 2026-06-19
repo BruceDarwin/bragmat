@@ -125,6 +125,10 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                 setState(() {
                   _catchItem = edited;
                 });
+                // Reload fishing buddy name in case it changed
+                _loadFishingBuddyName();
+                // Return true to parent to trigger refresh
+                Navigator.pop(context, true);
               }
             },
           ),

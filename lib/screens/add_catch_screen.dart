@@ -42,6 +42,11 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _loadFishTypes();
     _loadFishingBuddies();
     _loadFishingTrips();
+    // Only check for lost data when adding a new catch, not when editing
+    // Lost data recovery is for when the app is killed during a new catch creation
+    if (widget.catchToEdit == null) {
+      _retrieveLostData();
+    }
     if (widget.catchToEdit != null) {
       _loadMediaForCatch();
       _fishTypeController.text = widget.catchToEdit!.fishType;
@@ -57,6 +62,35 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       // For new catches, pre-select the current trip if set
       _loadCurrentTrip();
     }
+  }
+
+  Future<void> _retrieveLostData() async {
+    debugPrint('=== Checking for lost image picker data ===');
+    final picker = ImagePicker();
+    final lostData = await picker.retrieveLostData();
+    if (lostData != null) {
+      debugPrint('Lost data found:');
+      debugPrint('  isEmpty: ${lostData.isEmpty}');
+      debugPrint('  file: ${lostData.file}');
+      debugPrint('  files: ${lostData.files}');
+      
+      if (!lostData.isEmpty && lostData.file != null) {
+        debugPrint('Processing lost image: ${lostData.file!.path}');
+        final file = File(lostData.file!.path);
+        await _processPickedFile(file, 'lost_data');
+      } else if (!lostData.isEmpty && lostData.files != null && lostData.files!.isNotEmpty) {
+        debugPrint('Processing ${lostData.files!.length} lost images');
+        for (final lostFile in lostData.files!) {
+          final file = File(lostFile.path);
+          await _processPickedFile(file, 'lost_data');
+        }
+      } else {
+        debugPrint('No lost data to recover');
+      }
+    } else {
+      debugPrint('No lost data available');
+    }
+    debugPrint('=== End checking for lost data ===');
   }
 
   Future<void> _loadCurrentTrip() async {
@@ -195,43 +229,71 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   }
 
   Future<void> _pickImage() async {
-    debugPrint('=== Photo Source: Gallery ===');
+    debugPrint('=== Add Photo Button Tapped ===');
     debugPrint('Current media items count: ${_mediaItems.length}');
     debugPrint('Mounted: $mounted');
     
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 100, // Don't compress
-    );
-    
-    debugPrint('Gallery pick returned: ${pickedFile != null}');
-    if (pickedFile != null) {
-      debugPrint('Image path from image_picker: ${pickedFile.path}');
-      final file = File(pickedFile.path);
-      await _processPickedFile(file, 'gallery');
+    try {
+      debugPrint('Creating ImagePicker instance');
+      final picker = ImagePicker();
+      debugPrint('Opening gallery picker');
+      
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 85, // Compress to reduce memory pressure
+        maxWidth: 1920, // Limit resolution to reduce memory
+        maxHeight: 1080,
+      );
+      
+      debugPrint('Gallery picker returned');
+      debugPrint('Picked file is null: ${pickedFile == null}');
+      
+      if (pickedFile != null) {
+        debugPrint('Picked file path: ${pickedFile.path}');
+        debugPrint('Processing picked file');
+        final file = File(pickedFile.path);
+        await _processPickedFile(file, 'gallery');
+        debugPrint('File processing complete');
+      } else {
+        debugPrint('User cancelled gallery selection');
+      }
+      
+      debugPrint('After gallery pick - media items count: ${_mediaItems.length}');
+      debugPrint('After gallery pick - mounted: $mounted');
+    } catch (e, stackTrace) {
+      debugPrint('ERROR in _pickImage: $e');
+      debugPrint('Stack trace: $stackTrace');
     }
     
-    debugPrint('After gallery pick - media items count: ${_mediaItems.length}');
-    debugPrint('After gallery pick - mounted: $mounted');
+    debugPrint('=== End _pickImage ===');
   }
 
   Future<void> _takePhoto() async {
     debugPrint('=== Photo Source: Camera ===');
     debugPrint('Current media items count: ${_mediaItems.length}');
     debugPrint('Mounted: $mounted');
+    debugPrint('Editing existing catch: ${widget.catchToEdit != null}');
+    if (widget.catchToEdit != null) {
+      debugPrint('Existing catch id: ${widget.catchToEdit!.id}');
+    }
     
     final picker = ImagePicker();
+    debugPrint('About to call picker.pickImage');
     final pickedFile = await picker.pickImage(
       source: ImageSource.camera,
-      imageQuality: 100, // Don't compress
+      imageQuality: 85, // Compress to reduce memory pressure
+      maxWidth: 1920, // Limit resolution to reduce memory
+      maxHeight: 1080,
     );
-    
     debugPrint('Camera pick returned: ${pickedFile != null}');
+    
     if (pickedFile != null) {
       debugPrint('ORIGINAL Image path from image_picker: ${pickedFile.path}');
+      debugPrint('Mounted after camera pick: $mounted');
       final file = File(pickedFile.path);
       await _processPickedFile(file, 'camera');
+    } else {
+      debugPrint('Camera pick returned null (user cancelled or error)');
     }
     
     debugPrint('After camera pick - media items count: ${_mediaItems.length}');
@@ -241,6 +303,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   Future<void> _processPickedFile(File file, String source) async {
     debugPrint('=== Processing Picked File ===');
     debugPrint('Source: $source');
+    debugPrint('Editing existing catch: ${widget.catchToEdit != null}');
+    if (widget.catchToEdit != null) {
+      debugPrint('Existing catch id: ${widget.catchToEdit!.id}');
+    }
     
     final originalPath = file.path;
     debugPrint('ORIGINAL path: $originalPath');
@@ -279,6 +345,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         
         debugPrint('After adding media - media items count: ${_mediaItems.length}');
         debugPrint('Stored path in CatchMedia: $originalPath');
+        debugPrint('Editing existing catch: ${widget.catchToEdit != null}');
         
         // Auto-populate latitude/longitude fields if GPS data found
         if (latitude != null && longitude != null) {
@@ -481,6 +548,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     try {
       if (widget.catchToEdit != null) {
         debugPrint('Editing existing catch: ${widget.catchToEdit!.id}');
+        debugPrint('Media items to save: ${_mediaItems.length}');
+        for (int i = 0; i < _mediaItems.length; i++) {
+          debugPrint('  Media item $i: path=${_mediaItems[i].filePath}, role=${_mediaItems[i].role}');
+        }
         final updatedCatch = Catch(
           id: widget.catchToEdit!.id,
           fishType: fishType,
@@ -507,7 +578,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         for (final media in _mediaItems) {
           final mediaToInsert = media.copyWith(catchId: widget.catchToEdit!.id);
           debugPrint('Inserting media: ${mediaToInsert.toMap()}');
-          await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
+          final insertedId = await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
+          debugPrint('Media inserted with id: $insertedId');
         }
         debugPrint('All media inserted');
       } else {
@@ -663,19 +735,21 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
+                if (widget.catchToEdit == null) ...[
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _takePhoto,
+                      icon: const Icon(Icons.camera_alt),
+                      label: Text(_mediaItems.isEmpty ? 'Take Photo' : 'Take Photo'),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _pickImage,
                     icon: const Icon(Icons.photo_library),
                     label: Text(_mediaItems.isEmpty ? 'Add Photo' : 'Add Photo'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _takePhoto,
-                    icon: const Icon(Icons.camera_alt),
-                    label: Text(_mediaItems.isEmpty ? 'Take Photo' : 'Take Photo'),
                   ),
                 ),
               ],

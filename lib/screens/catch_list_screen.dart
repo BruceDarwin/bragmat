@@ -59,14 +59,21 @@ class _CatchListScreenState extends State<CatchListScreen> {
       return bDate.compareTo(aDate);
     });
     
-    // Load primary media paths for all catches
+    // Load primary media paths for all catches in parallel
     final mediaMap = <int, String>{};
-    for (final catchItem in data) {
+    final mediaFutures = data.map((catchItem) async {
       if (catchItem.id != null) {
         final primaryMedia = await DatabaseHelper.instance.getPrimaryMediaForCatch(catchItem.id!);
         if (primaryMedia != null) {
-          mediaMap[catchItem.id!] = primaryMedia.filePath;
+          return MapEntry(catchItem.id!, primaryMedia.filePath);
         }
+      }
+      return null;
+    });
+    final mediaResults = await Future.wait(mediaFutures);
+    for (final result in mediaResults) {
+      if (result != null) {
+        mediaMap[result.key] = result.value;
       }
     }
     
