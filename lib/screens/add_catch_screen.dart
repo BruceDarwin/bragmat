@@ -8,6 +8,7 @@ import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
 import '../models/fishing_trip.dart';
+import '../models/favourite_spot.dart';
 import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import 'location_picker_screen.dart';
@@ -37,6 +38,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   int? _selectedTripId;
   List<FishingTrip> _fishingTrips = [];
   String? _coordinateSource;
+  int? _selectedFavouriteSpotId;
+  List<FavouriteSpot> _favouriteSpots = [];
 
   @override
   void initState() {
@@ -44,6 +47,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _loadFishTypes();
     _loadFishingBuddies();
     _loadFishingTrips();
+    _loadFavouriteSpots();
     // Only check for lost data when adding a new catch, not when editing
     // Lost data recovery is for when the app is killed during a new catch creation
     if (widget.catchToEdit == null) {
@@ -164,6 +168,15 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     if (mounted) {
       setState(() {
         _fishingTrips = trips;
+      });
+    }
+  }
+
+  Future<void> _loadFavouriteSpots() async {
+    final spots = await DatabaseHelper.instance.getFavouriteSpots();
+    if (mounted) {
+      setState(() {
+        _favouriteSpots = spots;
       });
     }
   }
@@ -577,6 +590,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           _latitudeController.text = position.latitude.toString();
           _longitudeController.text = position.longitude.toString();
           _coordinateSource = 'Device GPS';
+          _selectedFavouriteSpotId = null; // Clear favourite spot selection when using current location
         });
         
         ScaffoldMessenger.of(context).showSnackBar(
@@ -614,6 +628,23 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _latitudeController.text = result['latitude'].toString();
         _longitudeController.text = result['longitude'].toString();
         _coordinateSource = 'Map Selected';
+        _selectedFavouriteSpotId = null; // Clear favourite spot selection when manually picking location
+      });
+    }
+  }
+
+  void _onFavouriteSpotSelected(FavouriteSpot? spot) {
+    if (spot != null) {
+      setState(() {
+        _selectedFavouriteSpotId = spot.id;
+        _locationController.text = spot.name;
+        _latitudeController.text = spot.latitude.toString();
+        _longitudeController.text = spot.longitude.toString();
+        _coordinateSource = 'Favourite Spot';
+      });
+    } else {
+      setState(() {
+        _selectedFavouriteSpotId = null;
       });
     }
   }
@@ -957,6 +988,30 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
               controller: _locationController,
               decoration: const InputDecoration(labelText: 'Location'),
             ),
+            const SizedBox(height: 8),
+            if (_favouriteSpots.isNotEmpty)
+              DropdownButtonFormField<int>(
+                value: _selectedFavouriteSpotId,
+                decoration: const InputDecoration(
+                  labelText: 'Favourite Spot (optional)',
+                  prefixIcon: Icon(Icons.place),
+                ),
+                items: [
+                  const DropdownMenuItem(value: null, child: Text('None')),
+                  ..._favouriteSpots.map((spot) {
+                    return DropdownMenuItem(
+                      value: spot.id,
+                      child: Text(spot.name),
+                    );
+                  }),
+                ],
+                onChanged: (value) {
+                  final spot = value != null
+                      ? _favouriteSpots.firstWhere((s) => s.id == value)
+                      : null;
+                  _onFavouriteSpotSelected(spot);
+                },
+              ),
             const SizedBox(height: 16),
             Row(
               children: [

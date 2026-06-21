@@ -6,6 +6,7 @@ import '../database/database_helper.dart';
 import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
 import '../models/journal_media.dart';
+import '../models/favourite_spot.dart';
 import '../services/current_trip_service.dart';
 
 class BackupService {
@@ -19,6 +20,7 @@ class BackupService {
     final fishTypes = await db.getFishTypes();
     final fishingBuddies = await db.getFishingBuddies();
     final fishingTrips = await db.getFishingTrips();
+    final favouriteSpots = await db.getFavouriteSpots();
     final currentTripId = await CurrentTripService.getCurrentTripId();
 
     // Get catch media for all catches
@@ -75,6 +77,7 @@ class BackupService {
         'tripMedia': tripMediaMap,
         'tripJournal': tripJournalMap,
         'journalMedia': journalMediaMap,
+        'favouriteSpots': favouriteSpots.map((s) => s.toMap()).toList(),
         'currentTripId': currentTripId,
       },
     };
@@ -282,6 +285,16 @@ class BackupService {
     } else {
       await CurrentTripService.clearCurrentTrip();
     }
+
+    // Restore favourite spots
+    final favouriteSpots = data['favouriteSpots'] as List<dynamic>?;
+    if (favouriteSpots != null) {
+      for (final spotData in favouriteSpots) {
+        final spotMap = spotData as Map<String, dynamic>;
+        spotMap.remove('id');
+        await db.insertFavouriteSpot(FavouriteSpot.fromMap(spotMap));
+      }
+    }
   }
   
   static Future<void> _clearAllData(DatabaseHelper db) async {
@@ -311,6 +324,15 @@ class BackupService {
     await db.deleteAllFishingTrips();
     await db.deleteAllFishingBuddies();
     await db.deleteAllFishTypes();
+    
+    // Delete all favourite spots
+    final spots = await db.getFavouriteSpots();
+    for (final spot in spots) {
+      if (spot.id != null) {
+        await db.deleteFavouriteSpot(spot.id!);
+      }
+    }
+    
     await CurrentTripService.clearCurrentTrip();
   }
 }

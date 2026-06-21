@@ -7,8 +7,10 @@ import 'dart:io';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
+import '../models/favourite_spot.dart';
 import '../services/backup_service.dart';
 import '../services/preferences_service.dart';
+import 'favourite_spots_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -1478,6 +1480,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     );
                   }),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Favourite Spots Section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Favourite Fishing Spots',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => const FavouriteSpotsScreen(),
+                        ),
+                      );
+                    },
+                    icon: const Icon(Icons.place),
+                    label: const Text('Manage Favourite Spots'),
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Save your favourite fishing locations for quick access when adding catches.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
                 ],
               ),
             ),

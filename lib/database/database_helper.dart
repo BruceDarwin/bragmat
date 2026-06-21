@@ -7,6 +7,7 @@ import '../models/fishing_trip.dart';
 import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
 import '../models/journal_media.dart';
+import '../models/favourite_spot.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -26,7 +27,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 15,
+      version: 16,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -134,6 +135,16 @@ class DatabaseHelper {
         longitude REAL,
         created_at TEXT NOT NULL,
         FOREIGN KEY (journal_entry_id) REFERENCES trip_journal (id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE favourite_spots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        notes TEXT
       )
     ''');
 
@@ -319,6 +330,18 @@ class DatabaseHelper {
       } catch (e) {
         // Column might already exist, ignore error
       }
+    }
+    if (oldVersion < 16) {
+      // Add favourite_spots table
+      await db.execute('''
+        CREATE TABLE favourite_spots (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT NOT NULL,
+          latitude REAL NOT NULL,
+          longitude REAL NOT NULL,
+          notes TEXT
+        )
+      ''');
     }
     
     // Safety check: Ensure trip_id column exists in catches table
@@ -581,6 +604,49 @@ class DatabaseHelper {
 
   Future<FishingBuddy?> getMeFishingBuddy() async {
     return await getFishingBuddyByName('Me');
+  }
+
+  // FAVOURITE SPOTS
+  Future<List<FavouriteSpot>> getFavouriteSpots() async {
+    final db = await instance.database;
+    final result = await db.query('favourite_spots', orderBy: 'name ASC');
+    return result.map((map) => FavouriteSpot.fromMap(map)).toList();
+  }
+
+  Future<int> insertFavouriteSpot(FavouriteSpot spot) async {
+    final db = await instance.database;
+    return await db.insert('favourite_spots', spot.toMap());
+  }
+
+  Future<int> updateFavouriteSpot(FavouriteSpot spot) async {
+    final db = await instance.database;
+    return await db.update(
+      'favourite_spots',
+      spot.toMap(),
+      where: 'id = ?',
+      whereArgs: [spot.id],
+    );
+  }
+
+  Future<int> deleteFavouriteSpot(int id) async {
+    final db = await instance.database;
+    return await db.delete(
+      'favourite_spots',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<FavouriteSpot?> getFavouriteSpot(int id) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'favourite_spots',
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (result.isEmpty) return null;
+    return FavouriteSpot.fromMap(result.first);
   }
 
   // STATISTICS

@@ -7,6 +7,7 @@ import '../models/catch.dart';
 import '../models/catch_media.dart';
 import '../models/fishing_buddy.dart';
 import '../models/fishing_trip.dart';
+import '../models/favourite_spot.dart';
 import 'catch_details_screen.dart';
 import '../services/connectivity_service.dart';
 
@@ -31,6 +32,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
   Map<int, String> _fishingBuddyNames = {};
   Map<int, String> _fishingTripNames = {};
   Map<int, CatchMedia> _primaryMedia = {};
+  List<FavouriteSpot> _favouriteSpots = [];
   bool _isLoading = true;
   bool _isOnline = true;
   
@@ -70,6 +72,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
     final catches = await DatabaseHelper.instance.getCatches();
     final buddies = await DatabaseHelper.instance.getFishingBuddies();
     final trips = await DatabaseHelper.instance.getFishingTrips();
+    final spots = await DatabaseHelper.instance.getFavouriteSpots();
     
     final buddyMap = {for (var buddy in buddies) buddy.id!: buddy.name};
     final tripMap = {for (var trip in trips) trip.id!: trip.name};
@@ -98,6 +101,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
         _fishingBuddyNames = buddyMap;
         _fishingTripNames = tripMap;
         _primaryMedia = mediaMap;
+        _favouriteSpots = spots;
         _isLoading = false;
       });
     }
@@ -343,11 +347,28 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
   //   // to show density of catches in an area
   // }
 
-  // Future: Add method to show favourite fishing locations
-  // Widget _buildFavouriteLocationsLayer() {
-  //   // Show marked favourite spots with different marker style
-  //   // Could be stored in a separate favourites table
-  // }
+  // Favourite spots marker
+  Widget _buildFavouriteSpotMarker(FavouriteSpot spot) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.orange,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 2),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.3),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.star,
+        color: Colors.white,
+        size: 20,
+      ),
+    );
+  }
 
   Widget _buildEmptyState() {
     return Center(
@@ -495,6 +516,17 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
                 );
               }).toList(),
             ),
+            if (_favouriteSpots.isNotEmpty)
+              MarkerLayer(
+                markers: _favouriteSpots.map((spot) {
+                  return Marker(
+                    point: LatLng(spot.latitude, spot.longitude),
+                    width: 40,
+                    height: 40,
+                    child: _buildFavouriteSpotMarker(spot),
+                  );
+                }).toList(),
+              ),
           ],
         );
       }
@@ -543,6 +575,17 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
             );
           }).toList(),
         ),
+        if (_favouriteSpots.isNotEmpty)
+          MarkerLayer(
+            markers: _favouriteSpots.map((spot) {
+              return Marker(
+                point: LatLng(spot.latitude, spot.longitude),
+                width: 40,
+                height: 40,
+                child: _buildFavouriteSpotMarker(spot),
+              );
+            }).toList(),
+          ),
       ],
     );
   }
