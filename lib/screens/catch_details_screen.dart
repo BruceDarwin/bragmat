@@ -7,6 +7,7 @@ import '../models/catch_media.dart';
 import 'add_catch_screen.dart';
 import 'photo_viewer_screen.dart';
 import 'catch_map_screen.dart';
+import '../services/connectivity_service.dart';
 
 class CatchDetailsScreen extends StatefulWidget {
   final Catch catchItem;
@@ -21,6 +22,8 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
   late Catch _catchItem;
   String? _fishingBuddyName;
   List<CatchMedia> _mediaItems = [];
+  bool _isOnline = true;
+  final ConnectivityService _connectivityService = ConnectivityService();
 
   @override
   void initState() {
@@ -28,6 +31,23 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
     _catchItem = widget.catchItem;
     _loadFishingBuddyName();
     _loadMedia();
+    _checkConnectivity();
+    _connectivityService.connectivityStream.listen((isOnline) {
+      if (mounted) {
+        setState(() {
+          _isOnline = isOnline;
+        });
+      }
+    });
+  }
+
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivityService.checkConnection();
+    if (mounted) {
+      setState(() {
+        _isOnline = isOnline;
+      });
+    }
   }
 
   Future<void> _loadFishingBuddyName() async {
@@ -299,6 +319,37 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                             '${_catchItem.latitude!.toStringAsFixed(6)}, ${_catchItem.longitude!.toStringAsFixed(6)}'),
                       if (_catchItem.latitude != null && _catchItem.longitude != null)
                         _buildDetailRow('Coordinate Source', _getCoordinateSource()),
+                      if (!_isOnline && _catchItem.latitude != null && _catchItem.longitude != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Container(
+                            padding: const EdgeInsets.all(8),
+                            decoration: BoxDecoration(
+                              color: Colors.orange.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.orange.shade200),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.cloud_off,
+                                  size: 16,
+                                  color: Colors.orange.shade700,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Map imagery unavailable while offline',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.orange.shade900,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
                     ]),
                   if (_catchItem.notes != null && _catchItem.notes!.isNotEmpty)
                     _buildSection('Notes', [

@@ -731,6 +731,74 @@ class DatabaseHelper {
       largestFishPhotoPath = media?.filePath;
     }
     
+    // Species records (largest fish per species)
+    final speciesRecords = <String, Map<String, dynamic>>{};
+    for (final catch_ in catches) {
+      final currentRecord = speciesRecords[catch_.fishType];
+      if (currentRecord == null || catch_.lengthCm > (currentRecord['length'] as int)) {
+        String? photoPath;
+        if (catch_.id != null) {
+          final media = await getPrimaryMediaForCatch(catch_.id!);
+          photoPath = media?.filePath;
+        }
+        speciesRecords[catch_.fishType] = {
+          'id': catch_.id,
+          'fishType': catch_.fishType,
+          'length': catch_.lengthCm,
+          'photoPath': photoPath,
+        };
+      }
+    }
+    
+    // Convert to list and sort by length descending
+    final speciesRecordsList = speciesRecords.values.toList()
+      ..sort((a, b) => (b['length'] as int).compareTo(a['length'] as int));
+    
+    // Location statistics
+    final locationCounts = <String, int>{};
+    final locationLargestFish = <String, Map<String, dynamic>>{};
+    for (final catch_ in catches) {
+      final location = catch_.location ?? 'Unknown';
+      locationCounts[location] = (locationCounts[location] ?? 0) + 1;
+      
+      final currentLargest = locationLargestFish[location];
+      if (currentLargest == null || catch_.lengthCm > (currentLargest['length'] as int)) {
+        locationLargestFish[location] = {
+          'id': catch_.id,
+          'fishType': catch_.fishType,
+          'length': catch_.lengthCm,
+        };
+      }
+    }
+    
+    String? mostProductiveLocation;
+    int? mostProductiveLocationCount;
+    if (locationCounts.isNotEmpty) {
+      final mostProductive = locationCounts.entries
+          .reduce((a, b) => a.value > b.value ? a : b);
+      mostProductiveLocation = mostProductive.key;
+      mostProductiveLocationCount = mostProductive.value;
+    }
+    
+    String? largestFishLocation;
+    if (largestFish.location != null) {
+      largestFishLocation = largestFish.location;
+    }
+    
+    // Total unique locations
+    final totalLocations = locationCounts.length;
+    
+    // Total species
+    final totalSpecies = fishTypeStats.length;
+    
+    // Total photos (count all media items)
+    final allMedia = await db.query('catch_media');
+    final totalPhotos = allMedia.length;
+    
+    // Catches with coordinates
+    final catchesWithCoords = catches.where((c) => c.latitude != null && c.longitude != null).length;
+    final locationPercentage = totalCatches > 0 ? (catchesWithCoords / totalCatches * 100).toStringAsFixed(1) : '0.0';
+    
     return {
       'totalCatches': totalCatches,
       'largestFish': {
@@ -739,6 +807,7 @@ class DatabaseHelper {
         'length': largestFish.lengthCm,
         'fishingBuddy': largestFishBuddy,
         'photoPath': largestFishPhotoPath,
+        'dateCaught': largestFish.dateCaught ?? largestFish.createdAt,
       },
       'averageLength': averageLength,
       'mostCommonFishType': mostCommonFishType,
@@ -750,16 +819,31 @@ class DatabaseHelper {
         'date': mostRecentCatch.dateCaught ?? mostRecentCatch.createdAt,
         'fishingBuddy': mostRecentCatchBuddy,
         'photoPath': mostRecentCatchPhotoPath,
+        'location': mostRecentCatch.location,
       },
       'totalTrips': totalTrips,
       'mostProductiveTrip': {
         'id': mostProductiveTripId,
         'name': mostProductiveTrip,
         'photoPath': mostProductiveTripPhotoPath,
+        'location': mostProductiveTripId != null 
+            ? trips.firstWhere((t) => t.id == mostProductiveTripId, orElse: () => trips.first).location 
+            : null,
+        'catchCount': mostProductiveTripId != null ? tripCatches[mostProductiveTripId] : 0,
       },
       'largestFishByTrip': largestFishByTrip,
       'averageCatchesPerTrip': averageCatchesPerTrip,
       'topFishTypes': topFishTypes,
+      'speciesRecords': speciesRecordsList,
+      'totalLocations': totalLocations,
+      'mostProductiveLocation': mostProductiveLocation,
+      'mostProductiveLocationCount': mostProductiveLocationCount,
+      'largestFishLocation': largestFishLocation,
+      'totalSpecies': totalSpecies,
+      'totalPhotos': totalPhotos,
+      'totalBuddies': buddies.length,
+      'catchesWithCoordinates': catchesWithCoords,
+      'locationPercentage': locationPercentage,
     };
   }
 

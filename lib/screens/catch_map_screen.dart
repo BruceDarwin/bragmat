@@ -8,6 +8,7 @@ import '../models/catch_media.dart';
 import '../models/fishing_buddy.dart';
 import '../models/fishing_trip.dart';
 import 'catch_details_screen.dart';
+import '../services/connectivity_service.dart';
 
 class CatchMapScreen extends StatefulWidget {
   final Catch? centerOnCatch;
@@ -31,6 +32,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
   Map<int, String> _fishingTripNames = {};
   Map<int, CatchMedia> _primaryMedia = {};
   bool _isLoading = true;
+  bool _isOnline = true;
   
   // Filter state
   int? _selectedTripId;
@@ -39,11 +41,29 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
   
   // Map controller for programmatic control
   final MapController _mapController = MapController();
+  final ConnectivityService _connectivityService = ConnectivityService();
 
   @override
   void initState() {
     super.initState();
     _loadData();
+    _checkConnectivity();
+    _connectivityService.connectivityStream.listen((isOnline) {
+      if (mounted) {
+        setState(() {
+          _isOnline = isOnline;
+        });
+      }
+    });
+  }
+
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivityService.checkConnection();
+    if (mounted) {
+      setState(() {
+        _isOnline = isOnline;
+      });
+    }
   }
 
   Future<void> _loadData() async {
@@ -236,7 +256,9 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
           ? const Center(child: CircularProgressIndicator())
           : _filteredCatches.isEmpty
               ? _buildEmptyState()
-              : _buildMap(),
+              : _isOnline
+                  ? _buildMap()
+                  : _buildOfflineMap(),
       floatingActionButton: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -355,6 +377,81 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
               textAlign: TextAlign.center,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOfflineMap() {
+    return Container(
+      color: Colors.grey[200],
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.cloud_off,
+                size: 64,
+                color: Colors.orange[700],
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Map tiles unavailable',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: Colors.grey[800],
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'No internet connection',
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${_filteredCatches.length} catches with coordinates',
+                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      if (_filteredCatches.isNotEmpty) ...[
+                        const Divider(),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Coordinates are saved and will display when online',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                color: Colors.grey[600],
+                              ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
