@@ -7,6 +7,7 @@ import '../models/catch.dart';
 import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
 import '../models/journal_media.dart';
+import '../services/current_trip_service.dart';
 import 'catch_details_screen.dart';
 import 'add_trip_screen.dart';
 import 'photo_viewer_screen.dart';
@@ -30,6 +31,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   List<TripJournal> _journalEntries = [];
   Map<int, String> _journalPrimaryMediaPaths = {};
   bool _isLoading = true;
+  int? _currentTripId;
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _searchController = TextEditingController();
 
@@ -38,6 +40,16 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     super.initState();
     _trip = widget.trip;
     _loadData();
+    _loadCurrentTrip();
+  }
+
+  Future<void> _loadCurrentTrip() async {
+    final currentTripId = await CurrentTripService.getCurrentTripId();
+    if (mounted) {
+      setState(() {
+        _currentTripId = currentTripId;
+      });
+    }
   }
 
   Future<void> _loadData() async {
@@ -236,12 +248,48 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     }
   }
 
+  Future<void> _setCurrentTrip() async {
+    if (_trip.id != null) {
+      await CurrentTripService.setCurrentTrip(_trip.id);
+      setState(() {
+        _currentTripId = _trip.id;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${_trip.name} set as current trip')),
+        );
+      }
+    }
+  }
+
+  Future<void> _clearCurrentTrip() async {
+    await CurrentTripService.clearCurrentTrip();
+    setState(() {
+      _currentTripId = null;
+    });
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Current trip cleared')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Trip Details'),
         actions: [
+          if (_currentTripId != _trip.id)
+            TextButton(
+              onPressed: _setCurrentTrip,
+              child: const Text('Set as Current Trip'),
+            )
+          else
+            TextButton(
+              onPressed: _clearCurrentTrip,
+              child: const Text('Clear Current Trip'),
+            ),
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () async {

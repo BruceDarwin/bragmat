@@ -246,7 +246,7 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
                                         borderRadius: BorderRadius.circular(12),
                                       ),
                                       child: const Text(
-                                        'CURRENT',
+                                        'Current Trip',
                                         style: TextStyle(
                                           color: Colors.white,
                                           fontSize: 10,
@@ -263,16 +263,14 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
                                     ),
                                   ),
                                   if (!isCurrentTrip)
-                                    IconButton(
-                                      icon: const Icon(Icons.star_border),
+                                    TextButton(
                                       onPressed: () => _setCurrentTrip(trip),
-                                      tooltip: 'Set as Current Trip',
+                                      child: const Text('Set Current Trip'),
                                     )
                                   else
-                                    IconButton(
-                                      icon: const Icon(Icons.star),
+                                    TextButton(
                                       onPressed: () => _clearCurrentTrip(),
-                                      tooltip: 'Clear Current Trip',
+                                      child: const Text('Clear Current Trip'),
                                     ),
                                   IconButton(
                                     icon: const Icon(Icons.delete),

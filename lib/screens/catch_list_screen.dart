@@ -33,6 +33,7 @@ class _CatchListScreenState extends State<CatchListScreen> {
   DateTime? _endDateFilter;
   bool? _hasPhotosFilter;
   bool? _hasLocationFilter;
+  bool _currentTripOnlyFilter = false;
   
   // Sorting
   String _sortOption = 'Most Recent';
@@ -175,6 +176,11 @@ class _CatchListScreenState extends State<CatchListScreen> {
       filtered = filtered.where((c) => c.tripId == _selectedTripFilter).toList();
     }
     
+    // Apply current trip only filter
+    if (_currentTripOnlyFilter && _currentTripId != null) {
+      filtered = filtered.where((c) => c.tripId == _currentTripId).toList();
+    }
+    
     // Apply buddy filter
     if (_selectedBuddyFilter != null) {
       filtered = filtered.where((c) => c.fishingBuddyId == _selectedBuddyFilter).toList();
@@ -255,6 +261,7 @@ class _CatchListScreenState extends State<CatchListScreen> {
       _endDateFilter = null;
       _hasPhotosFilter = null;
       _hasLocationFilter = null;
+      _currentTripOnlyFilter = false;
       _sortOption = 'Most Recent';
     });
     _applyFiltersAndSort();
@@ -270,6 +277,7 @@ class _CatchListScreenState extends State<CatchListScreen> {
            _endDateFilter != null ||
            _hasPhotosFilter != null ||
            _hasLocationFilter != null ||
+           _currentTripOnlyFilter ||
            _sortOption != 'Most Recent';
   }
 
@@ -531,6 +539,78 @@ class _CatchListScreenState extends State<CatchListScreen> {
             ),
           ),
           
+          // Current trip banner (only shown when current trip is set)
+          if (_currentTripName != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primaryContainer,
+                border: Border(
+                  bottom: BorderSide(
+                    color: Theme.of(context).colorScheme.outlineVariant,
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.directions_boat,
+                    color: Theme.of(context).colorScheme.primary,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Current Trip: $_currentTripName',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onPrimaryContainer,
+                            fontWeight: FontWeight.w500,
+                          ),
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      await CurrentTripService.clearCurrentTrip();
+                      setState(() {
+                        _currentTripId = null;
+                        _currentTripName = null;
+                        _currentTripOnlyFilter = false;
+                      });
+                      _applyFiltersAndSort();
+                      _loadMoreCatches();
+                    },
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      minimumSize: const Size(0, 32),
+                    ),
+                    child: const Text('Clear'),
+                  ),
+                ],
+              ),
+            ),
+          
+          // Current Trip Only filter (only shown when current trip is set)
+          if (_currentTripId != null)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: FilterChip(
+                label: const Text('Show Current Trip Only'),
+                selected: _currentTripOnlyFilter,
+                onSelected: (selected) {
+                  setState(() {
+                    _currentTripOnlyFilter = selected;
+                  });
+                  _applyFiltersAndSort();
+                  _loadMoreCatches();
+                },
+                avatar: _currentTripOnlyFilter 
+                    ? const Icon(Icons.check, size: 18)
+                    : const Icon(Icons.directions_boat, size: 18),
+              ),
+            ),
+          
           // Active filters and count
           if (_hasActiveFilters())
             Container(
@@ -621,6 +701,15 @@ class _CatchListScreenState extends State<CatchListScreen> {
                               _loadMoreCatches();
                             },
                           ),
+                        if (_currentTripOnlyFilter)
+                          Chip(
+                            label: const Text('Show Current Trip Only'),
+                            onDeleted: () {
+                              setState(() => _currentTripOnlyFilter = false);
+                              _applyFiltersAndSort();
+                              _loadMoreCatches();
+                            },
+                          ),
                       ],
                     ),
                   ),
@@ -636,67 +725,14 @@ class _CatchListScreenState extends State<CatchListScreen> {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Text(
-              'Showing ${_paginatedCatches.length} of ${_displayedCatches.length} catches',
+              _currentTripOnlyFilter
+                  ? 'Showing ${_paginatedCatches.length} catches from $_currentTripName'
+                  : 'Showing ${_paginatedCatches.length} of ${_displayedCatches.length} catches',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Colors.grey[600],
                   ),
             ),
           ),
-          
-          // Current trip banner
-          if (_currentTripName != null)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primaryContainer,
-                border: Border(
-                  bottom: BorderSide(
-                    color: Theme.of(context).colorScheme.outlineVariant,
-                    width: 1,
-                  ),
-                ),
-              ),
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.directions_boat,
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Current Trip',
-                          style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                color: Theme.of(context).colorScheme.onPrimaryContainer,
-                              ),
-                        ),
-                        Text(
-                          _currentTripName!,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                color: Theme.of(context).colorScheme.onPrimaryContainer,
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  TextButton(
-                    onPressed: () async {
-                      await CurrentTripService.clearCurrentTrip();
-                      setState(() {
-                        _currentTripId = null;
-                        _currentTripName = null;
-                      });
-                    },
-                    child: const Text('Clear'),
-                  ),
-                ],
-              ),
-            ),
           
           // Catch list with pagination
           Expanded(
