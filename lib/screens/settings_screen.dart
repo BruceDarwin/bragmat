@@ -8,6 +8,7 @@ import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
 import '../services/backup_service.dart';
+import '../services/preferences_service.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -20,6 +21,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<String> _fishTypes = [];
   List<Catch> _catches = [];
   List<FishingBuddy> _fishingBuddies = [];
+  FishTypeSelectionMode _fishTypeSelectionMode = FishTypeSelectionMode.noDefault;
+  String? _defaultFishType;
 
   @override
   void initState() {
@@ -27,6 +30,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadFishTypes();
     _loadStatistics();
     _loadFishingBuddies();
+    _loadFishTypePreferences();
   }
 
   Future<void> _loadStatistics() async {
@@ -49,6 +53,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final buddies = await DatabaseHelper.instance.getFishingBuddies();
     setState(() {
       _fishingBuddies = buddies;
+    });
+  }
+
+  Future<void> _loadFishTypePreferences() async {
+    final mode = await PreferencesService.getFishTypeSelectionMode();
+    final defaultFishType = await PreferencesService.getDefaultFishType();
+    setState(() {
+      _fishTypeSelectionMode = mode;
+      _defaultFishType = defaultFishType;
+    });
+  }
+
+  Future<void> _setFishTypeSelectionMode(FishTypeSelectionMode mode) async {
+    await PreferencesService.setFishTypeSelectionMode(mode);
+    setState(() {
+      _fishTypeSelectionMode = mode;
+    });
+  }
+
+  Future<void> _setDefaultFishType(String? fishType) async {
+    await PreferencesService.setDefaultFishType(fishType);
+    setState(() {
+      _defaultFishType = fishType;
     });
   }
 
@@ -185,7 +212,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     if (confirmed == true) {
       await DatabaseHelper.instance.deleteFishType(name);
-      _loadFishTypes();
+      await _loadFishTypes();
+      
+      // Clean up preferences if the deleted fish type was in use
+      await PreferencesService.clearDefaultFishTypeIfDeleted(_fishTypes);
+      await PreferencesService.clearLastUsedFishTypeIfDeleted(_fishTypes);
+      await _loadFishTypePreferences();
+      
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Fish type deleted')),
@@ -1198,6 +1231,78 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         ? mostRecentCatch.dateCaught?.toString().split(' ')[0] ?? mostRecentCatch.createdAt.toString().split(' ')[0]
                         : 'No catches yet',
                   ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+
+          // Fish Type Preferences Section
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Fish Type Preferences',
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  DropdownButtonFormField<FishTypeSelectionMode>(
+                    value: _fishTypeSelectionMode,
+                    decoration: const InputDecoration(
+                      labelText: 'Fish Type Selection Mode',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: const [
+                      DropdownMenuItem(
+                        value: FishTypeSelectionMode.noDefault,
+                        child: Text('No Default'),
+                      ),
+                      DropdownMenuItem(
+                        value: FishTypeSelectionMode.defaultFishType,
+                        child: Text('Default Fish Type'),
+                      ),
+                      DropdownMenuItem(
+                        value: FishTypeSelectionMode.rememberLastUsed,
+                        child: Text('Remember Last Used Fish Type'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) {
+                        _setFishTypeSelectionMode(value);
+                      }
+                    },
+                  ),
+                  if (_fishTypeSelectionMode == FishTypeSelectionMode.defaultFishType) ...[
+                    const SizedBox(height: 16),
+                    DropdownButtonFormField<String>(
+                      value: _defaultFishType,
+                      decoration: const InputDecoration(
+                        labelText: 'Default Fish Type',
+                        border: OutlineInputBorder(),
+                      ),
+                      items: [
+                        const DropdownMenuItem(
+                          value: null,
+                          child: Text('None'),
+                        ),
+                        ..._fishTypes.map((type) {
+                          return DropdownMenuItem(
+                            value: type,
+                            child: Text(type),
+                          );
+                        }),
+                      ],
+                      onChanged: (value) {
+                        _setDefaultFishType(value);
+                      },
+                    ),
+                  ],
                 ],
               ),
             ),

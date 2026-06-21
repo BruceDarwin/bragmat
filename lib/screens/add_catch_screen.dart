@@ -9,6 +9,8 @@ import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
 import '../models/fishing_trip.dart';
 import '../services/current_trip_service.dart';
+import '../services/preferences_service.dart';
+import 'location_picker_screen.dart';
 
 class AddCatchScreen extends StatefulWidget {
   final Catch? catchToEdit;
@@ -64,6 +66,48 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       // Set date caught to current date and time
       _dateCaught = DateTime.now();
     }
+  }
+
+  Future<void> _applyFishTypePreference() async {
+    debugPrint('=== Applying Fish Type Preference ===');
+    debugPrint('Editing existing catch: ${widget.catchToEdit != null}');
+    debugPrint('Current fish types loaded: $_fishTypes');
+    
+    final mode = await PreferencesService.getFishTypeSelectionMode();
+    debugPrint('Fish type selection mode: $mode');
+    
+    if (mode == FishTypeSelectionMode.defaultFishType) {
+      final defaultFishType = await PreferencesService.getDefaultFishType();
+      debugPrint('Default fish type from preferences: $defaultFishType');
+      debugPrint('Default fish type exists in list: ${_fishTypes.contains(defaultFishType ?? "")}');
+      
+      if (defaultFishType != null && _fishTypes.contains(defaultFishType)) {
+        debugPrint('Setting selected fish type to: $defaultFishType');
+        setState(() {
+          _selectedFishType = defaultFishType;
+        });
+        debugPrint('Selected fish type after setState: $_selectedFishType');
+      } else {
+        debugPrint('NOT setting default fish type - either null or not in list');
+      }
+    } else if (mode == FishTypeSelectionMode.rememberLastUsed) {
+      final lastUsedFishType = await PreferencesService.getLastUsedFishType();
+      debugPrint('Last used fish type from preferences: $lastUsedFishType');
+      debugPrint('Last used fish type exists in list: ${_fishTypes.contains(lastUsedFishType ?? "")}');
+      
+      if (lastUsedFishType != null && _fishTypes.contains(lastUsedFishType)) {
+        debugPrint('Setting selected fish type to: $lastUsedFishType');
+        setState(() {
+          _selectedFishType = lastUsedFishType;
+        });
+        debugPrint('Selected fish type after setState: $_selectedFishType');
+      } else {
+        debugPrint('NOT setting last used fish type - either null or not in list');
+      }
+    } else {
+      debugPrint('No Default mode - leaving fish type unselected');
+    }
+    debugPrint('=== End Applying Fish Type Preference ===');
   }
 
   Future<void> _retrieveLostData() async {
@@ -142,6 +186,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _selectedFishType = currentFishType.isEmpty ? null : currentFishType;
       }
     });
+    
+    // Apply fish type preference after fish types are loaded (only for new catches)
+    // Use a callback to ensure setState has completed
+    if (widget.catchToEdit == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        await _applyFishTypePreference();
+      });
+    }
   }
 
   Future<void> _loadFishingBuddies() async {
@@ -543,6 +595,29 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     debugPrint('=== End Getting Current Location ===');
   }
 
+  Future<void> _pickLocationOnMap() async {
+    final currentLat = double.tryParse(_latitudeController.text);
+    final currentLng = double.tryParse(_longitudeController.text);
+
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => LocationPickerScreen(
+          initialLatitude: currentLat,
+          initialLongitude: currentLng,
+        ),
+      ),
+    );
+
+    if (result != null && mounted) {
+      setState(() {
+        _latitudeController.text = result['latitude'].toString();
+        _longitudeController.text = result['longitude'].toString();
+        _coordinateSource = 'Map Selected';
+      });
+    }
+  }
+
   void _saveCatch() async {
     debugPrint('=== Save Catch Button Tapped ===');
     
@@ -641,6 +716,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         }
         debugPrint('All media inserted');
       }
+      
+      // Remember last used fish type
+      await PreferencesService.setLastUsedFishType(fishType);
     } catch (e, stackTrace) {
       debugPrint('ERROR saving catch: $e');
       debugPrint('Stack trace: $stackTrace');
@@ -906,13 +984,30 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            ElevatedButton.icon(
-              onPressed: _getCurrentLocation,
-              icon: const Icon(Icons.location_on),
-              label: const Text('Use Current Location'),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 48),
-              ),
+            Row(
+              children: [
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _getCurrentLocation,
+                    icon: const Icon(Icons.location_on),
+                    label: const Text('Use Current Location'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _pickLocationOnMap,
+                    icon: const Icon(Icons.map),
+                    label: const Text('Pick on Map'),
+                    style: ElevatedButton.styleFrom(
+                      minimumSize: const Size(double.infinity, 48),
+                    ),
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 16),
             TextField(
