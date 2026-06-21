@@ -245,6 +245,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     final length = largestFish['length'] as int;
     final dateCaught = largestFish['dateCaught'] as DateTime?;
     final photoPath = largestFish['photoPath'] as String?;
+    final location = largestFish['location'] as String?;
 
     return GestureDetector(
       onTap: fishId != null
@@ -295,7 +296,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'Largest Fish',
+                          'Personal Best',
                           style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                                 color: Colors.grey[600],
                               ),
@@ -308,20 +309,45 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         _buildDetailChip(Icons.straighten, '$length cm'),
-                        if (dateCaught != null) ...[
-                          const SizedBox(width: 8),
+                        if (dateCaught != null)
                           _buildDetailChip(
                             Icons.calendar_today,
                             '${dateCaught.day}/${dateCaught.month}/${dateCaught.year}',
                           ),
-                        ],
                       ],
                     ),
+                    if (location != null && location.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.location_on,
+                            size: 16,
+                            color: Colors.grey[600],
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              location,
+                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                    color: Colors.grey[600],
+                                  ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -427,12 +453,15 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         _buildDetailChip(Icons.straighten, '$length cm'),
-                        const SizedBox(width: 8),
                         _buildDetailChip(
                           Icons.calendar_today,
                           '${date.day}/${date.month}/${date.year}',
@@ -566,15 +595,17 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
                             fontWeight: FontWeight.bold,
                           ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 8),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         _buildDetailChip(Icons.catching_pokemon, '$catchCount catches'),
-                        if (location != null && location.isNotEmpty) ...[
-                          const SizedBox(width: 8),
+                        if (location != null && location.isNotEmpty)
                           _buildDetailChip(Icons.location_on, location),
-                        ],
                       ],
                     ),
                   ],
@@ -657,7 +688,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
                 const SizedBox(width: 8),
                 Text(
-                  'Top 5 Species by Catch Count',
+                  'Species Statistics',
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -669,6 +700,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               final fishName = fishType['fishType'] as String;
               final count = fishType['count'] as int;
               final avgLength = fishType['averageLength'] as double;
+              final smallestLength = fishType['smallestLength'] as int?;
               
               // Find largest for this species
               final speciesRecords = _statistics!['speciesRecords'] as List?;
@@ -694,6 +726,8 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                             style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                                   fontWeight: FontWeight.w600,
                                 ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ),
                         Text(
@@ -705,13 +739,15 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       ],
                     ),
                     const SizedBox(height: 4),
-                    Row(
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
                       children: [
                         _buildDetailChip(Icons.straighten, 'Avg: ${avgLength.toStringAsFixed(1)} cm'),
-                        if (largestLength != null) ...[
-                          const SizedBox(width: 8),
+                        if (largestLength != null)
                           _buildDetailChip(Icons.emoji_events, 'Largest: $largestLength cm'),
-                        ],
+                        if (smallestLength != null)
+                          _buildDetailChip(Icons.trending_down, 'Smallest: $smallestLength cm'),
                       ],
                     ),
                     const SizedBox(height: 8),
@@ -731,6 +767,9 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     if (speciesRecords == null || speciesRecords.isEmpty) {
       return const SizedBox.shrink();
     }
+
+    final displayRecords = speciesRecords.take(10).toList();
+    final hasMore = speciesRecords.length > 10;
 
     return Card(
       child: Padding(
@@ -752,14 +791,27 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                         fontWeight: FontWeight.bold,
                       ),
                 ),
+                const Spacer(),
+                if (hasMore)
+                  TextButton(
+                    onPressed: () {
+                      // TODO: Navigate to full species records screen
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('View All coming soon')),
+                      );
+                    },
+                    child: const Text('View All'),
+                  ),
               ],
             ),
             const SizedBox(height: 16),
-            ...speciesRecords.take(5).map((record) {
+            ...displayRecords.map((record) {
               final fishType = record['fishType'] as String;
               final length = record['length'] as int;
               final catchId = record['id'] as int?;
               final photoPath = record['photoPath'] as String?;
+              final dateCaught = record['dateCaught'] as DateTime?;
+              final location = record['location'] as String?;
 
               return GestureDetector(
                 onTap: catchId != null
@@ -799,12 +851,15 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
                               fishType,
                               style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                                     fontWeight: FontWeight.w600,
                                   ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
                             ),
                             Text(
                               '$length cm',
@@ -813,6 +868,52 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                                     color: Theme.of(context).colorScheme.primary,
                                   ),
                             ),
+                            if (dateCaught != null) ...[
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.calendar_today,
+                                    size: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      '${dateCaught.day}/${dateCaught.month}/${dateCaught.year}',
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            color: Colors.grey[600],
+                                          ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                            if (location != null && location.isNotEmpty) ...[
+                              const SizedBox(height: 2),
+                              Row(
+                                children: [
+                                  Icon(
+                                    Icons.location_on,
+                                    size: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                  const SizedBox(width: 4),
+                                  Expanded(
+                                    child: Text(
+                                      location,
+                                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                            color: Colors.grey[600],
+                                          ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
                           ],
                         ),
                       ),

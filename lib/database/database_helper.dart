@@ -695,20 +695,9 @@ class DatabaseHelper {
       fishTypeStats[catch_.fishType] = stats;
     }
     
-    // Get top 5 fish types by count with average length
+    // Most common fish type (for backward compatibility)
     final sortedFishTypes = fishTypeStats.entries.toList()
       ..sort((a, b) => b.value['count']!.compareTo(a.value['count']!));
-    final topFishTypes = sortedFishTypes.take(5).map((entry) {
-      final count = entry.value['count']!;
-      final avgLength = entry.value['totalLength']! / count;
-      return {
-        'fishType': entry.key,
-        'count': count,
-        'averageLength': avgLength,
-      };
-    }).toList();
-    
-    // Most common fish type (for backward compatibility)
     final mostCommonFishType = sortedFishTypes.isNotEmpty 
         ? sortedFishTypes.first.key 
         : null;
@@ -797,9 +786,11 @@ class DatabaseHelper {
       largestFishPhotoPath = media?.filePath;
     }
     
-    // Species records (largest fish per species)
+    // Species records (largest and smallest fish per species)
     final speciesRecords = <String, Map<String, dynamic>>{};
+    final speciesSmallest = <String, Map<String, dynamic>>{};
     for (final catch_ in catches) {
+      // Track largest
       final currentRecord = speciesRecords[catch_.fishType];
       if (currentRecord == null || catch_.lengthCm > (currentRecord['length'] as int)) {
         String? photoPath;
@@ -812,11 +803,46 @@ class DatabaseHelper {
           'fishType': catch_.fishType,
           'length': catch_.lengthCm,
           'photoPath': photoPath,
+          'dateCaught': catch_.dateCaught ?? catch_.createdAt,
+          'location': catch_.location,
+        };
+      }
+      // Track smallest
+      final currentSmallest = speciesSmallest[catch_.fishType];
+      if (currentSmallest == null || catch_.lengthCm < (currentSmallest['length'] as int)) {
+        speciesSmallest[catch_.fishType] = {
+          'id': catch_.id,
+          'length': catch_.lengthCm,
         };
       }
     }
     
-    // Convert to list and sort by length descending
+    // Add smallest length to fish type stats
+    final fishTypeStatsWithSmallest = <String, Map<String, dynamic>>{};
+    for (final entry in fishTypeStats.entries) {
+      final fishType = entry.key;
+      final stats = entry.value;
+      final smallest = speciesSmallest[fishType];
+      fishTypeStatsWithSmallest[fishType] = {
+        ...stats,
+        'smallestLength': smallest?['length'] as int?,
+      };
+    }
+    
+    // Get top 5 fish types by count with average length
+    final topFishTypes = sortedFishTypes.take(5).map((entry) {
+      final count = entry.value['count']!;
+      final avgLength = entry.value['totalLength']! / count;
+      final statsWithSmallest = fishTypeStatsWithSmallest[entry.key];
+      return {
+        'fishType': entry.key,
+        'count': count,
+        'averageLength': avgLength,
+        'smallestLength': statsWithSmallest?['smallestLength'] as int?,
+      };
+    }).toList();
+    
+    // Convert species records to list and sort by length descending
     final speciesRecordsList = speciesRecords.values.toList()
       ..sort((a, b) => (b['length'] as int).compareTo(a['length'] as int));
     
@@ -874,6 +900,7 @@ class DatabaseHelper {
         'fishingBuddy': largestFishBuddy,
         'photoPath': largestFishPhotoPath,
         'dateCaught': largestFish.dateCaught ?? largestFish.createdAt,
+        'location': largestFish.location,
       },
       'averageLength': averageLength,
       'mostCommonFishType': mostCommonFishType,
