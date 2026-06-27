@@ -1096,7 +1096,6 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         
         const SizedBox(height: 16),
       ],
-      ),
     );
   }
 
