@@ -94,26 +94,16 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Catch Activity Summary
-          _buildSectionTitle('Activity Summary'),
+          // Lifetime Fishing Section
+          _buildSectionTitle('Lifetime Fishing'),
           const SizedBox(height: 8),
-          _buildActivitySummary(),
+          _buildLifetimeFishingSection(),
           const SizedBox(height: 24),
 
-          // Achievements
-          _buildSectionTitle('Achievements'),
-          const SizedBox(height: 8),
-          _buildAchievementsCard(),
-          const SizedBox(height: 24),
-
-          // Featured Cards
+          // Highlights Section
           _buildSectionTitle('Highlights'),
           const SizedBox(height: 8),
-          _buildLargestFishCard(),
-          const SizedBox(height: 16),
-          _buildMostRecentCatchCard(),
-          const SizedBox(height: 16),
-          _buildMostProductiveTripCard(),
+          _buildHighlightsSection(),
           const SizedBox(height: 24),
 
           // Species Statistics
@@ -143,215 +133,149 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
     );
   }
 
-  Widget _buildActivitySummary() {
+  Widget _buildLifetimeFishingSection() {
     final totalCatches = _statistics!['totalCatches'] as int;
-    final totalTrips = _statistics!['totalTrips'] as int;
-    final totalBuddies = _statistics!['totalBuddies'] as int;
     final totalSpecies = _statistics!['totalSpecies'] as int;
+    final totalTrips = _statistics!['totalTrips'] as int;
     final totalPhotos = _statistics!['totalPhotos'] as int;
+    
+    final unlockedCount = _achievementStats?['unlockedCount'] as int? ?? 0;
+    final totalCount = _achievementStats?['totalCount'] as int? ?? 0;
+    final completionPercentage = _achievementStats?['completionPercentage'] as int? ?? 0;
 
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: _buildSummaryItem(
-                    icon: Icons.catching_pokemon,
-                    value: totalCatches.toString(),
-                    label: 'Catches',
-                  ),
-                ),
-                Expanded(
-                  child: _buildSummaryItem(
-                    icon: Icons.directions_boat,
-                    value: totalTrips.toString(),
-                    label: 'Trips',
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: _buildSummaryItem(
-                    icon: Icons.person,
-                    value: totalBuddies.toString(),
-                    label: 'Buddies',
-                  ),
-                ),
-                Expanded(
-                  child: _buildSummaryItem(
-                    icon: Icons.category,
-                    value: totalSpecies.toString(),
-                    label: 'Species',
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAchievementsCard() {
-    if (_achievementStats == null) {
-      return const SizedBox.shrink();
-    }
-
-    final unlockedCount = _achievementStats!['unlockedCount'] as int;
-    final totalCount = _achievementStats!['totalCount'] as int;
-    final completionPercentage = _achievementStats!['completionPercentage'] as int;
-    final mostRecent = _achievementStats!['mostRecent'] as dynamic;
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
-                    const SizedBox(width: 8),
-                    Text(
-                      '$unlockedCount / $totalCount',
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.amber,
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '$completionPercentage%',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            if (mostRecent != null)
-              Row(
-                children: [
-                  Text(
-                    mostRecent.icon,
-                    style: const TextStyle(fontSize: 20),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Most Recent',
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Colors.grey,
-                          ),
-                        ),
-                        Text(
-                          mostRecent.name,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.w600,
-                            fontSize: 13,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            const SizedBox(height: 12),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AchievementsScreen(),
-                  ),
-                );
-              },
-              icon: const Icon(Icons.emoji_events),
-              label: const Text('View All Achievements'),
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 40),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSummaryItem({
-    required IconData icon,
-    required String value,
-    required String label,
-  }) {
     return Column(
       children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(
-            icon,
-            color: Theme.of(context).colorScheme.primary,
-            size: 24,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          value,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
+        Row(
+          children: [
+            Expanded(
+              child: _buildLifetimeCard(
+                icon: Icons.catching_pokemon,
+                value: totalCatches.toString(),
+                label: 'Total Catches',
+                subtitle: 'All time',
+                onTap: () {
+                  // Navigate to catches tab (would need to implement tab navigation)
+                },
               ),
-        ),
-        Text(
-          label,
-          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: Colors.grey[600],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildLifetimeCard(
+                icon: Icons.category,
+                value: totalSpecies.toString(),
+                label: 'Species',
+                subtitle: 'Unique fish',
               ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: _buildLifetimeCard(
+                icon: Icons.directions_boat,
+                value: totalTrips.toString(),
+                label: 'Trips',
+                subtitle: 'Fishing trips',
+                onTap: () {
+                  // Navigate to trips tab
+                },
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildLifetimeCard(
+                icon: Icons.emoji_events,
+                value: '$unlockedCount/$totalCount',
+                label: 'Achievements',
+                subtitle: '$completionPercentage% complete',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const AchievementsScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ],
     );
   }
 
-  Widget _buildLargestFishCard() {
+  Widget _buildLifetimeCard({
+    required IconData icon,
+    required String value,
+    required String label,
+    String? subtitle,
+    VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
+        elevation: onTap != null ? 2 : 0,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                icon,
+                color: Theme.of(context).colorScheme.primary,
+                size: 28,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey[500],
+                      ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHighlightsSection() {
     final largestFish = _statistics!['largestFish'] as Map<String, dynamic>?;
-    if (largestFish == null) return const SizedBox.shrink();
+    final mostCommonFishType = _statistics!['mostCommonFishType'] as String?;
+    final mostProductiveLocation = _statistics!['mostProductiveLocation'] as String?;
+    final mostProductiveLocationCount = _statistics!['mostProductiveLocationCount'] as int?;
+    final totalPhotos = _statistics!['totalPhotos'] as int;
 
-    final fishId = largestFish['id'] as int?;
-    final fishType = largestFish['fishType'] as String;
-    final length = largestFish['length'] as int;
-    final dateCaught = largestFish['dateCaught'] as DateTime?;
-    final photoPath = largestFish['photoPath'] as String?;
-    final location = largestFish['location'] as String?;
-
-    return GestureDetector(
-      onTap: fishId != null
-          ? () async {
-              final catchItem = await DatabaseHelper.instance.getCatch(fishId!);
+    return Column(
+      children: [
+        _buildHighlightRow(
+          icon: Icons.emoji_events,
+          title: 'Personal Best',
+          value: largestFish != null 
+              ? '${largestFish['fishType']} (${largestFish['length']} cm)'
+              : 'No catches yet',
+          onTap: largestFish != null ? () async {
+            final fishId = largestFish['id'] as int?;
+            if (fishId != null) {
+              final catchItem = await DatabaseHelper.instance.getCatch(fishId);
               if (catchItem != null && mounted) {
                 Navigator.push(
                   context,
@@ -361,241 +285,82 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 );
               }
             }
-          : null,
+          } : null,
+        ),
+        const SizedBox(height: 12),
+        _buildHighlightRow(
+          icon: Icons.favorite,
+          title: 'Most Caught Species',
+          value: mostCommonFishType ?? 'No catches yet',
+        ),
+        const SizedBox(height: 12),
+        _buildHighlightRow(
+          icon: Icons.location_on,
+          title: 'Favourite Location',
+          value: mostProductiveLocation != null
+              ? '$mostProductiveLocation ($mostProductiveLocationCount catches)'
+              : 'No location data',
+        ),
+        const SizedBox(height: 12),
+        _buildHighlightRow(
+          icon: Icons.photo_library,
+          title: 'Catch Photos',
+          value: totalPhotos > 0 ? '$totalPhotos photos' : 'No photos yet',
+        ),
+      ],
+    );
+  }
+
+  Widget _buildHighlightRow({
+    required IconData icon,
+    required String title,
+    required String value,
+    VoidCallback? onTap,
+  }) {
+    return GestureDetector(
+      onTap: onTap,
       child: Card(
+        elevation: onTap != null ? 2 : 0,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // Photo or icon
-              if (photoPath != null && File(photoPath).existsSync())
-                ClipRRect(
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
                   borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    File(photoPath),
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return _buildDefaultFishIcon();
-                    },
-                  ),
-                )
-              else
-                _buildDefaultFishIcon(),
+                ),
+                child: Icon(
+                  icon,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 24,
+                ),
+              ),
               const SizedBox(width: 16),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.emoji_events,
-                          color: Colors.amber,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Personal Best',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.grey[600],
-                              ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
                     Text(
-                      fishType,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        _buildDetailChip(Icons.straighten, '$length cm'),
-                        if (dateCaught != null)
-                          _buildDetailChip(
-                            Icons.calendar_today,
-                            '${dateCaught.day}/${dateCaught.month}/${dateCaught.year}',
-                          ),
-                      ],
-                    ),
-                    if (location != null && location.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.location_on,
-                            size: 16,
+                      title,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.grey[600],
                           ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              location,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.grey[600],
-                                  ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              if (fishId != null)
-                Icon(
-                  Icons.chevron_right,
-                  color: Colors.grey[400],
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDefaultFishIcon() {
-    return Container(
-      width: 80,
-      height: 80,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(
-        Icons.emoji_events,
-        color: Theme.of(context).colorScheme.primary,
-        size: 40,
-      ),
-    );
-  }
-
-  Widget _buildMostRecentCatchCard() {
-    final mostRecentCatch = _statistics!['mostRecentCatch'] as Map<String, dynamic>?;
-    if (mostRecentCatch == null) return const SizedBox.shrink();
-
-    final catchId = mostRecentCatch['id'] as int?;
-    final fishType = mostRecentCatch['fishType'] as String;
-    final length = mostRecentCatch['length'] as int;
-    final date = mostRecentCatch['date'] as DateTime;
-    final location = mostRecentCatch['location'] as String?;
-    final photoPath = mostRecentCatch['photoPath'] as String?;
-
-    return GestureDetector(
-      onTap: catchId != null
-          ? () async {
-              final catchItem = await DatabaseHelper.instance.getCatch(catchId!);
-              if (catchItem != null && mounted) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => CatchDetailsScreen(catchItem: catchItem),
-                  ),
-                );
-              }
-            }
-          : null,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Photo or icon
-              if (photoPath != null && File(photoPath).existsSync())
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    File(photoPath),
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return _buildDefaultRecentIcon();
-                    },
-                  ),
-                )
-              else
-                _buildDefaultRecentIcon(),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.access_time,
-                          color: Theme.of(context).colorScheme.primary,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Most Recent',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.grey[600],
-                              ),
-                        ),
-                      ],
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      fishType,
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
+                      value,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
                           ),
-                      maxLines: 1,
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        _buildDetailChip(Icons.straighten, '$length cm'),
-                        _buildDetailChip(
-                          Icons.calendar_today,
-                          '${date.day}/${date.month}/${date.year}',
-                        ),
-                      ],
-                    ),
-                    if (location != null && location.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.location_on,
-                            size: 16,
-                            color: Colors.grey[600],
-                          ),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              location,
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                    color: Colors.grey[600],
-                                  ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
                   ],
                 ),
               ),
-              if (catchId != null)
+              if (onTap != null)
                 Icon(
                   Icons.chevron_right,
                   color: Colors.grey[400],
@@ -603,140 +368,6 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildDefaultRecentIcon() {
-    return Container(
-      width: 80,
-      height: 80,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(
-        Icons.access_time,
-        color: Theme.of(context).colorScheme.primary,
-        size: 40,
-      ),
-    );
-  }
-
-  Widget _buildMostProductiveTripCard() {
-    final mostProductiveTrip = _statistics!['mostProductiveTrip'] as Map<String, dynamic>?;
-    if (mostProductiveTrip == null) return const SizedBox.shrink();
-
-    final tripId = mostProductiveTrip['id'] as int?;
-    final tripName = mostProductiveTrip['name'] as String?;
-    final location = mostProductiveTrip['location'] as String?;
-    final catchCount = mostProductiveTrip['catchCount'] as int?;
-    final photoPath = mostProductiveTrip['photoPath'] as String?;
-
-    return GestureDetector(
-      onTap: tripId != null
-          ? () async {
-              final trip = await DatabaseHelper.instance.getFishingTrip(tripId!);
-              if (trip != null && mounted) {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => TripDetailsScreen(trip: trip),
-                  ),
-                );
-              }
-            }
-          : null,
-      child: Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              // Photo or icon
-              if (photoPath != null && File(photoPath).existsSync())
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.file(
-                    File(photoPath),
-                    width: 80,
-                    height: 80,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return _buildDefaultTripIcon();
-                    },
-                  ),
-                )
-              else
-                _buildDefaultTripIcon(),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(
-                          Icons.directions_boat,
-                          color: Colors.blue,
-                          size: 20,
-                        ),
-                        const SizedBox(width: 4),
-                        Text(
-                          'Most Productive Trip',
-                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                color: Colors.grey[600],
-                              ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      tripName ?? 'N/A',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        _buildDetailChip(Icons.catching_pokemon, '$catchCount catches'),
-                        if (location != null && location.isNotEmpty)
-                          _buildDetailChip(Icons.location_on, location),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (tripId != null)
-                Icon(
-                  Icons.chevron_right,
-                  color: Colors.grey[400],
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDefaultTripIcon() {
-    return Container(
-      width: 80,
-      height: 80,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Icon(
-        Icons.directions_boat,
-        color: Theme.of(context).colorScheme.primary,
-        size: 40,
       ),
     );
   }
