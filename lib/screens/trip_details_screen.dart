@@ -1096,6 +1096,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         
         const SizedBox(height: 16),
       ],
+      ),
     );
   }
 
@@ -1229,7 +1230,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
           const SizedBox(height: 8),
           _buildCatchHighlightCard(
             icon: Icons.favorite,
-            title: 'Most Common Species',
+            title: _getSpeciesHighlightTitle(summary.mostCommonSpecies!),
             highlight: summary.mostCommonSpecies!,
           ),
         ],
@@ -1251,6 +1252,41 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         ],
       ],
     );
+  }
+  
+  String _getSpeciesHighlightTitle(CatchHighlight highlight) {
+    switch (highlight.highlightType) {
+      case 'only_species':
+        return 'Only Species';
+      case 'species_mix':
+        return 'Species Mix';
+      case 'most_common':
+      default:
+        return 'Most Common Species';
+    }
+  }
+  
+  String _getSpeciesDisplayText(CatchHighlight highlight) {
+    switch (highlight.highlightType) {
+      case 'species_mix':
+        return '${highlight.length} caught, ${highlight.species}';
+      case 'only_species':
+      case 'most_common':
+      default:
+        return highlight.species;
+    }
+  }
+  
+  String _getSpeciesSubtitle(CatchHighlight highlight) {
+    switch (highlight.highlightType) {
+      case 'species_mix':
+        return _formatDate(highlight.date);
+      case 'only_species':
+        return '${highlight.length} caught • ${_formatDate(highlight.date)}';
+      case 'most_common':
+      default:
+        return '${highlight.length} caught • ${_formatDate(highlight.date)}';
+    }
   }
 
   Widget _buildCatchHighlightCard({
@@ -1303,14 +1339,14 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      highlight.species,
+                      _getSpeciesDisplayText(highlight),
                       style: Theme.of(context).textTheme.bodyLarge?.copyWith(
                             fontWeight: FontWeight.w600,
                           ),
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      '${highlight.length}cm • ${_formatDate(highlight.date)}',
+                      _getSpeciesSubtitle(highlight),
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
                             color: Colors.grey[500],
                           ),

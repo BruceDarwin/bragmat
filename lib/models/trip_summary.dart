@@ -107,6 +107,7 @@ class CatchHighlight {
   final DateTime date;
   final String? photoPath;
   final int? catchId;
+  final String highlightType; // 'most_common', 'only_species', 'species_mix'
   
   CatchHighlight({
     required this.species,
@@ -114,6 +115,7 @@ class CatchHighlight {
     required this.date,
     this.photoPath,
     this.catchId,
+    this.highlightType = 'most_common',
   });
 }
 

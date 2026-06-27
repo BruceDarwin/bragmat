@@ -78,22 +78,49 @@ class TripSummaryService {
       for (final catchItem in catches) {
         speciesCounts[catchItem.fishType] = (speciesCounts[catchItem.fishType] ?? 0) + 1;
       }
-      final mostCommon = speciesCounts.entries.reduce((a, b) => a.value > b.value ? a : b);
-      final speciesCatches = catches.where((c) => c.fishType == mostCommon.key).toList();
-      final firstOfSpecies = speciesCatches.reduce((a, b) {
+      
+      final uniqueSpecies = speciesCounts.length;
+      final maxCount = speciesCounts.values.reduce((a, b) => a > b ? a : b);
+      final speciesWithMaxCount = speciesCounts.entries.where((e) => e.value == maxCount).toList();
+      
+      String highlightType;
+      String displaySpecies;
+      int displayCount;
+      
+      if (uniqueSpecies == 1) {
+        // Only one species caught
+        highlightType = 'only_species';
+        displaySpecies = speciesCounts.keys.first;
+        displayCount = maxCount;
+      } else if (speciesWithMaxCount.length == 1) {
+        // Clear winner for most common
+        highlightType = 'most_common';
+        displaySpecies = speciesWithMaxCount.first.key;
+        displayCount = maxCount;
+      } else {
+        // Tie for most common - show species mix
+        highlightType = 'species_mix';
+        displaySpecies = '$uniqueSpecies species';
+        displayCount = maxCount;
+      }
+      
+      // Get first catch for photo/date - use first catch overall for species_mix
+      final firstCatch = catches.reduce((a, b) {
         final aDate = a.dateCaught ?? a.createdAt;
         final bDate = b.dateCaught ?? b.createdAt;
         return aDate.isBefore(bDate) ? a : b;
       });
-      final primaryMedia = firstOfSpecies.id != null
-          ? await _db.getPrimaryMediaForCatch(firstOfSpecies.id!)
+      final primaryMedia = firstCatch.id != null
+          ? await _db.getPrimaryMediaForCatch(firstCatch.id!)
           : null;
+      
       mostCommonSpeciesHighlight = CatchHighlight(
-        species: mostCommon.key,
-        length: mostCommon.value,
-        date: firstOfSpecies.dateCaught ?? firstOfSpecies.createdAt,
+        species: displaySpecies,
+        length: displayCount,
+        date: firstCatch.dateCaught ?? firstCatch.createdAt,
         photoPath: primaryMedia?.filePath,
-        catchId: firstOfSpecies.id,
+        catchId: firstCatch.id,
+        highlightType: highlightType,
       );
     }
 
@@ -281,13 +308,34 @@ class TripSummaryService {
       return buffer.toString();
     }
     
-    buffer.write('produced $catches catch${catches > 1 ? 'es' : ''}');
-    
-    if (species > 0) {
-      buffer.write(' across $species spec${species > 1 ? 'ies' : 'ies'}');
+    // Build the story based on species highlight type
+    if (summary.mostCommonSpecies != null) {
+      final common = summary.mostCommonSpecies!;
+      switch (common.highlightType) {
+        case 'only_species':
+          buffer.write('produced $catches catch${catches > 1 ? 'es' : ''}, all ${common.species}. ');
+          break;
+        case 'species_mix':
+          if (common.length == 1) {
+            buffer.write('produced $catches catch${catches > 1 ? 'es' : ''} across $species spec${species > 1 ? 'ies' : 'ies'}, with one of each recorded. ');
+          } else {
+            buffer.write('produced $catches catch${catches > 1 ? 'es' : ''} across $species spec${species > 1 ? 'ies' : 'ies'}, with no single species dominating the trip. ');
+          }
+          break;
+        case 'most_common':
+        default:
+          buffer.write('produced $catches catch${catches > 1 ? 'es' : ''} across $species spec${species > 1 ? 'ies' : 'ies'}. ');
+          buffer.write('${common.species} was the most common species with ${common.length} catch${common.length > 1 ? 'es' : ''} recorded. ');
+          break;
+      }
+    } else {
+      // Fallback if no species highlight (shouldn't happen with catches)
+      buffer.write('produced $catches catch${catches > 1 ? 'es' : ''}');
+      if (species > 0) {
+        buffer.write(' across $species spec${species > 1 ? 'ies' : 'ies'}');
+      }
+      buffer.write('. ');
     }
-    
-    buffer.write('. ');
     
     // Largest fish
     if (summary.largestFish != null) {
@@ -300,12 +348,6 @@ class TripSummaryService {
         buffer.write(' caught on day $dayDiff');
       }
       buffer.write('. ');
-    }
-    
-    // Most common species
-    if (summary.mostCommonSpecies != null) {
-      final common = summary.mostCommonSpecies!;
-      buffer.write('${common.species} was the most common species with ${common.length} catch${common.length > 1 ? 'es' : ''} recorded. ');
     }
     
     // Photos
@@ -355,6 +397,25 @@ class TripSummaryService {
     buffer.writeln('📊 Average Length: ${summary.averageLength.toStringAsFixed(1)}cm');
     buffer.writeln('📸 Photos: ${summary.totalPhotos}');
     buffer.writeln('📝 Journal Entries: ${summary.journalEntryCount}');
+    
+    // Species highlights
+    if (summary.mostCommonSpecies != null) {
+      buffer.writeln('');
+      buffer.writeln('--- Species Highlights ---');
+      final common = summary.mostCommonSpecies!;
+      switch (common.highlightType) {
+        case 'only_species':
+          buffer.writeln('🐟 Only Species: ${common.species} (${common.length} caught)');
+          break;
+        case 'species_mix':
+          buffer.writeln('🐟 Species Mix: ${common.species} (${common.length} each)');
+          break;
+        case 'most_common':
+        default:
+          buffer.writeln('🐟 Most Common: ${common.species} (${common.length} caught)');
+          break;
+      }
+    }
     
     // Location highlights temporarily disabled
     // if (summary.bestLocation != null) {
