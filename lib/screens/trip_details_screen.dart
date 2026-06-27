@@ -433,49 +433,30 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                     ),
                   ),
 
-                  // Trip Photos Section
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Trip Photos (${_tripMedia.length})',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add_a_photo),
-                              onPressed: _addTripPhoto,
-                              tooltip: 'Add Photo',
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        if (_tripMedia.isEmpty)
-                          Center(
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.photo_library,
-                                  size: 48,
-                                  color: Colors.grey[400],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'No trip photos yet',
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                        color: Colors.grey[600],
-                                      ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else
+                  // Trip Photos Section - only show if there are photos
+                  if (_tripMedia.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                'Trip Photos (${_tripMedia.length})',
+                                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                              ),
+                              IconButton(
+                                icon: const Icon(Icons.add_a_photo),
+                                onPressed: _addTripPhoto,
+                                tooltip: 'Add Photo',
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 12),
                           GridView.builder(
                             shrinkWrap: true,
                             physics: const NeverScrollableScrollPhysics(),
@@ -600,101 +581,101 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                     ),
                   ),
 
-                  // Journal Section
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              'Journal (${_journalEntries.length})',
-                              style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                            ),
-                            IconButton(
-                              icon: const Icon(Icons.add),
-                              onPressed: _addJournalEntry,
-                              tooltip: 'Add Entry',
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 12),
-                        // Search bar
-                        TextField(
-                          controller: _searchController,
-                          decoration: InputDecoration(
-                            hintText: 'Search journal entries...',
-                            prefixIcon: const Icon(Icons.search),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(8),
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                // Journal Section
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            'Journal (${_journalEntries.length})',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
                           ),
-                          onChanged: _searchJournalEntries,
+                          IconButton(
+                            icon: const Icon(Icons.add),
+                            onPressed: _addJournalEntry,
+                            tooltip: 'Add Entry',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      // Search bar
+                      TextField(
+                        controller: _searchController,
+                        decoration: InputDecoration(
+                          hintText: 'Search journal entries...',
+                          prefixIcon: const Icon(Icons.search),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                         ),
-                        const SizedBox(height: 12),
-                        if (_journalEntries.isEmpty)
-                          Center(
-                            child: Column(
-                              children: [
-                                Icon(
-                                  Icons.book,
-                                  size: 48,
-                                  color: Colors.grey[400],
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'No journal entries yet',
-                                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                        color: Colors.grey[600],
-                                      ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else
-                          ListView.builder(
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            itemCount: _journalEntries.length,
-                            itemBuilder: (context, index) {
-                              final entry = _journalEntries[index];
-                              return Card(
-                                margin: const EdgeInsets.only(bottom: 8),
-                                child: InkWell(
-                                  onTap: () => _editJournalEntry(entry),
-                                  child: Padding(
-                                    padding: const EdgeInsets.all(12),
-                                    child: Row(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        if (_journalPrimaryMediaPaths[entry.id] != null)
-                                          ClipRRect(
-                                            borderRadius: BorderRadius.circular(8),
-                                            child: Image.file(
-                                              File(_journalPrimaryMediaPaths[entry.id]!),
-                                              width: 60,
-                                              height: 60,
-                                              fit: BoxFit.cover,
-                                              errorBuilder: (context, error, stackTrace) {
-                                                return Container(
-                                                  width: 60,
-                                                  height: 60,
-                                                  decoration: BoxDecoration(
-                                                    color: Colors.grey[300],
-                                                    borderRadius: BorderRadius.circular(8),
-                                                  ),
-                                                  child: const Icon(Icons.image_not_supported),
-                                                );
-                                              },
-                                            ),
+                        onChanged: _searchJournalEntries,
+                      ),
+                      const SizedBox(height: 12),
+                      if (_journalEntries.isEmpty)
+                        Center(
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.book,
+                                size: 48,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'No journal entries yet',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                      color: Colors.grey[600],
+                                    ),
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: _journalEntries.length,
+                          itemBuilder: (context, index) {
+                            final entry = _journalEntries[index];
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              child: InkWell(
+                                onTap: () => _editJournalEntry(entry),
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      if (_journalPrimaryMediaPaths[entry.id] != null)
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.file(
+                                            File(_journalPrimaryMediaPaths[entry.id]!),
+                                            width: 60,
+                                            height: 60,
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return Container(
+                                                width: 60,
+                                                height: 60,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey[300],
+                                                  borderRadius: BorderRadius.circular(8),
+                                                ),
+                                                child: const Icon(Icons.image_not_supported),
+                                              );
+                                            },
                                           ),
-                                        if (_journalPrimaryMediaPaths[entry.id] != null)
-                                          const SizedBox(width: 12),
+                                        ),
+                                      if (_journalPrimaryMediaPaths[entry.id] != null)
+                                        const SizedBox(width: 12),
                                         Expanded(
                                           child: Column(
                                             crossAxisAlignment: CrossAxisAlignment.start,
@@ -750,135 +731,136 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                     ),
                   ),
 
-                  // Catches Section
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      'Catches (${_catches.length})',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            fontWeight: FontWeight.bold,
-                          ),
-                    ),
-                  ),
-
-                  if (_catches.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Center(
-                        child: Column(
-                          children: [
-                            Icon(
-                              Icons.catching_pokemon,
-                              size: 48,
-                              color: Colors.grey[400],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'No catches yet',
-                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                    color: Colors.grey[600],
-                                  ),
-                            ),
-                          ],
+                // Catches Section
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Catches (${_catches.length})',
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                    )
-                  else
-                    ListView.builder(
-                      shrinkWrap: true,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      itemCount: _catches.length,
-                      itemBuilder: (context, index) {
-                        final catchItem = _catches[index];
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          child: InkWell(
-                            onTap: () async {
-                              final result = await Navigator.push(
-                                context,
-                                MaterialPageRoute(
-                                  builder: (_) => CatchDetailsScreen(catchItem: catchItem),
+                      if (_catches.isEmpty)
+                        Center(
+                          child: Column(
+                            children: [
+                              Icon(
+                                Icons.catching_pokemon,
+                                size: 48,
+                                color: Colors.grey[400],
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                'No catches yet',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Colors.grey[600],
                                 ),
-                              );
-                              if (result == true) {
-                                await _loadData();
-                              }
-                            },
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Row(
-                                children: [
-                                  if (_primaryMediaPaths[catchItem.id] != null)
-                                    ClipRRect(
-                                      borderRadius: BorderRadius.circular(8),
-                                      child: Image.file(
-                                        File(_primaryMediaPaths[catchItem.id]!),
-                                        width: 60,
-                                        height: 60,
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) {
-                                          return Container(
+                              ),
+                            ],
+                          ),
+                        )
+                      else
+                        ListView.builder(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          itemCount: _catches.length,
+                          itemBuilder: (context, index) {
+                            final catchItem = _catches[index];
+                            return Card(
+                              margin: const EdgeInsets.only(bottom: 12),
+                              child: InkWell(
+                                onTap: () async {
+                                  final result = await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => CatchDetailsScreen(catchItem: catchItem),
+                                    ),
+                                  );
+                                  if (result == true) {
+                                    await _loadData();
+                                  }
+                                },
+                                child: Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Row(
+                                    children: [
+                                      if (_primaryMediaPaths[catchItem.id] != null)
+                                        ClipRRect(
+                                          borderRadius: BorderRadius.circular(8),
+                                          child: Image.file(
+                                            File(_primaryMediaPaths[catchItem.id]!),
                                             width: 60,
                                             height: 60,
-                                            decoration: BoxDecoration(
-                                              color: Colors.grey[300],
-                                              borderRadius: BorderRadius.circular(8),
-                                            ),
-                                            child: const Icon(Icons.image_not_supported),
-                                          );
-                                        },
-                                      ),
-                                    )
-                                  else
-                                    Container(
-                                      width: 60,
-                                      height: 60,
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey[300],
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: const Icon(Icons.image_not_supported),
-                                    ),
-                                  const SizedBox(width: 12),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          catchItem.fishType,
-                                          style: Theme.of(context).textTheme.titleMedium,
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${catchItem.lengthCm} cm',
-                                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                                                color: Colors.grey[600],
-                                              ),
-                                        ),
-                                        if (catchItem.fishingBuddyId != null) ...[
-                                          const SizedBox(height: 4),
-                                          Text(
-                                            'Caught by ${_fishingBuddyNames[catchItem.fishingBuddyId] ?? 'Unknown'}',
-                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                                  color: Colors.grey[500],
+                                            fit: BoxFit.cover,
+                                            errorBuilder: (context, error, stackTrace) {
+                                              return Container(
+                                                width: 60,
+                                                height: 60,
+                                                decoration: BoxDecoration(
+                                                  color: Colors.grey[300],
+                                                  borderRadius: BorderRadius.circular(8),
                                                 ),
+                                                child: const Icon(Icons.image_not_supported),
+                                              );
+                                            },
                                           ),
-                                        ],
-                                      ],
-                                    ),
+                                        )
+                                      else
+                                        Container(
+                                          width: 60,
+                                          height: 60,
+                                          decoration: BoxDecoration(
+                                            color: Colors.grey[300],
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: const Icon(Icons.image_not_supported),
+                                        ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              catchItem.fishType,
+                                              style: Theme.of(context).textTheme.titleMedium,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${catchItem.lengthCm} cm',
+                                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                                    color: Colors.grey[600],
+                                                  ),
+                                            ),
+                                            if (catchItem.fishingBuddyId != null) ...[
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                'Caught by ${_fishingBuddyNames[catchItem.fishingBuddyId] ?? 'Unknown'}',
+                                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                                      color: Colors.grey[500],
+                                                    ),
+                                              ),
+                                            ],
+                                          ],
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                ],
-              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                ),
+              ],
             ),
-    );
+          ),
+  );
   }
 
   Widget _buildTripSummarySection() {
@@ -1005,21 +987,24 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         
         const SizedBox(height: 16),
         
-        // Catch Highlights
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Catch Highlights',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+        // Catch Highlights - only show if there are catches
+        if (summary.totalCatches > 0) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Catch Highlights',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _buildCatchHighlights(summary),
-        ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildCatchHighlights(summary),
+          ),
+          const SizedBox(height: 16),
+        ],
         
         const SizedBox(height: 16),
         

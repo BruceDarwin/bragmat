@@ -7,6 +7,8 @@ import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
 import '../models/journal_media.dart';
 import '../models/favourite_spot.dart';
+import '../models/achievement.dart';
+import '../models/user_achievement.dart';
 import '../services/current_trip_service.dart';
 
 class BackupService {
@@ -14,6 +16,7 @@ class BackupService {
   
   static Future<Map<String, dynamic>> createBackup() async {
     final db = DatabaseHelper.instance;
+    final database = await db.database;
 
     // Get all data
     final catches = await db.getCatches();
@@ -22,6 +25,10 @@ class BackupService {
     final fishingTrips = await db.getFishingTrips();
     final favouriteSpots = await db.getFavouriteSpots();
     final currentTripId = await CurrentTripService.getCurrentTripId();
+    
+    // Get achievements
+    final achievements = await database.query('achievements');
+    final userAchievements = await database.query('user_achievements');
 
     // Get catch media for all catches
     final mediaMap = <String, List<Map<String, dynamic>>>{};
@@ -78,6 +85,8 @@ class BackupService {
         'tripJournal': tripJournalMap,
         'journalMedia': journalMediaMap,
         'favouriteSpots': favouriteSpots.map((s) => s.toMap()).toList(),
+        'achievements': achievements,
+        'userAchievements': userAchievements,
         'currentTripId': currentTripId,
       },
     };
@@ -295,6 +304,43 @@ class BackupService {
         await db.insertFavouriteSpot(FavouriteSpot.fromMap(spotMap));
       }
     }
+    
+    // Restore achievements
+    final achievements = data['achievements'] as List<dynamic>?;
+    if (achievements != null) {
+      final database = await db.database;
+      for (final achievementData in achievements) {
+        final achievementMap = achievementData as Map<String, dynamic>;
+        // Check if achievement already exists by id
+        final existing = await database.query(
+          'achievements',
+          where: 'id = ?',
+          whereArgs: [achievementMap['id']],
+        );
+        if (existing.isEmpty) {
+          await database.insert('achievements', achievementMap);
+        }
+      }
+    }
+    
+    // Restore user achievements
+    final userAchievements = data['userAchievements'] as List<dynamic>?;
+    if (userAchievements != null) {
+      final database = await db.database;
+      for (final userAchievementData in userAchievements) {
+        final userAchievementMap = userAchievementData as Map<String, dynamic>;
+        // Check if user achievement already exists by achievement_id
+        final existing = await database.query(
+          'user_achievements',
+          where: 'achievement_id = ?',
+          whereArgs: [userAchievementMap['achievement_id']],
+        );
+        if (existing.isEmpty) {
+          userAchievementMap.remove('id');
+          await database.insert('user_achievements', userAchievementMap);
+        }
+      }
+    }
   }
   
   static Future<void> _clearAllData(DatabaseHelper db) async {
@@ -332,6 +378,11 @@ class BackupService {
         await db.deleteFavouriteSpot(spot.id!);
       }
     }
+    
+    // Delete achievements
+    final database = await db.database;
+    await database.delete('user_achievements');
+    await database.delete('achievements');
     
     await CurrentTripService.clearCurrentTrip();
   }
