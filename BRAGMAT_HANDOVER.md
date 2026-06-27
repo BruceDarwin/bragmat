@@ -540,13 +540,6 @@ From Settings screen, users can access:
 
 ### Open Bugs
 
-#### Camera Issues on Edit Catch
-- **Severity:** Medium
-- **Description:** Camera/photo picker fails when editing existing catches
-- **Impact:** Users cannot add photos when editing catches
-- **Workaround:** Delete and re-add catch with new photos
-- **Status:** Needs investigation
-
 #### Map Tile Loading
 - **Severity:** Low
 - **Description:** Map tiles load slowly on poor connections

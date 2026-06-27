@@ -874,16 +874,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
             const SizedBox(height: 16),
             Row(
               children: [
-                if (widget.catchToEdit == null) ...[
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _takePhoto,
-                      icon: const Icon(Icons.camera_alt),
-                      label: Text(_mediaItems.isEmpty ? 'Take Photo' : 'Take Photo'),
-                    ),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _takePhoto,
+                    icon: const Icon(Icons.camera_alt),
+                    label: Text(_mediaItems.isEmpty ? 'Take Photo' : 'Take Photo'),
                   ),
-                  const SizedBox(width: 12),
-                ],
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: ElevatedButton.icon(
                     onPressed: _pickImage,
