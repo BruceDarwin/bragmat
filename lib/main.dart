@@ -9,6 +9,7 @@ import 'theme.dart';
 import 'services/theme_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/notification_service.dart';
+import 'services/achievement_service.dart';
 
 void main() {
   runApp(const BragmatApp());
@@ -29,6 +30,11 @@ class _BragmatAppState extends State<BragmatApp> {
   void initState() {
     super.initState();
     _themeService.addListener(_onThemeChanged);
+    _initializeAchievements();
+  }
+
+  Future<void> _initializeAchievements() async {
+    await AchievementService().initializeAchievements();
   }
 
   @override

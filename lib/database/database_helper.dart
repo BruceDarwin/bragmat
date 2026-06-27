@@ -8,6 +8,9 @@ import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
 import '../models/journal_media.dart';
 import '../models/favourite_spot.dart';
+import '../models/achievement.dart';
+import '../models/user_achievement.dart';
+import '../services/achievement_service.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
@@ -27,7 +30,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 16,
+      version: 17,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -145,6 +148,27 @@ class DatabaseHelper {
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
         notes TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE achievements (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        description TEXT NOT NULL,
+        icon TEXT NOT NULL,
+        category TEXT NOT NULL,
+        target_value INTEGER
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE user_achievements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        achievement_id TEXT NOT NULL,
+        unlocked_date TEXT NOT NULL,
+        progress_value INTEGER,
+        FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE
       )
     ''');
 
@@ -343,6 +367,29 @@ class DatabaseHelper {
         )
       ''');
     }
+    if (oldVersion < 17) {
+      // Add achievements table
+      await db.execute('''
+        CREATE TABLE achievements (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          description TEXT NOT NULL,
+          icon TEXT NOT NULL,
+          category TEXT NOT NULL,
+          target_value INTEGER
+        )
+      ''');
+      // Add user_achievements table
+      await db.execute('''
+        CREATE TABLE user_achievements (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          achievement_id TEXT NOT NULL,
+          unlocked_date TEXT NOT NULL,
+          progress_value INTEGER,
+          FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE
+        )
+      ''');
+    }
     
     // Safety check: Ensure trip_id column exists in catches table
     // This handles cases where a database might be at a higher version but missing the column
@@ -431,7 +478,15 @@ class DatabaseHelper {
   // INSERT
   Future<int> insertCatch(Catch catchItem) async {
     final db = await instance.database;
-    return await db.insert('catches', catchItem.toMap());
+    final id = await db.insert('catches', catchItem.toMap());
+    
+    // Evaluate achievements
+    await AchievementService().evaluateCatchAchievements();
+    if (catchItem.lengthCm > 0) {
+      await AchievementService().evaluatePersonalBest(catchItem.lengthCm);
+    }
+    
+    return id;
   }
 
   Future<int> insertCatchFromMap(Map<String, dynamic> map) async {
@@ -461,12 +516,20 @@ class DatabaseHelper {
   // UPDATE
   Future<int> updateCatch(Catch catchItem) async {
     final db = await instance.database;
-    return await db.update(
+    final result = await db.update(
       'catches',
       catchItem.toMap(),
       where: 'id = ?',
       whereArgs: [catchItem.id],
     );
+    
+    // Evaluate achievements
+    await AchievementService().evaluateCatchAchievements();
+    if (catchItem.lengthCm > 0) {
+      await AchievementService().evaluatePersonalBest(catchItem.lengthCm);
+    }
+    
+    return result;
   }
 
   // DELETE
@@ -615,7 +678,12 @@ class DatabaseHelper {
 
   Future<int> insertFavouriteSpot(FavouriteSpot spot) async {
     final db = await instance.database;
-    return await db.insert('favourite_spots', spot.toMap());
+    final id = await db.insert('favourite_spots', spot.toMap());
+    
+    // Evaluate achievements
+    await AchievementService().evaluateExplorationAchievements();
+    
+    return id;
   }
 
   Future<int> updateFavouriteSpot(FavouriteSpot spot) async {
@@ -1139,7 +1207,12 @@ class DatabaseHelper {
   // TRIP JOURNAL CRUD
   Future<int> insertTripJournal(TripJournal journal) async {
     final db = await instance.database;
-    return await db.insert('trip_journal', journal.toMap());
+    final id = await db.insert('trip_journal', journal.toMap());
+    
+    // Evaluate achievements
+    await AchievementService().evaluateJournalAchievements();
+    
+    return id;
   }
 
   Future<int> insertTripJournalFromMap(Map<String, dynamic> map) async {
@@ -1326,7 +1399,12 @@ class DatabaseHelper {
   // FISHING TRIP CRUD
   Future<int> insertFishingTrip(FishingTrip trip) async {
     final db = await instance.database;
-    return await db.insert('fishing_trips', trip.toMap());
+    final id = await db.insert('fishing_trips', trip.toMap());
+    
+    // Evaluate achievements
+    await AchievementService().evaluateTripAchievements();
+    
+    return id;
   }
 
   Future<int> insertFishingTripFromMap(Map<String, dynamic> map) async {

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'dart:io';
 import '../database/database_helper.dart';
+import '../services/achievement_service.dart';
 import 'catch_details_screen.dart';
 import 'trip_details_screen.dart';
+import 'achievements_screen.dart';
 
 class StatisticsScreen extends StatefulWidget {
   const StatisticsScreen({super.key});
@@ -13,6 +15,7 @@ class StatisticsScreen extends StatefulWidget {
 
 class _StatisticsScreenState extends State<StatisticsScreen> {
   Map<String, dynamic>? _statistics;
+  Map<String, dynamic>? _achievementStats;
   bool _isLoading = true;
 
   @override
@@ -23,9 +26,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
 
   Future<void> _loadStatistics() async {
     final stats = await DatabaseHelper.instance.getStatistics();
+    final achievementStats = await AchievementService().getAchievementStats();
     if (mounted) {
       setState(() {
         _statistics = stats;
+        _achievementStats = achievementStats;
         _isLoading = false;
       });
     }
@@ -93,6 +98,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           _buildSectionTitle('Activity Summary'),
           const SizedBox(height: 8),
           _buildActivitySummary(),
+          const SizedBox(height: 24),
+
+          // Achievements
+          _buildSectionTitle('Achievements'),
+          const SizedBox(height: 8),
+          _buildAchievementsCard(),
           const SizedBox(height: 24),
 
           // Featured Cards
@@ -181,18 +192,108 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAchievementsCard() {
+    if (_achievementStats == null) {
+      return const SizedBox.shrink();
+    }
+
+    final unlockedCount = _achievementStats!['unlockedCount'] as int;
+    final totalCount = _achievementStats!['totalCount'] as int;
+    final completionPercentage = _achievementStats!['completionPercentage'] as int;
+    final mostRecent = _achievementStats!['mostRecent'] as dynamic;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: _buildSummaryItem(
-                    icon: Icons.photo_library,
-                    value: totalPhotos.toString(),
-                    label: 'Photos',
+                Row(
+                  children: [
+                    const Icon(Icons.emoji_events, color: Colors.amber, size: 24),
+                    const SizedBox(width: 8),
+                    Text(
+                      '$unlockedCount / $totalCount',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.amber,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$completionPercentage%',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
-                const Expanded(child: SizedBox()), // Spacer
               ],
+            ),
+            const SizedBox(height: 12),
+            if (mostRecent != null)
+              Row(
+                children: [
+                  Text(
+                    mostRecent.icon,
+                    style: const TextStyle(fontSize: 20),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Most Recent',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        Text(
+                          mostRecent.name,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            const SizedBox(height: 12),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AchievementsScreen(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.emoji_events),
+              label: const Text('View All Achievements'),
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(double.infinity, 40),
+              ),
             ),
           ],
         ),

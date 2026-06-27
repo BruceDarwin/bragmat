@@ -1205,7 +1205,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           ),
         ),
       ),
-    ),
-    );
+    ));
   }
 }
