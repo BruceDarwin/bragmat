@@ -1061,28 +1061,30 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
           const SizedBox(height: 16),
         ],
         
-        // Achievement Highlights
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: Text(
-            'Achievement Highlights',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                ),
+        // Achievement Highlights - only show if achievements were unlocked
+        if (summary.unlockedAchievements.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Achievement Highlights',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _buildAchievementHighlights(summary),
-        ),
-        const SizedBox(height: 16),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildAchievementHighlights(summary),
+          ),
+          const SizedBox(height: 16),
+        ],
         
-        // Trip Story
+        // Trip Recap
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Text(
-            'Trip Story',
+            'Trip Recap',
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
@@ -1091,7 +1093,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         const SizedBox(height: 8),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
-          child: _buildTripStory(summary),
+          child: _buildTripRecap(summary),
         ),
         
         const SizedBox(height: 16),
@@ -1465,31 +1467,22 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
               ],
             ),
             const SizedBox(height: 8),
-            if (summary.unlockedAchievements.isEmpty)
-              Text(
-                'No achievements unlocked during this trip.',
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                      fontStyle: FontStyle.italic,
-                    ),
-              )
-            else
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: summary.unlockedAchievements.map((achievement) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
-                    ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        const Text('🏆', style: TextStyle(fontSize: 12)),
-                        const SizedBox(width: 4),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: summary.unlockedAchievements.map((achievement) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Text('🏆', style: TextStyle(fontSize: 12)),
+                      const SizedBox(width: 4),
                         Text(
                           achievement,
                           style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1507,40 +1500,18 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     );
   }
 
-  Widget _buildTripStory(TripSummary summary) {
+  Widget _buildTripRecap(TripSummary summary) {
     final story = _tripSummaryService.generateTripStory(summary);
     
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(
-                  Icons.auto_stories,
-                  color: Theme.of(context).colorScheme.primary,
-                  size: 20,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Trip Narrative',
-                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              story,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: Colors.grey[700],
-                    height: 1.5,
-                  ),
-            ),
-          ],
+        child: Text(
+          story,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[700],
+                height: 1.5,
+              ),
         ),
       ),
     );
