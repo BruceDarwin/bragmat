@@ -118,34 +118,36 @@ class MainScreenState extends State<MainScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Column(
-        children: [
-          if (!_isOnline)
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.orange.shade100,
-              child: Row(
-                children: [
-                  Icon(
-                    Icons.cloud_off,
-                    size: 16,
-                    color: Colors.orange.shade900,
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Offline Fishing Mode',
-                    style: TextStyle(
+      body: SafeArea(
+        child: Column(
+          children: [
+            if (!_isOnline)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                color: Colors.orange.shade100,
+                child: Row(
+                  children: [
+                    Icon(
+                      Icons.cloud_off,
+                      size: 16,
                       color: Colors.orange.shade900,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 8),
+                    Text(
+                      'Offline Fishing Mode',
+                      style: TextStyle(
+                        color: Colors.orange.shade900,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-          Expanded(child: _buildScreen(_selectedIndex)),
-        ],
+            Expanded(child: _buildScreen(_selectedIndex)),
+          ],
+        ),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
