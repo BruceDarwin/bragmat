@@ -1,13 +1,17 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:share_plus/share_plus.dart';
 import '../database/database_helper.dart';
 import '../models/fishing_trip.dart';
 import '../models/catch.dart';
 import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
 import '../models/journal_media.dart';
+import '../models/trip_summary.dart';
 import '../services/current_trip_service.dart';
+import '../services/trip_summary_service.dart';
 import 'catch_details_screen.dart';
 import 'add_trip_screen.dart';
 import 'photo_viewer_screen.dart';
@@ -32,8 +36,10 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   Map<int, String> _journalPrimaryMediaPaths = {};
   bool _isLoading = true;
   int? _currentTripId;
+  TripSummary? _tripSummary;
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _searchController = TextEditingController();
+  final TripSummaryService _tripSummaryService = TripSummaryService();
 
   @override
   void initState() {
@@ -83,6 +89,14 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
       }
     }
 
+    // Load trip summary
+    TripSummary? tripSummary;
+    try {
+      tripSummary = await _tripSummaryService.generateTripSummary(_trip.id!);
+    } catch (e) {
+      // If trip summary fails, continue without it
+    }
+
     if (mounted) {
       setState(() {
         _catches = catches;
@@ -91,6 +105,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
         _tripMedia = tripMedia;
         _journalEntries = journalEntries;
         _journalPrimaryMediaPaths = journalMediaMap;
+        _tripSummary = tripSummary;
         _isLoading = false;
       });
     }
@@ -384,7 +399,10 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                     ),
                   ),
 
-                  // Stats Card
+                  // Trip Summary Section
+                  if (_tripSummary != null) _buildTripSummarySection(),
+
+                  // Stats Card (legacy, kept for compatibility)
                   Card(
                     margin: const EdgeInsets.symmetric(horizontal: 16),
                     child: Padding(
@@ -861,5 +879,655 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
               ),
             ),
     );
+  }
+
+  Widget _buildTripSummarySection() {
+    if (_tripSummary == null) return const SizedBox.shrink();
+    
+    final summary = _tripSummary!;
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Trip Summary Header with Share button
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Trip Summary',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+              ),
+              IconButton(
+                icon: const Icon(Icons.share),
+                onPressed: _shareTripReport,
+                tooltip: 'Share Trip Report',
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        
+        // Trip Summary Card
+        Card(
+          margin: const EdgeInsets.symmetric(horizontal: 16),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Trip header with photo
+                Row(
+                  children: [
+                    if (summary.primaryPhotoPath != null)
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(12),
+                        child: Image.file(
+                          File(summary.primaryPhotoPath!),
+                          width: 80,
+                          height: 80,
+                          fit: BoxFit.cover,
+                          errorBuilder: (context, error, stackTrace) {
+                            return _buildDefaultTripIcon();
+                          },
+                        ),
+                      )
+                    else
+                      _buildDefaultTripIcon(),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            summary.tripName,
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _formatDateRange(summary.startDate, summary.endDate),
+                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Colors.grey[600],
+                                ),
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: [
+                              Text(
+                                summary.durationText,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Colors.grey[500],
+                                    ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text('•'),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${summary.totalCatches} Fish',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Colors.grey[500],
+                                    ),
+                              ),
+                              const SizedBox(width: 8),
+                              const Text('•'),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${summary.speciesCount} Species',
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: Colors.grey[500],
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        
+        const SizedBox(height: 16),
+        
+        // Trip Statistics Grid
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _buildTripStatisticsGrid(summary),
+        ),
+        
+        const SizedBox(height: 16),
+        
+        // Catch Highlights
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Catch Highlights',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _buildCatchHighlights(summary),
+        ),
+        
+        const SizedBox(height: 16),
+        
+        // Location Highlights - temporarily disabled
+        // if (summary.bestLocation != null) ...[
+        //   Padding(
+        //     padding: const EdgeInsets.symmetric(horizontal: 16),
+        //     child: Text(
+        //       'Location Highlights',
+        //       style: Theme.of(context).textTheme.titleMedium?.copyWith(
+        //             fontWeight: FontWeight.bold,
+        //           ),
+        //     ),
+        //   ),
+        //   const SizedBox(height: 8),
+        //   Padding(
+        //     padding: const EdgeInsets.symmetric(horizontal: 16),
+        //     child: _buildLocationHighlights(summary),
+        //   ),
+        //   const SizedBox(height: 16),
+        // ],
+        
+        // Journal Summary
+        if (summary.journalSummary != null) ...[
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: Text(
+              'Journal Summary',
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: _buildJournalSummary(summary.journalSummary!),
+          ),
+          const SizedBox(height: 16),
+        ],
+        
+        // Achievement Highlights
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Achievement Highlights',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _buildAchievementHighlights(summary),
+        ),
+        const SizedBox(height: 16),
+        
+        // Trip Story
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: Text(
+            'Trip Story',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16),
+          child: _buildTripStory(summary),
+        ),
+        
+        const SizedBox(height: 16),
+      ],
+    );
+  }
+
+  Widget _buildDefaultTripIcon() {
+    return Container(
+      width: 80,
+      height: 80,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Icon(
+        Icons.directions_boat,
+        color: Theme.of(context).colorScheme.primary,
+        size: 40,
+      ),
+    );
+  }
+
+  Widget _buildTripStatisticsGrid(TripSummary summary) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.catching_pokemon,
+                    label: 'Total Catches',
+                    value: summary.totalCatches.toString(),
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.category,
+                    label: 'Species',
+                    value: summary.speciesCount.toString(),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.straighten,
+                    label: 'Largest Fish',
+                    value: summary.largestFishLength != null 
+                        ? '${summary.largestFishLength}cm'
+                        : 'N/A',
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.show_chart,
+                    label: 'Avg Length',
+                    value: '${summary.averageLength.toStringAsFixed(1)}cm',
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.photo_library,
+                    label: 'Photos',
+                    value: summary.totalPhotos.toString(),
+                  ),
+                ),
+                Expanded(
+                  child: _buildStatItem(
+                    icon: Icons.book,
+                    label: 'Journal',
+                    value: summary.journalEntryCount.toString(),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatItem({
+    required IconData icon,
+    required String label,
+    required String value,
+  }) {
+    return Column(
+      children: [
+        Icon(
+          icon,
+          color: Theme.of(context).colorScheme.primary,
+          size: 24,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+        ),
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: Colors.grey[600],
+              ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCatchHighlights(TripSummary summary) {
+    return Column(
+      children: [
+        if (summary.largestFish != null)
+          _buildCatchHighlightCard(
+            icon: Icons.emoji_events,
+            title: 'Biggest Fish',
+            highlight: summary.largestFish!,
+          ),
+        if (summary.mostCommonSpecies != null) ...[
+          const SizedBox(height: 8),
+          _buildCatchHighlightCard(
+            icon: Icons.favorite,
+            title: 'Most Common Species',
+            highlight: summary.mostCommonSpecies!,
+          ),
+        ],
+        if (summary.firstCatch != null) ...[
+          const SizedBox(height: 8),
+          _buildCatchHighlightCard(
+            icon: Icons.play_arrow,
+            title: 'First Catch',
+            highlight: summary.firstCatch!,
+          ),
+        ],
+        if (summary.lastCatch != null) ...[
+          const SizedBox(height: 8),
+          _buildCatchHighlightCard(
+            icon: Icons.stop,
+            title: 'Last Catch',
+            highlight: summary.lastCatch!,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCatchHighlightCard({
+    required IconData icon,
+    required String title,
+    required CatchHighlight highlight,
+  }) {
+    return GestureDetector(
+      onTap: highlight.catchId != null ? () async {
+        final catchItem = await DatabaseHelper.instance.getCatch(highlight.catchId!);
+        if (catchItem != null && mounted) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => CatchDetailsScreen(catchItem: catchItem),
+            ),
+          );
+        }
+      } : null,
+      child: Card(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              if (highlight.photoPath != null)
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(
+                    File(highlight.photoPath!),
+                    width: 50,
+                    height: 50,
+                    fit: BoxFit.cover,
+                    errorBuilder: (context, error, stackTrace) {
+                      return _buildDefaultCatchIcon(icon);
+                    },
+                  ),
+                )
+              else
+                _buildDefaultCatchIcon(icon),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[600],
+                          ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      highlight.species,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '${highlight.length}cm • ${_formatDate(highlight.date)}',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.grey[500],
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              if (highlight.catchId != null)
+                Icon(
+                  Icons.chevron_right,
+                  color: Colors.grey[400],
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDefaultCatchIcon(IconData icon) {
+    return Container(
+      width: 50,
+      height: 50,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Icon(
+        icon,
+        color: Theme.of(context).colorScheme.primary,
+        size: 24,
+      ),
+    );
+  }
+
+  Widget _buildLocationHighlights(TripSummary summary) {
+    // Temporarily disabled due to parameter promotion issue
+    return const SizedBox.shrink();
+  }
+
+  Widget _buildJournalSummary(TripJournalSummary journalSummary) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.book,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${journalSummary.entryCount} Journal Entr${journalSummary.entryCount == 1 ? 'y' : 'ies'}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+            if (journalSummary.latestEntryTitle != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                journalSummary.latestEntryTitle!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                journalSummary.latestEntryPreview ?? '',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _formatJournalDateTime(journalSummary.latestEntryDate!),
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[500],
+                    ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAchievementHighlights(TripSummary summary) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.emoji_events,
+                  color: Colors.amber,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  '${summary.unlockedAchievements.length} Achievement${summary.unlockedAchievements.length == 1 ? '' : 's'}',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (summary.unlockedAchievements.isEmpty)
+              Text(
+                'No achievements unlocked during this trip.',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[600],
+                      fontStyle: FontStyle.italic,
+                    ),
+              )
+            else
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: summary.unlockedAchievements.map((achievement) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: Colors.amber.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Text('🏆', style: TextStyle(fontSize: 12)),
+                        const SizedBox(width: 4),
+                        Text(
+                          achievement,
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                fontWeight: FontWeight.w500,
+                              ),
+                        ),
+                      ],
+                    ),
+                  );
+                }).toList(),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTripStory(TripSummary summary) {
+    final story = _tripSummaryService.generateTripStory(summary);
+    
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.auto_stories,
+                  color: Theme.of(context).colorScheme.primary,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Trip Narrative',
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              story,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.grey[700],
+                    height: 1.5,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _formatDate(DateTime date) {
+    return '${date.day}/${date.month}/${date.year}';
+  }
+
+  Future<void> _shareTripReport() async {
+    if (_tripSummary == null) return;
+    
+    final shareText = _tripSummaryService.generateShareableText(_tripSummary!);
+    
+    try {
+      await Share.share(shareText, subject: '${_tripSummary!.tripName} - Trip Report');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Failed to share trip report')),
+        );
+      }
+    }
   }
 }
