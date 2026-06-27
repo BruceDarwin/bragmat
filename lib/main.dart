@@ -8,6 +8,7 @@ import 'screens/catch_map_screen.dart';
 import 'theme.dart';
 import 'services/theme_service.dart';
 import 'services/connectivity_service.dart';
+import 'services/notification_service.dart';
 
 void main() {
   runApp(const BragmatApp());
@@ -22,6 +23,7 @@ class BragmatApp extends StatefulWidget {
 
 class _BragmatAppState extends State<BragmatApp> {
   final ThemeService _themeService = ThemeService();
+  final NotificationService _notificationService = NotificationService();
 
   @override
   void initState() {
@@ -46,6 +48,7 @@ class _BragmatAppState extends State<BragmatApp> {
     return MaterialApp(
       title: 'Bragmat',
       theme: AppTheme.lightTheme(palette: _themeService.currentPalette),
+      scaffoldMessengerKey: _notificationService.scaffoldMessengerKey,
       home: MainScreen(themeService: _themeService),
     );
   }
@@ -62,8 +65,8 @@ class MainScreen extends StatefulWidget {
 
 class MainScreenState extends State<MainScreen> {
   int _selectedIndex = 0;
-  bool _isOnline = true;
   final ConnectivityService _connectivityService = ConnectivityService();
+  final NotificationService _notificationService = NotificationService();
 
   @override
   void initState() {
@@ -71,9 +74,11 @@ class MainScreenState extends State<MainScreen> {
     _connectivityService.initialize();
     _connectivityService.connectivityStream.listen((isOnline) {
       if (mounted) {
-        setState(() {
-          _isOnline = isOnline;
-        });
+        if (isOnline) {
+          _notificationService.showBackOnlineNotification();
+        } else {
+          _notificationService.showOfflineNotification();
+        }
       }
     });
   }
@@ -119,35 +124,7 @@ class MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
-        child: Column(
-          children: [
-            if (!_isOnline)
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                color: Colors.orange.shade100,
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.cloud_off,
-                      size: 16,
-                      color: Colors.orange.shade900,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Offline Fishing Mode',
-                      style: TextStyle(
-                        color: Colors.orange.shade900,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            Expanded(child: _buildScreen(_selectedIndex)),
-          ],
-        ),
+        child: _buildScreen(_selectedIndex),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
