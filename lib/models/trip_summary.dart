@@ -26,6 +26,9 @@ class TripSummary {
   // Achievements
   final List<String> unlockedAchievements;
   
+  // Environmental summary
+  final String? environmentalSummary;
+  
   TripSummary._({
     required this.tripName,
     required this.startDate,
@@ -45,6 +48,7 @@ class TripSummary {
     this.lastCatch,
     this.journalSummary,
     this.unlockedAchievements = const [],
+    this.environmentalSummary,
   });
   
   factory TripSummary({
@@ -66,6 +70,7 @@ class TripSummary {
     CatchHighlight? lastCatch,
     TripJournalSummary? journalSummary,
     List<String> unlockedAchievements = const [],
+    String? environmentalSummary,
   }) {
     return TripSummary._(
       tripName: tripName,
@@ -86,6 +91,7 @@ class TripSummary {
       lastCatch: lastCatch,
       journalSummary: journalSummary,
       unlockedAchievements: unlockedAchievements,
+      environmentalSummary: environmentalSummary,
     );
   }
   

@@ -4,7 +4,9 @@ import '../models/fishing_trip.dart';
 import '../models/catch.dart';
 import '../models/trip_journal.dart';
 import '../models/achievement.dart';
+import '../models/environmental_condition.dart';
 import 'achievement_service.dart';
+import 'environmental_conditions_service.dart';
 
 class TripSummaryService {
   static final TripSummaryService _instance = TripSummaryService._internal();
@@ -13,6 +15,7 @@ class TripSummaryService {
 
   final DatabaseHelper _db = DatabaseHelper.instance;
   final AchievementService _achievementService = AchievementService();
+  final EnvironmentalConditionsService _envService = EnvironmentalConditionsService();
 
   Future<TripSummary> generateTripSummary(int tripId) async {
     final trip = await _db.getFishingTrip(tripId);
@@ -266,6 +269,26 @@ class TripSummaryService {
       print('=== End Achievement Filtering ===');
     }
 
+    // Environmental summary
+    String? environmentalSummary;
+    if (catches.isNotEmpty) {
+      final conditions = <EnvironmentalCondition>[];
+      for (final catchItem in catches) {
+        if (catchItem.id != null) {
+          final condition = await _envService.getEnvironmentalConditionForCatch(catchItem.id!);
+          if (condition != null) {
+            conditions.add(condition);
+          }
+        }
+      }
+      
+      if (conditions.isNotEmpty) {
+        // Generate a summary of conditions across the trip
+        final summaries = conditions.map((c) => _envService.getEnvironmentalSummary(c)).toList();
+        environmentalSummary = summaries.join('; ');
+      }
+    }
+
     return TripSummary(
       tripName: trip.name,
       startDate: trip.startDate,
@@ -285,6 +308,7 @@ class TripSummaryService {
       lastCatch: lastCatchHighlight,
       journalSummary: journalSummary,
       unlockedAchievements: unlockedAchievements,
+      environmentalSummary: environmentalSummary,
     );
   }
 
@@ -430,6 +454,12 @@ class TripSummaryService {
       for (final achievement in summary.unlockedAchievements) {
         buffer.writeln('🏆 $achievement');
       }
+    }
+    
+    if (summary.environmentalSummary != null && summary.environmentalSummary!.isNotEmpty) {
+      buffer.writeln('');
+      buffer.writeln('--- Fishing Conditions ---');
+      buffer.writeln('🌙 ${summary.environmentalSummary}');
     }
     
     buffer.writeln('');

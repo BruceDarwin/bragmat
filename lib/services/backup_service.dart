@@ -9,6 +9,7 @@ import '../models/journal_media.dart';
 import '../models/favourite_spot.dart';
 import '../models/achievement.dart';
 import '../models/user_achievement.dart';
+import '../models/environmental_condition.dart';
 import '../services/current_trip_service.dart';
 
 class BackupService {
@@ -29,6 +30,9 @@ class BackupService {
     // Get achievements
     final achievements = await database.query('achievements');
     final userAchievements = await database.query('user_achievements');
+    
+    // Get environmental conditions
+    final environmentalConditions = await database.query('environmental_conditions');
 
     // Get catch media for all catches
     final mediaMap = <String, List<Map<String, dynamic>>>{};
@@ -87,6 +91,7 @@ class BackupService {
         'favouriteSpots': favouriteSpots.map((s) => s.toMap()).toList(),
         'achievements': achievements,
         'userAchievements': userAchievements,
+        'environmentalConditions': environmentalConditions,
         'currentTripId': currentTripId,
       },
     };
@@ -341,6 +346,18 @@ class BackupService {
         }
       }
     }
+    
+    // Restore environmental conditions
+    final environmentalConditions = data['environmentalConditions'] as List<dynamic>?;
+    if (environmentalConditions != null) {
+      final database = await db.database;
+      for (final envData in environmentalConditions) {
+        final envMap = envData as Map<String, dynamic>;
+        // Remove ID to allow new insertion
+        envMap.remove('id');
+        await database.insert('environmental_conditions', envMap);
+      }
+    }
   }
   
   static Future<void> _clearAllData(DatabaseHelper db) async {
@@ -383,6 +400,9 @@ class BackupService {
     final database = await db.database;
     await database.delete('user_achievements');
     await database.delete('achievements');
+    
+    // Delete environmental conditions
+    await database.delete('environmental_conditions');
     
     await CurrentTripService.clearCurrentTrip();
   }

@@ -4,10 +4,13 @@ import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
+import '../models/environmental_condition.dart';
 import 'add_catch_screen.dart';
 import 'photo_viewer_screen.dart';
 import 'catch_map_screen.dart';
 import '../services/connectivity_service.dart';
+import '../services/environmental_conditions_service.dart';
+import '../services/sun_times_service.dart';
 
 class CatchDetailsScreen extends StatefulWidget {
   final Catch catchItem;
@@ -24,6 +27,7 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
   List<CatchMedia> _mediaItems = [];
   bool _isOnline = true;
   final ConnectivityService _connectivityService = ConnectivityService();
+  EnvironmentalCondition? _environmentalCondition;
 
   @override
   void initState() {
@@ -31,6 +35,7 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
     _catchItem = widget.catchItem;
     _loadFishingBuddyName();
     _loadMedia();
+    _loadEnvironmentalCondition();
     _checkConnectivity();
     _connectivityService.connectivityStream.listen((isOnline) {
       if (mounted) {
@@ -74,6 +79,32 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
         });
       }
     }
+  }
+
+  Future<void> _loadEnvironmentalCondition() async {
+    debugPrint('=== _loadEnvironmentalCondition ===');
+    debugPrint('Catch ID: ${_catchItem.id}');
+    debugPrint('Catch date: ${_catchItem.dateCaught?.toIso8601String()}');
+    debugPrint('Catch latitude: ${_catchItem.latitude}');
+    debugPrint('Catch longitude: ${_catchItem.longitude}');
+    
+    if (_catchItem.id != null) {
+      final envService = EnvironmentalConditionsService();
+      final condition = await envService.getEnvironmentalConditionForCatch(_catchItem.id!);
+      debugPrint('Environmental condition found: ${condition != null}');
+      if (condition != null) {
+        debugPrint('  Moon Phase: ${condition.moonPhase}');
+        debugPrint('  Moon Illumination: ${condition.moonIllumination?.toStringAsFixed(1)}%');
+        debugPrint('  Sunrise: ${condition.sunriseTime?.toIso8601String()}');
+        debugPrint('  Sunset: ${condition.sunsetTime?.toIso8601String()}');
+      }
+      if (mounted) {
+        setState(() {
+          _environmentalCondition = condition;
+        });
+      }
+    }
+    debugPrint('=== End _loadEnvironmentalCondition ===');
   }
 
   Future<void> _deleteMedia(int mediaId) async {
@@ -355,6 +386,8 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                     _buildSection('Notes', [
                       _buildDetailRow('Notes', _catchItem.notes!),
                     ]),
+                  if (_environmentalCondition != null)
+                    _buildEnvironmentalSection(),
                 ],
               ),
             ),
@@ -403,6 +436,75 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildEnvironmentalSection() {
+    final envService = EnvironmentalConditionsService();
+    final summary = envService.getEnvironmentalSummary(_environmentalCondition);
+    
+    final condition = _environmentalCondition!;
+    final details = <Widget>[];
+    
+    if (condition.moonPhase != null) {
+      details.add(_buildDetailRow('Moon Phase', condition.moonPhase!));
+    }
+    if (condition.moonIllumination != null) {
+      details.add(_buildDetailRow('Moon Illumination', '${condition.moonIllumination!.toStringAsFixed(1)}%'));
+    }
+    if (condition.sunriseTime != null) {
+      final sunService = SunTimesService();
+      final sunrise = sunService.formatTime(condition.sunriseTime!);
+      details.add(_buildDetailRow('Sunrise', sunrise));
+    } else if (condition.latitude != null && condition.longitude != null) {
+      // Has coordinates but no sunrise data (API likely failed)
+      details.add(_buildDetailRow('Sunrise', 'Not available'));
+    }
+    if (condition.sunsetTime != null) {
+      final sunService = SunTimesService();
+      final sunset = sunService.formatTime(condition.sunsetTime!);
+      details.add(_buildDetailRow('Sunset', sunset));
+    } else if (condition.latitude != null && condition.longitude != null) {
+      // Has coordinates but no sunset data (API likely failed)
+      details.add(_buildDetailRow('Sunset', 'Not available'));
+    }
+    if (condition.tideStage != null && condition.tideStage != 'Unknown') {
+      details.add(_buildDetailRow('Tide Stage', condition.tideStage!));
+    }
+    if (condition.tideHeight != null) {
+      details.add(_buildDetailRow('Tide Height', '${condition.tideHeight!.toStringAsFixed(2)} m'));
+    }
+    if (condition.tideMovement != null) {
+      details.add(_buildDetailRow('Tide Movement', condition.tideMovement!));
+    }
+    if (condition.tideStation != null && condition.tideStation!.isNotEmpty) {
+      details.add(_buildDetailRow('Tide Station', condition.tideStation!));
+    }
+    if (condition.weatherCondition != null && condition.weatherCondition != 'Unknown') {
+      details.add(_buildDetailRow('Weather', condition.weatherCondition!));
+    }
+    if (condition.temperature != null) {
+      details.add(_buildDetailRow('Temperature', '${condition.temperature!.toStringAsFixed(1)}°C'));
+    }
+    if (condition.windDirection != null && condition.windDirection != 'Unknown') {
+      details.add(_buildDetailRow('Wind Direction', condition.windDirection!));
+    }
+    if (condition.windSpeed != null) {
+      details.add(_buildDetailRow('Wind Speed', '${condition.windSpeed!.toStringAsFixed(1)} km/h'));
+    }
+    if (condition.barometricPressure != null) {
+      details.add(_buildDetailRow('Barometric Pressure', '${condition.barometricPressure!.toStringAsFixed(1)} hPa'));
+    }
+    if (condition.rainfall != null) {
+      details.add(_buildDetailRow('Rainfall', '${condition.rainfall!.toStringAsFixed(1)} mm'));
+    }
+    if (condition.riverFlow != null) {
+      details.add(_buildDetailRow('River Flow', condition.riverFlow!));
+    }
+    if (condition.waterClarity != null && condition.waterClarity != 'Unknown') {
+      details.add(_buildDetailRow('Water Clarity', condition.waterClarity!));
+    }
+    
+    return _buildSection('Fishing Conditions', details);
   }
 
   String _getCoordinateSource() {

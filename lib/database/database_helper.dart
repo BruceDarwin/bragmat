@@ -10,6 +10,7 @@ import '../models/journal_media.dart';
 import '../models/favourite_spot.dart';
 import '../models/achievement.dart';
 import '../models/user_achievement.dart';
+import '../models/environmental_condition.dart';
 import '../services/achievement_service.dart';
 
 class DatabaseHelper {
@@ -30,7 +31,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 17,
+      version: 18,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -169,6 +170,38 @@ class DatabaseHelper {
         unlocked_date TEXT NOT NULL,
         progress_value INTEGER,
         FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE environmental_conditions (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        catch_id INTEGER,
+        trip_id INTEGER,
+        observation_date_time TEXT NOT NULL,
+        latitude REAL,
+        longitude REAL,
+        moon_phase TEXT,
+        moon_illumination REAL,
+        sunrise_time TEXT,
+        sunset_time TEXT,
+        tide_stage TEXT,
+        tide_height REAL,
+        tide_movement TEXT,
+        tide_station TEXT,
+        weather_condition TEXT,
+        temperature REAL,
+        wind_speed REAL,
+        wind_direction TEXT,
+        barometric_pressure REAL,
+        rainfall REAL,
+        river_flow TEXT,
+        water_clarity TEXT,
+        data_source TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL,
+        FOREIGN KEY (catch_id) REFERENCES catches (id) ON DELETE CASCADE,
+        FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
       )
     ''');
 
@@ -387,6 +420,40 @@ class DatabaseHelper {
           unlocked_date TEXT NOT NULL,
           progress_value INTEGER,
           FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE
+        )
+      ''');
+    }
+    if (oldVersion < 18) {
+      // Add environmental_conditions table
+      await db.execute('''
+        CREATE TABLE environmental_conditions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          catch_id INTEGER,
+          trip_id INTEGER,
+          observation_date_time TEXT NOT NULL,
+          latitude REAL,
+          longitude REAL,
+          moon_phase TEXT,
+          moon_illumination REAL,
+          sunrise_time TEXT,
+          sunset_time TEXT,
+          tide_stage TEXT,
+          tide_height REAL,
+          tide_movement TEXT,
+          tide_station TEXT,
+          weather_condition TEXT,
+          temperature REAL,
+          wind_speed REAL,
+          wind_direction TEXT,
+          barometric_pressure REAL,
+          rainfall REAL,
+          river_flow TEXT,
+          water_clarity TEXT,
+          data_source TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          FOREIGN KEY (catch_id) REFERENCES catches (id) ON DELETE CASCADE,
+          FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
         )
       ''');
     }
