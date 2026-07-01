@@ -3,6 +3,7 @@ import '../models/environmental_condition.dart';
 import '../models/catch.dart';
 import 'moon_phase_service.dart';
 import 'sun_times_service.dart';
+import 'weather_service.dart';
 import 'package:flutter/foundation.dart';
 
 class EnvironmentalConditionsService {
@@ -12,6 +13,28 @@ class EnvironmentalConditionsService {
 
   final MoonPhaseService _moonPhaseService = MoonPhaseService();
   final SunTimesService _sunTimesService = SunTimesService();
+  final WeatherService _weatherService = WeatherService();
+
+  /// Check if a string value is blank (null, empty, or whitespace only)
+  bool _isBlank(String? value) {
+    return value == null || value.trim().isEmpty;
+  }
+
+  /// Merge manual and API text values, preferring manual if not blank
+  String? _useManualOrApiText(String? manualValue, String? apiValue) {
+    if (!_isBlank(manualValue)) {
+      return manualValue;
+    }
+    return apiValue;
+  }
+
+  /// Merge manual and API numeric values, preferring manual if not null
+  double? _useManualOrApiNumber(double? manualValue, double? apiValue) {
+    if (manualValue != null) {
+      return manualValue;
+    }
+    return apiValue;
+  }
 
   /// Create a new environmental condition record
   /// Automatically calculates moon phase and sun times if coordinates are provided
@@ -140,7 +163,7 @@ class EnvironmentalConditionsService {
     );
   }
 
-  /// Calculate environmental data (moon phase, sun times) from coordinates
+  /// Calculate environmental data (moon phase, sun times, weather) from coordinates
   Future<EnvironmentalCondition> _calculateEnvironmentalData(EnvironmentalCondition condition) async {
     if (condition.latitude == null || condition.longitude == null) {
       return condition;
@@ -160,12 +183,46 @@ class EnvironmentalConditionsService {
       longitude: condition.longitude!,
     );
 
+    // Fetch weather data (non-blocking, continues on failure)
+    WeatherData? weatherData;
+    try {
+      weatherData = await _weatherService.fetchWeather(
+        condition.latitude!,
+        condition.longitude!,
+        condition.observationDateTime,
+      );
+    } catch (e) {
+      debugPrint('Weather fetch failed, continuing without weather data: $e');
+    }
+
+    // Convert wind direction degrees to compass if available
+    String? windDirectionCompass;
+    if (weatherData?.windDirection != null) {
+      windDirectionCompass = _weatherService.windDirectionToCompass(weatherData!.windDirection);
+    }
+
+    // Merge manual and API weather values
+    final mergedWeatherCondition = _useManualOrApiText(condition.weatherCondition, weatherData?.weatherCondition);
+    final mergedTemperature = _useManualOrApiNumber(condition.temperature, weatherData?.temperature);
+    final mergedHumidity = _useManualOrApiNumber(condition.humidity, weatherData?.humidity);
+    final mergedCloudCover = _useManualOrApiNumber(condition.cloudCover, weatherData?.cloudCover);
+    final mergedWindSpeed = _useManualOrApiNumber(condition.windSpeed, weatherData?.windSpeed);
+    final mergedWindDirection = _useManualOrApiText(condition.windDirection, windDirectionCompass);
+    final mergedRainfall = _useManualOrApiNumber(condition.rainfall, weatherData?.rainfall);
+
     return condition.copyWith(
       moonPhase: moonInfo.phaseName,
       moonIllumination: moonInfo.illumination,
       sunriseTime: sunInfo?.sunrise,
       sunsetTime: sunInfo?.sunset,
-      dataSource: condition.dataSource ?? 'Calculated',
+      weatherCondition: mergedWeatherCondition,
+      temperature: mergedTemperature,
+      humidity: mergedHumidity,
+      cloudCover: mergedCloudCover,
+      windSpeed: mergedWindSpeed,
+      windDirection: mergedWindDirection,
+      rainfall: mergedRainfall,
+      dataSource: weatherData != null ? 'Open-Meteo' : (condition.dataSource ?? 'Calculated'),
     );
   }
 
@@ -184,6 +241,8 @@ class EnvironmentalConditionsService {
     String? tideStation,
     String? weatherCondition,
     double? temperature,
+    double? humidity,
+    double? cloudCover,
     double? windSpeed,
     String? windDirection,
     double? barometricPressure,
@@ -210,6 +269,8 @@ class EnvironmentalConditionsService {
       tideStation: tideStation,
       weatherCondition: weatherCondition,
       temperature: temperature,
+      humidity: humidity,
+      cloudCover: cloudCover,
       windSpeed: windSpeed,
       windDirection: windDirection,
       barometricPressure: barometricPressure,
@@ -269,23 +330,15 @@ class EnvironmentalConditionsService {
   /// This method should be called after every successful catch save/update
   /// It handles calculated conditions (moon/sun) separately from manual conditions
   Future<EnvironmentalCondition?> upsertCalculatedConditionsForCatch(Catch catchItem) async {
-    debugPrint('=== upsertCalculatedConditionsForCatch ===');
-    debugPrint('Catch ID: ${catchItem.id}');
-    debugPrint('Catch date: ${catchItem.dateCaught?.toIso8601String()}');
-    debugPrint('Catch latitude: ${catchItem.latitude}');
-    debugPrint('Catch longitude: ${catchItem.longitude}');
-    
     if (catchItem.id == null) {
       debugPrint('ERROR: Catch ID is null');
       return null;
     }
 
     final hasCoordinates = catchItem.latitude != null && catchItem.longitude != null;
-    debugPrint('Has coordinates: $hasCoordinates');
 
     // Get existing environmental condition
     final existing = await getEnvironmentalConditionForCatch(catchItem.id!);
-    debugPrint('Existing condition: ${existing != null}');
 
     final observationDateTime = catchItem.dateCaught ?? catchItem.createdAt;
 
@@ -294,24 +347,17 @@ class EnvironmentalConditionsService {
       if (existing != null) {
         // Check if existing has any manual data
         final hasManualData = _hasManualData(existing);
-        debugPrint('No coordinates, has manual data: $hasManualData');
         
         if (!hasManualData) {
-          debugPrint('No coordinates and no manual data - deleting existing condition');
           await deleteEnvironmentalConditionForCatch(catchItem.id!);
           return null;
         } else {
-          debugPrint('No coordinates but has manual data - preserving existing condition');
           return existing;
         }
       } else {
-        debugPrint('No coordinates and no existing condition - nothing to do');
         return null;
       }
     }
-
-    // Has coordinates - create or update with calculated values
-    debugPrint('Has coordinates - calculating moon/sun values');
     
     final condition = EnvironmentalCondition(
       id: existing?.id,
@@ -329,6 +375,8 @@ class EnvironmentalConditionsService {
       tideStation: existing?.tideStation,
       weatherCondition: existing?.weatherCondition,
       temperature: existing?.temperature,
+      humidity: existing?.humidity,
+      cloudCover: existing?.cloudCover,
       windSpeed: existing?.windSpeed,
       windDirection: existing?.windDirection,
       barometricPressure: existing?.barometricPressure,
@@ -342,21 +390,12 @@ class EnvironmentalConditionsService {
 
     EnvironmentalCondition savedCondition;
     if (existing != null) {
-      debugPrint('Updating existing condition');
       await updateEnvironmentalCondition(condition);
       savedCondition = condition;
     } else {
-      debugPrint('Creating new condition');
       final id = await createEnvironmentalCondition(condition);
       savedCondition = condition.copyWith(id: id);
     }
-
-    debugPrint('Environmental condition saved:');
-    debugPrint('  Moon Phase: ${savedCondition.moonPhase}');
-    debugPrint('  Moon Illumination: ${savedCondition.moonIllumination?.toStringAsFixed(1)}%');
-    debugPrint('  Sunrise: ${savedCondition.sunriseTime?.toIso8601String()}');
-    debugPrint('  Sunset: ${savedCondition.sunsetTime?.toIso8601String()}');
-    debugPrint('=== End upsertCalculatedConditionsForCatch ===');
     
     return savedCondition;
   }
@@ -365,14 +404,16 @@ class EnvironmentalConditionsService {
   bool _hasManualData(EnvironmentalCondition condition) {
     return condition.tideStage != null ||
         condition.tideStrength != null ||
-        (condition.tideNotes != null && condition.tideNotes!.isNotEmpty) ||
+        !_isBlank(condition.tideNotes) ||
         condition.tideHeight != null ||
         condition.tideMovement != null ||
-        (condition.tideStation != null && condition.tideStation!.isNotEmpty) ||
-        condition.weatherCondition != null ||
+        !_isBlank(condition.tideStation) ||
+        !_isBlank(condition.weatherCondition) ||
         condition.temperature != null ||
+        condition.humidity != null ||
+        condition.cloudCover != null ||
         condition.windSpeed != null ||
-        condition.windDirection != null ||
+        !_isBlank(condition.windDirection) ||
         condition.barometricPressure != null ||
         condition.rainfall != null ||
         condition.riverFlow != null ||
@@ -447,5 +488,141 @@ class EnvironmentalConditionsService {
     
     final mostSuccessful = strengthCounts.entries.reduce((a, b) => a.value > b.value ? a : b);
     return mostSuccessful.key;
+  }
+
+  /// Get catch counts grouped by weather condition for a trip
+  /// Returns a map of weather condition to catch count
+  Future<Map<String, int>> catchesByWeatherCondition(int tripId) async {
+    final db = await DatabaseHelper.instance.database;
+    final catches = await db.query(
+      'catches',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+    
+    final weatherConditionCounts = <String, int>{};
+    
+    for (final catchMap in catches) {
+      final catchId = catchMap['id'] as int;
+      final condition = await getEnvironmentalConditionForCatch(catchId);
+      
+      if (condition != null && condition.weatherCondition != null && condition.weatherCondition != 'Unknown') {
+        weatherConditionCounts[condition.weatherCondition!] = (weatherConditionCounts[condition.weatherCondition!] ?? 0) + 1;
+      }
+    }
+    
+    return weatherConditionCounts;
+  }
+
+  /// Get catch counts grouped by wind direction for a trip
+  /// Returns a map of wind direction to catch count
+  Future<Map<String, int>> catchesByWindDirection(int tripId) async {
+    final db = await DatabaseHelper.instance.database;
+    final catches = await db.query(
+      'catches',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+    
+    final windDirectionCounts = <String, int>{};
+    
+    for (final catchMap in catches) {
+      final catchId = catchMap['id'] as int;
+      final condition = await getEnvironmentalConditionForCatch(catchId);
+      
+      if (condition != null && condition.windDirection != null && condition.windDirection != 'Unknown') {
+        windDirectionCounts[condition.windDirection!] = (windDirectionCounts[condition.windDirection!] ?? 0) + 1;
+      }
+    }
+    
+    return windDirectionCounts;
+  }
+
+  /// Get catch counts grouped by wind strength for a trip
+  /// Returns a map of wind strength category to catch count
+  /// Categories: Calm (<10 km/h), Light (10-20 km/h), Moderate (20-30 km/h), Strong (>30 km/h)
+  Future<Map<String, int>> catchesByWindStrength(int tripId) async {
+    final db = await DatabaseHelper.instance.database;
+    final catches = await db.query(
+      'catches',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+    
+    final windStrengthCounts = <String, int>{};
+    
+    for (final catchMap in catches) {
+      final catchId = catchMap['id'] as int;
+      final condition = await getEnvironmentalConditionForCatch(catchId);
+      
+      if (condition != null && condition.windSpeed != null) {
+        final speed = condition.windSpeed!;
+        String category;
+        if (speed < 10) {
+          category = 'Calm';
+        } else if (speed < 20) {
+          category = 'Light';
+        } else if (speed < 30) {
+          category = 'Moderate';
+        } else {
+          category = 'Strong';
+        }
+        windStrengthCounts[category] = (windStrengthCounts[category] ?? 0) + 1;
+      }
+    }
+    
+    return windStrengthCounts;
+  }
+
+  /// Get average temperature for all catches in a trip
+  /// Returns null if no temperature data available
+  Future<double?> averageCatchTemperature(int tripId) async {
+    final db = await DatabaseHelper.instance.database;
+    final catches = await db.query(
+      'catches',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+    
+    final temperatures = <double>[];
+    
+    for (final catchMap in catches) {
+      final catchId = catchMap['id'] as int;
+      final condition = await getEnvironmentalConditionForCatch(catchId);
+      
+      if (condition != null && condition.temperature != null) {
+        temperatures.add(condition.temperature!);
+      }
+    }
+    
+    if (temperatures.isEmpty) return null;
+    
+    return temperatures.reduce((a, b) => a + b) / temperatures.length;
+  }
+
+  /// Get average humidity for all catches in a trip
+  /// Returns null if no humidity data available
+  Future<double?> averageCatchHumidity(int tripId) async {
+    final db = await DatabaseHelper.instance.database;
+    final catches = await db.query(
+      'catches',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+    
+    final humidities = <double>[];
+    
+    for (final catchMap in catches) {
+      final catchId = catchMap['id'] as int;
+      final condition = await getEnvironmentalConditionForCatch(catchId);
+      
+      if (condition != null && condition.humidity != null) {
+        humidities.add(condition.humidity!);
+      }
+    }
+    
+    if (humidities.isEmpty) return null;
+    
+    return humidities.reduce((a, b) => a + b) / humidities.length;
   }
 }

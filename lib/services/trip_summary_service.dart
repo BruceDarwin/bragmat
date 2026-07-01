@@ -272,6 +272,7 @@ class TripSummaryService {
     // Environmental summary
     String? environmentalSummary;
     String? tideSummary;
+    String? weatherSummary;
     if (catches.isNotEmpty) {
       final conditions = <EnvironmentalCondition>[];
       for (final catchItem in catches) {
@@ -321,6 +322,52 @@ class TripSummaryService {
           }
           tideSummary = tideParts.join(', ');
         }
+        
+        // Generate weather summary
+        final weatherConditions = <String>[];
+        final temperatures = <double>[];
+        final windDirections = <String>[];
+        
+        for (final condition in conditions) {
+          if (condition.weatherCondition != null && condition.weatherCondition != 'Unknown') {
+            weatherConditions.add(condition.weatherCondition!);
+          }
+          if (condition.temperature != null) {
+            temperatures.add(condition.temperature!);
+          }
+          if (condition.windDirection != null && condition.windDirection != 'Unknown') {
+            windDirections.add(condition.windDirection!);
+          }
+        }
+        
+        if (weatherConditions.isNotEmpty || temperatures.isNotEmpty || windDirections.isNotEmpty) {
+          final weatherParts = <String>[];
+          
+          if (weatherConditions.isNotEmpty) {
+            final conditionCounts = <String, int>{};
+            for (final condition in weatherConditions) {
+              conditionCounts[condition] = (conditionCounts[condition] ?? 0) + 1;
+            }
+            final mostCommonCondition = conditionCounts.entries.reduce((a, b) => a.value > b.value ? a : b);
+            weatherParts.add('${mostCommonCondition.key} (${mostCommonCondition.value} catches)');
+          }
+          
+          if (temperatures.isNotEmpty) {
+            final avgTemp = temperatures.reduce((a, b) => a + b) / temperatures.length;
+            weatherParts.add('Avg ${avgTemp.toStringAsFixed(1)}°C');
+          }
+          
+          if (windDirections.isNotEmpty) {
+            final directionCounts = <String, int>{};
+            for (final direction in windDirections) {
+              directionCounts[direction] = (directionCounts[direction] ?? 0) + 1;
+            }
+            final mostCommonDirection = directionCounts.entries.reduce((a, b) => a.value > b.value ? a : b);
+            weatherParts.add('${mostCommonDirection.key} (${mostCommonDirection.value} catches)');
+          }
+          
+          weatherSummary = weatherParts.join(', ');
+        }
       }
     }
 
@@ -345,6 +392,7 @@ class TripSummaryService {
       unlockedAchievements: unlockedAchievements,
       environmentalSummary: environmentalSummary,
       tideSummary: tideSummary,
+      weatherSummary: weatherSummary,
     );
   }
 
@@ -502,6 +550,12 @@ class TripSummaryService {
       buffer.writeln('');
       buffer.writeln('--- Tide Observations ---');
       buffer.writeln('🌊 ${summary.tideSummary}');
+    }
+    
+    if (summary.weatherSummary != null && summary.weatherSummary!.isNotEmpty) {
+      buffer.writeln('');
+      buffer.writeln('--- Weather Conditions ---');
+      buffer.writeln('☀️ ${summary.weatherSummary}');
     }
     
     buffer.writeln('');

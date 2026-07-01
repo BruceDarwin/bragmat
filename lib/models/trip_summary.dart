@@ -29,6 +29,7 @@ class TripSummary {
   // Environmental summary
   final String? environmentalSummary;
   final String? tideSummary;
+  final String? weatherSummary;
   
   TripSummary._({
     required this.tripName,
@@ -51,6 +52,7 @@ class TripSummary {
     this.unlockedAchievements = const [],
     this.environmentalSummary,
     this.tideSummary,
+    this.weatherSummary,
   });
   
   factory TripSummary({
@@ -74,6 +76,7 @@ class TripSummary {
     List<String> unlockedAchievements = const [],
     String? environmentalSummary,
     String? tideSummary,
+    String? weatherSummary,
   }) {
     return TripSummary._(
       tripName: tripName,
@@ -96,6 +99,7 @@ class TripSummary {
       unlockedAchievements: unlockedAchievements,
       environmentalSummary: environmentalSummary,
       tideSummary: tideSummary,
+      weatherSummary: weatherSummary,
     );
   }
   

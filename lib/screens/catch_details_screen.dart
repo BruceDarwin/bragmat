@@ -546,14 +546,28 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
       }
     }
     
-    // Weather with icon
-    if (condition.weatherCondition != null && condition.weatherCondition != 'Unknown') {
-      details.add(_buildDetailRowWithIcon('☀️', 'Weather', condition.weatherCondition!));
-    }
+    // Weather section with icon
+    final hasWeatherData = condition.weatherCondition != null ||
+                          condition.temperature != null ||
+                          condition.humidity != null ||
+                          condition.cloudCover != null;
     
-    // Temperature
-    if (condition.temperature != null) {
-      details.add(_buildDetailRow('', '${condition.temperature!.toStringAsFixed(1)}°C'));
+    if (hasWeatherData) {
+      if (condition.weatherCondition != null && condition.weatherCondition != 'Unknown') {
+        details.add(_buildDetailRowWithIcon('☀️', 'Weather', condition.weatherCondition!));
+      }
+      
+      if (condition.temperature != null) {
+        details.add(_buildDetailRow('', '${condition.temperature!.toStringAsFixed(1)}°C'));
+      }
+      
+      if (condition.humidity != null) {
+        details.add(_buildDetailRow('', 'Humidity ${condition.humidity!.toStringAsFixed(0)}%'));
+      }
+      
+      if (condition.cloudCover != null) {
+        details.add(_buildDetailRow('', 'Cloud Cover ${condition.cloudCover!.toStringAsFixed(0)}%'));
+      }
     }
     
     // Wind

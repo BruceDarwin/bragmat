@@ -17,6 +17,8 @@ class EnvironmentalCondition {
   final String? tideStation;
   final String? weatherCondition;
   final double? temperature;
+  final double? humidity;
+  final double? cloudCover;
   final double? windSpeed;
   final String? windDirection;
   final double? barometricPressure;
@@ -46,6 +48,8 @@ class EnvironmentalCondition {
     this.tideStation,
     this.weatherCondition,
     this.temperature,
+    this.humidity,
+    this.cloudCover,
     this.windSpeed,
     this.windDirection,
     this.barometricPressure,
@@ -78,6 +82,8 @@ class EnvironmentalCondition {
       'tide_station': tideStation,
       'weather_condition': weatherCondition,
       'temperature': temperature,
+      'humidity': humidity,
+      'cloud_cover': cloudCover,
       'wind_speed': windSpeed,
       'wind_direction': windDirection,
       'barometric_pressure': barometricPressure,
@@ -115,6 +121,8 @@ class EnvironmentalCondition {
       tideStation: map['tide_station'] as String?,
       weatherCondition: map['weather_condition'] as String?,
       temperature: map['temperature'] as double?,
+      humidity: map['humidity'] as double?,
+      cloudCover: map['cloud_cover'] as double?,
       windSpeed: map['wind_speed'] as double?,
       windDirection: map['wind_direction'] as String?,
       barometricPressure: map['barometric_pressure'] as double?,
@@ -147,6 +155,8 @@ class EnvironmentalCondition {
     String? tideStation,
     String? weatherCondition,
     double? temperature,
+    double? humidity,
+    double? cloudCover,
     double? windSpeed,
     String? windDirection,
     double? barometricPressure,
@@ -176,6 +186,8 @@ class EnvironmentalCondition {
       tideStation: tideStation ?? this.tideStation,
       weatherCondition: weatherCondition ?? this.weatherCondition,
       temperature: temperature ?? this.temperature,
+      humidity: humidity ?? this.humidity,
+      cloudCover: cloudCover ?? this.cloudCover,
       windSpeed: windSpeed ?? this.windSpeed,
       windDirection: windDirection ?? this.windDirection,
       barometricPressure: barometricPressure ?? this.barometricPressure,

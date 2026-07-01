@@ -52,6 +52,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   final _tideStationController = TextEditingController();
   String? _selectedWeatherCondition;
   final _temperatureController = TextEditingController();
+  final _humidityController = TextEditingController();
+  final _cloudCoverController = TextEditingController();
   final _windSpeedController = TextEditingController();
   String? _selectedWindDirection;
   final _barometricPressureController = TextEditingController();
@@ -108,6 +110,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _tideHeightController.addListener(_onFieldChanged);
     _tideStationController.addListener(_onFieldChanged);
     _temperatureController.addListener(_onFieldChanged);
+    _humidityController.addListener(_onFieldChanged);
+    _cloudCoverController.addListener(_onFieldChanged);
     _windSpeedController.addListener(_onFieldChanged);
     _barometricPressureController.addListener(_onFieldChanged);
     _rainfallController.addListener(_onFieldChanged);
@@ -125,6 +129,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _tideHeightController.removeListener(_onFieldChanged);
     _tideStationController.removeListener(_onFieldChanged);
     _temperatureController.removeListener(_onFieldChanged);
+    _humidityController.removeListener(_onFieldChanged);
+    _cloudCoverController.removeListener(_onFieldChanged);
     _windSpeedController.removeListener(_onFieldChanged);
     _barometricPressureController.removeListener(_onFieldChanged);
     _rainfallController.removeListener(_onFieldChanged);
@@ -138,6 +144,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _tideHeightController.dispose();
     _tideStationController.dispose();
     _temperatureController.dispose();
+    _humidityController.dispose();
+    _cloudCoverController.dispose();
     _windSpeedController.dispose();
     _barometricPressureController.dispose();
     _rainfallController.dispose();
@@ -341,6 +349,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _tideStationController.text = condition.tideStation ?? '';
         _selectedWeatherCondition = condition.weatherCondition;
         _temperatureController.text = condition.temperature?.toString() ?? '';
+        _humidityController.text = condition.humidity?.toString() ?? '';
+        _cloudCoverController.text = condition.cloudCover?.toString() ?? '';
         _windSpeedController.text = condition.windSpeed?.toString() ?? '';
         _selectedWindDirection = condition.windDirection;
         _barometricPressureController.text = condition.barometricPressure?.toString() ?? '';
@@ -823,9 +833,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   }
 
   Future<void> _saveManualEnvironmentalConditions(int catchId) async {
-    debugPrint('=== _saveManualEnvironmentalConditions ===');
-    debugPrint('Catch ID: $catchId');
-    
     final envService = EnvironmentalConditionsService();
     
     // Check if manual fields have values
@@ -837,6 +844,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _tideStationController.text.isNotEmpty ||
         _selectedWeatherCondition != null ||
         _temperatureController.text.isNotEmpty ||
+        _humidityController.text.isNotEmpty ||
+        _cloudCoverController.text.isNotEmpty ||
         _windSpeedController.text.isNotEmpty ||
         _selectedWindDirection != null ||
         _barometricPressureController.text.isNotEmpty ||
@@ -844,15 +853,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _selectedRiverFlow != null ||
         _selectedWaterClarity != null;
     
-    debugPrint('Has manual data: $hasManualData');
-    
     if (!hasManualData) {
-      debugPrint('No manual data - skipping manual conditions save');
-      debugPrint('=== End _saveManualEnvironmentalConditions (no data) ===');
       return;
     }
-    
-    debugPrint('Saving manual environmental conditions...');
     
     // Get existing condition to preserve calculated values
     final existing = await envService.getEnvironmentalConditionForCatch(catchId);
@@ -862,7 +865,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     final latitude = existing?.latitude ?? double.tryParse(_latitudeController.text);
     final longitude = existing?.longitude ?? double.tryParse(_longitudeController.text);
     
-    final condition = await envService.saveEnvironmentalConditionForCatch(
+    await envService.saveEnvironmentalConditionForCatch(
       catchId,
       observationDateTime,
       latitude,
@@ -873,27 +876,20 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       tideHeight: double.tryParse(_tideHeightController.text),
       tideMovement: _selectedTideMovement,
       tideStation: _tideStationController.text.trim().isEmpty ? null : _tideStationController.text.trim(),
-      weatherCondition: _selectedWeatherCondition,
+      weatherCondition: (_selectedWeatherCondition == null || _selectedWeatherCondition == 'Unknown') ? null : _selectedWeatherCondition,
       temperature: double.tryParse(_temperatureController.text),
+      humidity: double.tryParse(_humidityController.text),
+      cloudCover: double.tryParse(_cloudCoverController.text),
       windSpeed: double.tryParse(_windSpeedController.text),
-      windDirection: _selectedWindDirection,
+      windDirection: (_selectedWindDirection == null || _selectedWindDirection == 'Unknown') ? null : _selectedWindDirection,
       barometricPressure: double.tryParse(_barometricPressureController.text),
       rainfall: double.tryParse(_rainfallController.text),
       riverFlow: _selectedRiverFlow,
       waterClarity: _selectedWaterClarity,
     );
-    
-    if (condition != null) {
-      debugPrint('Manual environmental conditions saved');
-    } else {
-      debugPrint('WARNING: Manual environmental conditions save returned null');
-    }
-    debugPrint('=== End _saveManualEnvironmentalConditions ===');
   }
 
   void _saveCatch() async {
-    debugPrint('=== Save Catch Button Tapped ===');
-    
     final fishType = _selectedFishType ?? _fishTypeController.text;
     final length = int.tryParse(_lengthController.text) ?? 0;
     final notes = _notesController.text;
@@ -901,23 +897,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     final latitude = double.tryParse(_latitudeController.text);
     final longitude = double.tryParse(_longitudeController.text);
 
-    debugPrint('Form values:');
-    debugPrint('  fishType: $fishType');
-    debugPrint('  length: $length');
-    debugPrint('  notes: $notes');
-    debugPrint('  location: $location');
-    debugPrint('  latitude: $latitude');
-    debugPrint('  longitude: $longitude');
-    debugPrint('  selectedTripId: $_selectedTripId');
-    debugPrint('  selectedFishingBuddyId: $_selectedFishingBuddyId');
-    debugPrint('  dateCaught: $_dateCaught');
-    debugPrint('  mediaItems count: ${_mediaItems.length}');
-    if (_mediaItems.isNotEmpty) {
-      debugPrint('  first media path: ${_mediaItems.first.filePath}');
-    }
-
     if (fishType.isEmpty) {
-      debugPrint('ERROR: fishType is empty, returning');
       return;
     }
 
@@ -925,11 +905,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
 
     try {
       if (widget.catchToEdit != null) {
-        debugPrint('Editing existing catch: ${widget.catchToEdit!.id}');
-        debugPrint('Media items to save: ${_mediaItems.length}');
-        for (int i = 0; i < _mediaItems.length; i++) {
-          debugPrint('  Media item $i: path=${_mediaItems[i].filePath}, role=${_mediaItems[i].role}');
-        }
         final updatedCatch = Catch(
           id: widget.catchToEdit!.id,
           fishType: fishType,
@@ -944,22 +919,15 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           longitude: longitude,
           coordinateSource: _coordinateSource,
         );
-        debugPrint('Catch object before update: ${updatedCatch.toMap()}');
         await DatabaseHelper.instance.updateCatch(updatedCatch);
-        debugPrint('Update successful');
         savedCatch = updatedCatch;
         
         // Delete existing media and re-add
-        debugPrint('Deleting existing media for catch ${widget.catchToEdit!.id}');
         await DatabaseHelper.instance.deleteAllMediaForCatch(widget.catchToEdit!.id!);
-        debugPrint('Media deleted, adding ${_mediaItems.length} media items');
         for (final media in _mediaItems) {
           final mediaToInsert = media.copyWith(catchId: widget.catchToEdit!.id);
-          debugPrint('Inserting media: ${mediaToInsert.toMap()}');
-          final insertedId = await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
-          debugPrint('Media inserted with id: $insertedId');
+          await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
         }
-        debugPrint('All media inserted');
         
         // Save manual environmental conditions from form
         await _saveManualEnvironmentalConditions(savedCatch!.id!);
@@ -968,7 +936,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         final envService = EnvironmentalConditionsService();
         await envService.upsertCalculatedConditionsForCatch(savedCatch!);
       } else {
-        debugPrint('Creating new catch');
         final newCatch = Catch(
           fishType: fishType,
           lengthCm: length,
@@ -982,19 +949,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           longitude: longitude,
           coordinateSource: _coordinateSource,
         );
-        debugPrint('Catch object before insert: ${newCatch.toMap()}');
         final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
-        debugPrint('Insert successful, catchId: $catchId');
         savedCatch = newCatch.copyWith(id: catchId);
         
         // Save media items with the new catch ID
-        debugPrint('Adding ${_mediaItems.length} media items to catch $catchId');
         for (final media in _mediaItems) {
           final mediaToInsert = media.copyWith(catchId: catchId);
-          debugPrint('Inserting media: ${mediaToInsert.toMap()}');
           await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
         }
-        debugPrint('All media inserted');
         
         // Save manual environmental conditions from form
         await _saveManualEnvironmentalConditions(catchId);
@@ -1008,7 +970,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       await PreferencesService.setLastUsedFishType(fishType);
     } catch (e, stackTrace) {
       debugPrint('ERROR saving catch: $e');
-      debugPrint('Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1021,8 +982,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     }
 
     if (!mounted) return;
-
-    debugPrint('Save successful, navigating away');
 
     // Only pop if editing (catchToEdit != null)
     // When adding from bottom nav, use callback to switch to My Catches
@@ -1454,6 +1413,30 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                   ),
                 ),
                 const SizedBox(width: 16),
+                Expanded(
+                  child: TextField(
+                    controller: _humidityController,
+                    decoration: const InputDecoration(
+                      labelText: 'Humidity (%)',
+                      hintText: 'e.g., 65',
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _cloudCoverController,
+              decoration: const InputDecoration(
+                labelText: 'Cloud Cover (%)',
+                hintText: 'e.g., 40',
+              ),
+              keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            ),
+            const SizedBox(height: 16),
+            Row(
+              children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
                     value: _selectedWindDirection,
