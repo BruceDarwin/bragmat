@@ -45,6 +45,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   
   // Environmental conditions
   String? _selectedTideStage;
+  String? _selectedTideStrength;
+  final _tideNotesController = TextEditingController();
   final _tideHeightController = TextEditingController();
   String? _selectedTideMovement;
   final _tideStationController = TextEditingController();
@@ -332,6 +334,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       setState(() {
         _existingEnvironmentalCondition = condition;
         _selectedTideStage = condition.tideStage;
+        _selectedTideStrength = condition.tideStrength;
+        _tideNotesController.text = condition.tideNotes ?? '';
         _tideHeightController.text = condition.tideHeight?.toString() ?? '';
         _selectedTideMovement = condition.tideMovement;
         _tideStationController.text = condition.tideStation ?? '';
@@ -826,6 +830,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     
     // Check if manual fields have values
     final hasManualData = _selectedTideStage != null ||
+        _selectedTideStrength != null ||
+        _tideNotesController.text.isNotEmpty ||
         _tideHeightController.text.isNotEmpty ||
         _selectedTideMovement != null ||
         _tideStationController.text.isNotEmpty ||
@@ -862,6 +868,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       latitude,
       longitude,
       tideStage: _selectedTideStage,
+      tideStrength: _selectedTideStrength,
+      tideNotes: _tideNotesController.text.trim().isEmpty ? null : _tideNotesController.text.trim(),
       tideHeight: double.tryParse(_tideHeightController.text),
       tideMovement: _selectedTideMovement,
       tideStation: _tideStationController.text.trim().isEmpty ? null : _tideStationController.text.trim(),
@@ -1345,6 +1353,33 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                   _onFieldChanged();
                 });
               },
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _selectedTideStrength,
+              decoration: const InputDecoration(labelText: 'Tide Strength (Optional)'),
+              items: EnvironmentalCondition.tideStrengths.map((strength) {
+                return DropdownMenuItem(
+                  value: strength,
+                  child: Text(strength),
+                );
+              }).toList(),
+              onChanged: (value) {
+                setState(() {
+                  _selectedTideStrength = value;
+                  _onFieldChanged();
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: _tideNotesController,
+              decoration: const InputDecoration(
+                labelText: 'Tide Notes (Optional)',
+                hintText: 'e.g., Big spring tide, Dirty run-out',
+              ),
+              maxLines: 2,
+              onChanged: (_) => _onFieldChanged(),
             ),
             const SizedBox(height: 16),
             Row(

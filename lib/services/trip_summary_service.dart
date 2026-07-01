@@ -271,6 +271,7 @@ class TripSummaryService {
 
     // Environmental summary
     String? environmentalSummary;
+    String? tideSummary;
     if (catches.isNotEmpty) {
       final conditions = <EnvironmentalCondition>[];
       for (final catchItem in catches) {
@@ -286,6 +287,40 @@ class TripSummaryService {
         // Generate a summary of conditions across the trip
         final summaries = conditions.map((c) => _envService.getEnvironmentalSummary(c)).toList();
         environmentalSummary = summaries.join('; ');
+        
+        // Generate tide summary
+        final tideStages = <String>[];
+        final tideStrengths = <String>[];
+        
+        for (final condition in conditions) {
+          if (condition.tideStage != null && condition.tideStage != 'Unknown') {
+            tideStages.add(condition.tideStage!);
+          }
+          if (condition.tideStrength != null) {
+            tideStrengths.add(condition.tideStrength!);
+          }
+        }
+        
+        if (tideStages.isNotEmpty || tideStrengths.isNotEmpty) {
+          final tideParts = <String>[];
+          if (tideStages.isNotEmpty) {
+            final stageCounts = <String, int>{};
+            for (final stage in tideStages) {
+              stageCounts[stage] = (stageCounts[stage] ?? 0) + 1;
+            }
+            final mostCommonStage = stageCounts.entries.reduce((a, b) => a.value > b.value ? a : b);
+            tideParts.add('${mostCommonStage.key} (${mostCommonStage.value} catches)');
+          }
+          if (tideStrengths.isNotEmpty) {
+            final strengthCounts = <String, int>{};
+            for (final strength in tideStrengths) {
+              strengthCounts[strength] = (strengthCounts[strength] ?? 0) + 1;
+            }
+            final mostCommonStrength = strengthCounts.entries.reduce((a, b) => a.value > b.value ? a : b);
+            tideParts.add('${mostCommonStrength.key} (${mostCommonStrength.value} catches)');
+          }
+          tideSummary = tideParts.join(', ');
+        }
       }
     }
 
@@ -309,6 +344,7 @@ class TripSummaryService {
       journalSummary: journalSummary,
       unlockedAchievements: unlockedAchievements,
       environmentalSummary: environmentalSummary,
+      tideSummary: tideSummary,
     );
   }
 
@@ -460,6 +496,12 @@ class TripSummaryService {
       buffer.writeln('');
       buffer.writeln('--- Fishing Conditions ---');
       buffer.writeln('🌙 ${summary.environmentalSummary}');
+    }
+    
+    if (summary.tideSummary != null && summary.tideSummary!.isNotEmpty) {
+      buffer.writeln('');
+      buffer.writeln('--- Tide Observations ---');
+      buffer.writeln('🌊 ${summary.tideSummary}');
     }
     
     buffer.writeln('');

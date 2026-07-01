@@ -421,17 +421,53 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-              color: Colors.grey[600],
-              fontWeight: FontWeight.w500,
+          if (label.isNotEmpty)
+            Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.grey[600],
+                fontWeight: FontWeight.w500,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
+          if (label.isNotEmpty) const SizedBox(height: 4),
           Text(
             value,
             style: Theme.of(context).textTheme.bodyLarge,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailRowWithIcon(String icon, String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                icon,
+                style: const TextStyle(fontSize: 18),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Padding(
+            padding: const EdgeInsets.only(left: 26),
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.bodyLarge,
+            ),
           ),
         ],
       ),
@@ -445,52 +481,92 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
     final condition = _environmentalCondition!;
     final details = <Widget>[];
     
+    // Moon phase with icon
     if (condition.moonPhase != null) {
-      details.add(_buildDetailRow('Moon Phase', condition.moonPhase!));
+      final moonText = condition.moonIllumination != null 
+          ? '${condition.moonPhase!} (${condition.moonIllumination!.toStringAsFixed(0)}%)'
+          : condition.moonPhase!;
+      details.add(_buildDetailRowWithIcon('🌙', 'Moon', moonText));
     }
-    if (condition.moonIllumination != null) {
-      details.add(_buildDetailRow('Moon Illumination', '${condition.moonIllumination!.toStringAsFixed(1)}%'));
-    }
+    
+    // Sunrise with icon
     if (condition.sunriseTime != null) {
       final sunService = SunTimesService();
       final sunrise = sunService.formatTime(condition.sunriseTime!);
-      details.add(_buildDetailRow('Sunrise', sunrise));
+      details.add(_buildDetailRowWithIcon('🌅', 'Sunrise', sunrise));
     } else if (condition.latitude != null && condition.longitude != null) {
-      // Has coordinates but no sunrise data (API likely failed)
-      details.add(_buildDetailRow('Sunrise', 'Not available'));
+      details.add(_buildDetailRowWithIcon('🌅', 'Sunrise', 'Not available'));
     }
+    
+    // Sunset with icon
     if (condition.sunsetTime != null) {
       final sunService = SunTimesService();
       final sunset = sunService.formatTime(condition.sunsetTime!);
-      details.add(_buildDetailRow('Sunset', sunset));
+      details.add(_buildDetailRowWithIcon('🌇', 'Sunset', sunset));
     } else if (condition.latitude != null && condition.longitude != null) {
-      // Has coordinates but no sunset data (API likely failed)
-      details.add(_buildDetailRow('Sunset', 'Not available'));
+      details.add(_buildDetailRowWithIcon('🌇', 'Sunset', 'Not available'));
     }
-    if (condition.tideStage != null && condition.tideStage != 'Unknown') {
-      details.add(_buildDetailRow('Tide Stage', condition.tideStage!));
+    
+    // Tide section with icon
+    final hasTideData = (condition.tideStage != null && condition.tideStage != 'Unknown') ||
+                       condition.tideStrength != null ||
+                       (condition.tideNotes != null && condition.tideNotes!.isNotEmpty) ||
+                       condition.tideHeight != null ||
+                       condition.tideMovement != null ||
+                       (condition.tideStation != null && condition.tideStation!.isNotEmpty);
+    
+    if (hasTideData) {
+      final tideDetails = <String>[];
+      
+      if (condition.tideStage != null && condition.tideStage != 'Unknown') {
+        tideDetails.add(condition.tideStage!);
+      }
+      if (condition.tideStrength != null) {
+        tideDetails.add(condition.tideStrength!);
+      }
+      
+      if (tideDetails.isNotEmpty) {
+        details.add(_buildDetailRowWithIcon('🌊', 'Tide', tideDetails.join(' • ')));
+      }
+      
+      if (condition.tideNotes != null && condition.tideNotes!.isNotEmpty) {
+        details.add(_buildDetailRow('', condition.tideNotes!));
+      }
+      
+      if (condition.tideHeight != null) {
+        details.add(_buildDetailRow('', 'Height: ${condition.tideHeight!.toStringAsFixed(2)} m'));
+      }
+      
+      if (condition.tideMovement != null) {
+        details.add(_buildDetailRow('', 'Movement: ${condition.tideMovement!}'));
+      }
+      
+      if (condition.tideStation != null && condition.tideStation!.isNotEmpty) {
+        details.add(_buildDetailRow('', 'Station: ${condition.tideStation!}'));
+      }
     }
-    if (condition.tideHeight != null) {
-      details.add(_buildDetailRow('Tide Height', '${condition.tideHeight!.toStringAsFixed(2)} m'));
-    }
-    if (condition.tideMovement != null) {
-      details.add(_buildDetailRow('Tide Movement', condition.tideMovement!));
-    }
-    if (condition.tideStation != null && condition.tideStation!.isNotEmpty) {
-      details.add(_buildDetailRow('Tide Station', condition.tideStation!));
-    }
+    
+    // Weather with icon
     if (condition.weatherCondition != null && condition.weatherCondition != 'Unknown') {
-      details.add(_buildDetailRow('Weather', condition.weatherCondition!));
+      details.add(_buildDetailRowWithIcon('☀️', 'Weather', condition.weatherCondition!));
     }
+    
+    // Temperature
     if (condition.temperature != null) {
-      details.add(_buildDetailRow('Temperature', '${condition.temperature!.toStringAsFixed(1)}°C'));
+      details.add(_buildDetailRow('', '${condition.temperature!.toStringAsFixed(1)}°C'));
     }
+    
+    // Wind
     if (condition.windDirection != null && condition.windDirection != 'Unknown') {
-      details.add(_buildDetailRow('Wind Direction', condition.windDirection!));
+      final windText = condition.windSpeed != null 
+          ? '${condition.windDirection!} • ${condition.windSpeed!.toStringAsFixed(0)} km/h'
+          : condition.windDirection!;
+      details.add(_buildDetailRowWithIcon('💨', 'Wind', windText));
+    } else if (condition.windSpeed != null) {
+      details.add(_buildDetailRowWithIcon('💨', 'Wind', '${condition.windSpeed!.toStringAsFixed(0)} km/h'));
     }
-    if (condition.windSpeed != null) {
-      details.add(_buildDetailRow('Wind Speed', '${condition.windSpeed!.toStringAsFixed(1)} km/h'));
-    }
+    
+    // Other conditions
     if (condition.barometricPressure != null) {
       details.add(_buildDetailRow('Barometric Pressure', '${condition.barometricPressure!.toStringAsFixed(1)} hPa'));
     }

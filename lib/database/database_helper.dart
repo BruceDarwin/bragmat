@@ -31,7 +31,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 18,
+      version: 19,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -186,6 +186,8 @@ class DatabaseHelper {
         sunrise_time TEXT,
         sunset_time TEXT,
         tide_stage TEXT,
+        tide_strength TEXT,
+        tide_notes TEXT,
         tide_height REAL,
         tide_movement TEXT,
         tide_station TEXT,
@@ -456,6 +458,19 @@ class DatabaseHelper {
           FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
         )
       ''');
+    }
+    if (oldVersion < 19) {
+      // Add tide_strength and tide_notes columns to environmental_conditions
+      try {
+        await db.execute('ALTER TABLE environmental_conditions ADD COLUMN tide_strength TEXT');
+      } catch (e) {
+        // Column might already exist
+      }
+      try {
+        await db.execute('ALTER TABLE environmental_conditions ADD COLUMN tide_notes TEXT');
+      } catch (e) {
+        // Column might already exist
+      }
     }
     
     // Safety check: Ensure trip_id column exists in catches table

@@ -10,6 +10,8 @@ class EnvironmentalCondition {
   final DateTime? sunriseTime;
   final DateTime? sunsetTime;
   final String? tideStage;
+  final String? tideStrength;
+  final String? tideNotes;
   final double? tideHeight;
   final String? tideMovement;
   final String? tideStation;
@@ -37,6 +39,8 @@ class EnvironmentalCondition {
     this.sunriseTime,
     this.sunsetTime,
     this.tideStage,
+    this.tideStrength,
+    this.tideNotes,
     this.tideHeight,
     this.tideMovement,
     this.tideStation,
@@ -67,6 +71,8 @@ class EnvironmentalCondition {
       'sunrise_time': sunriseTime?.toIso8601String(),
       'sunset_time': sunsetTime?.toIso8601String(),
       'tide_stage': tideStage,
+      'tide_strength': tideStrength,
+      'tide_notes': tideNotes,
       'tide_height': tideHeight,
       'tide_movement': tideMovement,
       'tide_station': tideStation,
@@ -102,6 +108,8 @@ class EnvironmentalCondition {
           ? DateTime.parse(map['sunset_time'] as String) 
           : null,
       tideStage: map['tide_stage'] as String?,
+      tideStrength: map['tide_strength'] as String?,
+      tideNotes: map['tide_notes'] as String?,
       tideHeight: map['tide_height'] as double?,
       tideMovement: map['tide_movement'] as String?,
       tideStation: map['tide_station'] as String?,
@@ -132,6 +140,8 @@ class EnvironmentalCondition {
     DateTime? sunriseTime,
     DateTime? sunsetTime,
     String? tideStage,
+    String? tideStrength,
+    String? tideNotes,
     double? tideHeight,
     String? tideMovement,
     String? tideStation,
@@ -159,6 +169,8 @@ class EnvironmentalCondition {
       sunriseTime: sunriseTime ?? this.sunriseTime,
       sunsetTime: sunsetTime ?? this.sunsetTime,
       tideStage: tideStage ?? this.tideStage,
+      tideStrength: tideStrength ?? this.tideStrength,
+      tideNotes: tideNotes ?? this.tideNotes,
       tideHeight: tideHeight ?? this.tideHeight,
       tideMovement: tideMovement ?? this.tideMovement,
       tideStation: tideStation ?? this.tideStation,
@@ -178,11 +190,22 @@ class EnvironmentalCondition {
 
   // Tide stage options
   static const List<String> tideStages = [
-    'High',
-    'Low',
-    'Run-in',
-    'Run-out',
+    'High Tide',
+    'Low Tide',
+    'Run-In Tide',
+    'Run-Out Tide',
+    'Slack High',
+    'Slack Low',
     'Unknown',
+  ];
+
+  // Tide strength options
+  static const List<String> tideStrengths = [
+    'Very Weak',
+    'Weak',
+    'Moderate',
+    'Strong',
+    'Very Strong',
   ];
 
   // Wind direction options

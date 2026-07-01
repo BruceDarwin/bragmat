@@ -177,6 +177,8 @@ class EnvironmentalConditionsService {
     double? latitude,
     double? longitude, {
     String? tideStage,
+    String? tideStrength,
+    String? tideNotes,
     double? tideHeight,
     String? tideMovement,
     String? tideStation,
@@ -201,6 +203,8 @@ class EnvironmentalConditionsService {
       latitude: latitude,
       longitude: longitude,
       tideStage: tideStage,
+      tideStrength: tideStrength,
+      tideNotes: tideNotes,
       tideHeight: tideHeight,
       tideMovement: tideMovement,
       tideStation: tideStation,
@@ -318,6 +322,8 @@ class EnvironmentalConditionsService {
       longitude: catchItem.longitude,
       // Preserve existing manual data
       tideStage: existing?.tideStage,
+      tideStrength: existing?.tideStrength,
+      tideNotes: existing?.tideNotes,
       tideHeight: existing?.tideHeight,
       tideMovement: existing?.tideMovement,
       tideStation: existing?.tideStation,
@@ -358,6 +364,8 @@ class EnvironmentalConditionsService {
   /// Check if an environmental condition has any manual data (non-calculated fields)
   bool _hasManualData(EnvironmentalCondition condition) {
     return condition.tideStage != null ||
+        condition.tideStrength != null ||
+        (condition.tideNotes != null && condition.tideNotes!.isNotEmpty) ||
         condition.tideHeight != null ||
         condition.tideMovement != null ||
         (condition.tideStation != null && condition.tideStation!.isNotEmpty) ||
@@ -369,5 +377,75 @@ class EnvironmentalConditionsService {
         condition.rainfall != null ||
         condition.riverFlow != null ||
         condition.waterClarity != null;
+  }
+
+  /// Get catch counts grouped by tide stage for a trip
+  /// Returns a map of tide stage to catch count
+  Future<Map<String, int>> catchesByTideStage(int tripId) async {
+    final db = await DatabaseHelper.instance.database;
+    final catches = await db.query(
+      'catches',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+    
+    final tideStageCounts = <String, int>{};
+    
+    for (final catchMap in catches) {
+      final catchId = catchMap['id'] as int;
+      final condition = await getEnvironmentalConditionForCatch(catchId);
+      
+      if (condition != null && condition.tideStage != null && condition.tideStage != 'Unknown') {
+        tideStageCounts[condition.tideStage!] = (tideStageCounts[condition.tideStage!] ?? 0) + 1;
+      }
+    }
+    
+    return tideStageCounts;
+  }
+
+  /// Get catch counts grouped by tide strength for a trip
+  /// Returns a map of tide strength to catch count
+  Future<Map<String, int>> catchesByTideStrength(int tripId) async {
+    final db = await DatabaseHelper.instance.database;
+    final catches = await db.query(
+      'catches',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+    
+    final tideStrengthCounts = <String, int>{};
+    
+    for (final catchMap in catches) {
+      final catchId = catchMap['id'] as int;
+      final condition = await getEnvironmentalConditionForCatch(catchId);
+      
+      if (condition != null && condition.tideStrength != null) {
+        tideStrengthCounts[condition.tideStrength!] = (tideStrengthCounts[condition.tideStrength!] ?? 0) + 1;
+      }
+    }
+    
+    return tideStrengthCounts;
+  }
+
+  /// Get the most successful tide stage for a trip
+  /// Returns the tide stage with the highest catch count, or null if no data
+  Future<String?> mostSuccessfulTideStage(int tripId) async {
+    final stageCounts = await catchesByTideStage(tripId);
+    
+    if (stageCounts.isEmpty) return null;
+    
+    final mostSuccessful = stageCounts.entries.reduce((a, b) => a.value > b.value ? a : b);
+    return mostSuccessful.key;
+  }
+
+  /// Get the most successful tide strength for a trip
+  /// Returns the tide strength with the highest catch count, or null if no data
+  Future<String?> mostSuccessfulTideStrength(int tripId) async {
+    final strengthCounts = await catchesByTideStrength(tripId);
+    
+    if (strengthCounts.isEmpty) return null;
+    
+    final mostSuccessful = strengthCounts.entries.reduce((a, b) => a.value > b.value ? a : b);
+    return mostSuccessful.key;
   }
 }
