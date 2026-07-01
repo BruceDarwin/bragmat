@@ -625,4 +625,348 @@ class EnvironmentalConditionsService {
     
     return humidities.reduce((a, b) => a + b) / humidities.length;
   }
+
+  // ==================== Environmental Insights Methods ====================
+
+  /// Get all environmental conditions with catch data for analysis
+  Future<List<Map<String, dynamic>>> _getEnvironmentalDataWithCatches() async {
+    final db = await DatabaseHelper.instance.database;
+    
+    final results = await db.rawQuery('''
+      SELECT 
+        ec.*,
+        c.fish_type,
+        c.length_cm,
+        c.date_caught
+      FROM environmental_conditions ec
+      INNER JOIN catches c ON ec.catch_id = c.id
+      ORDER BY c.date_caught DESC
+    ''');
+    
+    return results;
+  }
+
+  /// Get most common moon phase
+  /// Returns {phase: String, count: int} or null if no data
+  Future<Map<String, dynamic>?> mostCommonMoonPhase({int minCount = 3}) async {
+    final data = await _getEnvironmentalDataWithCatches();
+    final moonPhases = <String, int>{};
+    
+    for (final row in data) {
+      final phase = row['moon_phase'] as String?;
+      if (phase != null && phase.isNotEmpty) {
+        moonPhases[phase] = (moonPhases[phase] ?? 0) + 1;
+      }
+    }
+    
+    if (moonPhases.isEmpty) return null;
+    
+    String? mostCommon;
+    int maxCount = 0;
+    moonPhases.forEach((phase, count) {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommon = phase;
+      }
+    });
+    
+    if (maxCount < minCount) return null;
+    
+    return {'phase': mostCommon, 'count': maxCount};
+  }
+
+  /// Get most successful moon phase (by average fish length)
+  /// Returns {phase: String, count: int, avgLength: double} or null if no data
+  Future<Map<String, dynamic>?> mostSuccessfulMoonPhaseInsights({int minCount = 3}) async {
+    final data = await _getEnvironmentalDataWithCatches();
+    final moonPhases = <String, List<double>>{};
+    
+    for (final row in data) {
+      final phase = row['moon_phase'] as String?;
+      final length = row['length_cm'] as int?;
+      if (phase != null && phase.isNotEmpty && length != null) {
+        moonPhases.putIfAbsent(phase, () => []).add(length.toDouble());
+      }
+    }
+    
+    if (moonPhases.isEmpty) return null;
+    
+    String? mostSuccessful;
+    double maxAvgLength = 0;
+    int maxCount = 0;
+    
+    moonPhases.forEach((phase, lengths) {
+      if (lengths.length >= minCount) {
+        final avgLength = lengths.reduce((a, b) => a + b) / lengths.length;
+        if (avgLength > maxAvgLength) {
+          maxAvgLength = avgLength;
+          mostSuccessful = phase;
+          maxCount = lengths.length;
+        }
+      }
+    });
+    
+    if (mostSuccessful == null) return null;
+    
+    return {'phase': mostSuccessful, 'count': maxCount, 'avgLength': maxAvgLength};
+  }
+
+  /// Get most common tide stage
+  /// Returns {stage: String, count: int} or null if no data
+  Future<Map<String, dynamic>?> mostCommonTideStage({int minCount = 3}) async {
+    final data = await _getEnvironmentalDataWithCatches();
+    final tideStages = <String, int>{};
+    
+    for (final row in data) {
+      final stage = row['tide_stage'] as String?;
+      if (stage != null && stage.isNotEmpty) {
+        tideStages[stage] = (tideStages[stage] ?? 0) + 1;
+      }
+    }
+    
+    if (tideStages.isEmpty) return null;
+    
+    String? mostCommon;
+    int maxCount = 0;
+    tideStages.forEach((stage, count) {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommon = stage;
+      }
+    });
+    
+    if (maxCount < minCount) return null;
+    
+    return {'stage': mostCommon, 'count': maxCount};
+  }
+
+  /// Get most successful tide stage (by average fish length)
+  /// Returns {stage: String, count: int, avgLength: double} or null if no data
+  Future<Map<String, dynamic>?> mostSuccessfulTideStageInsights({int minCount = 3}) async {
+    final data = await _getEnvironmentalDataWithCatches();
+    final tideStages = <String, List<double>>{};
+    
+    for (final row in data) {
+      final stage = row['tide_stage'] as String?;
+      final length = row['length_cm'] as int?;
+      if (stage != null && stage.isNotEmpty && length != null) {
+        tideStages.putIfAbsent(stage, () => []).add(length.toDouble());
+      }
+    }
+    
+    if (tideStages.isEmpty) return null;
+    
+    String? mostSuccessful;
+    double maxAvgLength = 0;
+    int maxCount = 0;
+    
+    tideStages.forEach((stage, lengths) {
+      if (lengths.length >= minCount) {
+        final avgLength = lengths.reduce((a, b) => a + b) / lengths.length;
+        if (avgLength > maxAvgLength) {
+          maxAvgLength = avgLength;
+          mostSuccessful = stage;
+          maxCount = lengths.length;
+        }
+      }
+    });
+    
+    if (mostSuccessful == null) return null;
+    
+    return {'stage': mostSuccessful, 'count': maxCount, 'avgLength': maxAvgLength};
+  }
+
+  /// Get most common weather condition
+  /// Returns {condition: String, count: int} or null if no data
+  Future<Map<String, dynamic>?> mostCommonWeather({int minCount = 3}) async {
+    final data = await _getEnvironmentalDataWithCatches();
+    final weatherConditions = <String, int>{};
+    
+    for (final row in data) {
+      final condition = row['weather_condition'] as String?;
+      if (condition != null && condition.isNotEmpty) {
+        weatherConditions[condition] = (weatherConditions[condition] ?? 0) + 1;
+      }
+    }
+    
+    if (weatherConditions.isEmpty) return null;
+    
+    String? mostCommon;
+    int maxCount = 0;
+    weatherConditions.forEach((condition, count) {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommon = condition;
+      }
+    });
+    
+    if (maxCount < minCount) return null;
+    
+    return {'condition': mostCommon, 'count': maxCount};
+  }
+
+  /// Get most successful weather condition (by average fish length)
+  /// Returns {condition: String, count: int, avgLength: double} or null if no data
+  Future<Map<String, dynamic>?> mostSuccessfulWeatherInsights({int minCount = 3}) async {
+    final data = await _getEnvironmentalDataWithCatches();
+    final weatherConditions = <String, List<double>>{};
+    
+    for (final row in data) {
+      final condition = row['weather_condition'] as String?;
+      final length = row['length_cm'] as int?;
+      if (condition != null && condition.isNotEmpty && length != null) {
+        weatherConditions.putIfAbsent(condition, () => []).add(length.toDouble());
+      }
+    }
+    
+    if (weatherConditions.isEmpty) return null;
+    
+    String? mostSuccessful;
+    double maxAvgLength = 0;
+    int maxCount = 0;
+    
+    weatherConditions.forEach((condition, lengths) {
+      if (lengths.length >= minCount) {
+        final avgLength = lengths.reduce((a, b) => a + b) / lengths.length;
+        if (avgLength > maxAvgLength) {
+          maxAvgLength = avgLength;
+          mostSuccessful = condition;
+          maxCount = lengths.length;
+        }
+      }
+    });
+    
+    if (mostSuccessful == null) return null;
+    
+    return {'condition': mostSuccessful, 'count': maxCount, 'avgLength': maxAvgLength};
+  }
+
+  /// Get most common wind direction
+  /// Returns {direction: String, count: int} or null if no data
+  Future<Map<String, dynamic>?> mostCommonWindDirection({int minCount = 3}) async {
+    final data = await _getEnvironmentalDataWithCatches();
+    final windDirections = <String, int>{};
+    
+    for (final row in data) {
+      final direction = row['wind_direction'] as String?;
+      if (direction != null && direction.isNotEmpty) {
+        windDirections[direction] = (windDirections[direction] ?? 0) + 1;
+      }
+    }
+    
+    if (windDirections.isEmpty) return null;
+    
+    String? mostCommon;
+    int maxCount = 0;
+    windDirections.forEach((direction, count) {
+      if (count > maxCount) {
+        maxCount = count;
+        mostCommon = direction;
+      }
+    });
+    
+    if (maxCount < minCount) return null;
+    
+    return {'direction': mostCommon, 'count': maxCount};
+  }
+
+  /// Get most successful wind direction (by average fish length)
+  /// Returns {direction: String, count: int, avgLength: double} or null if no data
+  Future<Map<String, dynamic>?> mostSuccessfulWindDirectionInsights({int minCount = 3}) async {
+    final data = await _getEnvironmentalDataWithCatches();
+    final windDirections = <String, List<double>>{};
+    
+    for (final row in data) {
+      final direction = row['wind_direction'] as String?;
+      final length = row['length_cm'] as int?;
+      if (direction != null && direction.isNotEmpty && length != null) {
+        windDirections.putIfAbsent(direction, () => []).add(length.toDouble());
+      }
+    }
+    
+    if (windDirections.isEmpty) return null;
+    
+    String? mostSuccessful;
+    double maxAvgLength = 0;
+    int maxCount = 0;
+    
+    windDirections.forEach((direction, lengths) {
+      if (lengths.length >= minCount) {
+        final avgLength = lengths.reduce((a, b) => a + b) / lengths.length;
+        if (avgLength > maxAvgLength) {
+          maxAvgLength = avgLength;
+          mostSuccessful = direction;
+          maxCount = lengths.length;
+        }
+      }
+    });
+    
+    if (mostSuccessful == null) return null;
+    
+    return {'direction': mostSuccessful, 'count': maxCount, 'avgLength': maxAvgLength};
+  }
+
+  /// Get average catch temperature insights
+  /// Returns {avg: double, min: double, max: double, minCatch: Map, maxCatch: Map} or null if no data
+  Future<Map<String, dynamic>?> averageCatchTemperatureInsights() async {
+    final data = await _getEnvironmentalDataWithCatches();
+    final temperatures = <double>[];
+    Map<String, dynamic>? minCatch;
+    Map<String, dynamic>? maxCatch;
+    double? minTemp;
+    double? maxTemp;
+    
+    for (final row in data) {
+      final temp = row['temperature'] as double?;
+      if (temp != null) {
+        temperatures.add(temp);
+        if (minTemp == null || temp < minTemp) {
+          minTemp = temp;
+          minCatch = {
+            'temperature': temp,
+            'fishType': row['fish_type'],
+            'dateCaught': row['date_caught'],
+          };
+        }
+        if (maxTemp == null || temp > maxTemp) {
+          maxTemp = temp;
+          maxCatch = {
+            'temperature': temp,
+            'fishType': row['fish_type'],
+            'dateCaught': row['date_caught'],
+          };
+        }
+      }
+    }
+    
+    if (temperatures.isEmpty) return null;
+    
+    final avg = temperatures.reduce((a, b) => a + b) / temperatures.length;
+    
+    return {
+      'avg': avg,
+      'min': minTemp,
+      'max': maxTemp,
+      'minCatch': minCatch,
+      'maxCatch': maxCatch,
+    };
+  }
+
+  /// Get environmental insights summary
+  /// Returns a map with all insights data
+  Future<Map<String, dynamic>> getEnvironmentalInsights() async {
+    final results = <String, dynamic>{};
+    
+    results['mostCommonMoonPhase'] = await mostCommonMoonPhase();
+    results['mostSuccessfulMoonPhase'] = await mostSuccessfulMoonPhaseInsights();
+    results['mostCommonTideStage'] = await mostCommonTideStage();
+    results['mostSuccessfulTideStage'] = await mostSuccessfulTideStageInsights();
+    results['mostCommonWeather'] = await mostCommonWeather();
+    results['mostSuccessfulWeather'] = await mostSuccessfulWeatherInsights();
+    results['mostCommonWindDirection'] = await mostCommonWindDirection();
+    results['mostSuccessfulWindDirection'] = await mostSuccessfulWindDirectionInsights();
+    results['averageTemperature'] = await averageCatchTemperatureInsights();
+    
+    return results;
+  }
 }

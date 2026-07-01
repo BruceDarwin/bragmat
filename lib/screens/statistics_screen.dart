@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:io';
 import '../database/database_helper.dart';
 import '../services/achievement_service.dart';
+import '../services/environmental_conditions_service.dart';
 import 'catch_details_screen.dart';
 import 'trip_details_screen.dart';
 import 'achievements_screen.dart';
@@ -16,6 +17,7 @@ class StatisticsScreen extends StatefulWidget {
 class _StatisticsScreenState extends State<StatisticsScreen> {
   Map<String, dynamic>? _statistics;
   Map<String, dynamic>? _achievementStats;
+  Map<String, dynamic>? _environmentalInsights;
   bool _isLoading = true;
 
   @override
@@ -27,10 +29,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
   Future<void> _loadStatistics() async {
     final stats = await DatabaseHelper.instance.getStatistics();
     final achievementStats = await AchievementService().getAchievementStats();
+    final environmentalInsights = await EnvironmentalConditionsService().getEnvironmentalInsights();
     if (mounted) {
       setState(() {
         _statistics = stats;
         _achievementStats = achievementStats;
+        _environmentalInsights = environmentalInsights;
         _isLoading = false;
       });
     }
@@ -112,6 +116,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
           _buildAverageLengthBySpecies(),
           const SizedBox(height: 16),
           _buildSpeciesRecords(),
+          const SizedBox(height: 24),
+
+          // Environmental Insights
+          _buildSectionTitle('Environmental Insights'),
+          const SizedBox(height: 8),
+          _buildEnvironmentalInsights(),
           const SizedBox(height: 24),
 
           // Location Summary
@@ -802,6 +812,492 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                   color: Colors.grey[500],
                 ),
           ),
+      ],
+    );
+  }
+
+  Widget _buildEnvironmentalInsights() {
+    final insights = _environmentalInsights;
+    if (insights == null) {
+      return const SizedBox.shrink();
+    }
+
+    // Check if we have any data
+    final hasData = insights.values.any((v) => v != null);
+    if (!hasData) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            children: [
+              Icon(
+                Icons.nature,
+                size: 48,
+                color: Colors.grey[400],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'Not enough data yet',
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Catch more fish with environmental data to see insights',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[500],
+                    ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        // Environmental Summary Card
+        _buildEnvironmentalSummaryCard(),
+        const SizedBox(height: 16),
+        
+        // Moon Phase Insights
+        _buildMoonPhaseInsights(),
+        const SizedBox(height: 16),
+        
+        // Tide Insights
+        _buildTideInsights(),
+        const SizedBox(height: 16),
+        
+        // Weather Insights
+        _buildWeatherInsights(),
+        const SizedBox(height: 16),
+        
+        // Wind Insights
+        _buildWindInsights(),
+        const SizedBox(height: 16),
+        
+        // Temperature Insights
+        _buildTemperatureInsights(),
+      ],
+    );
+  }
+
+  Widget _buildEnvironmentalSummaryCard() {
+    final insights = _environmentalInsights;
+    if (insights == null) return const SizedBox.shrink();
+
+    final bestMoon = insights['mostSuccessfulMoonPhase'] as Map<String, dynamic>?;
+    final bestTide = insights['mostSuccessfulTideStage'] as Map<String, dynamic>?;
+    final bestWeather = insights['mostSuccessfulWeather'] as Map<String, dynamic>?;
+    final bestWind = insights['mostSuccessfulWindDirection'] as Map<String, dynamic>?;
+
+    final hasAnyData = bestMoon != null || bestTide != null || bestWeather != null || bestWind != null;
+    if (!hasAnyData) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.insights,
+                  color: Colors.green,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Environmental Snapshot',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (bestMoon != null)
+              _buildSummaryRow(Icons.nightlight, 'Best Moon', bestMoon['phase']),
+            if (bestTide != null)
+              _buildSummaryRow(Icons.waves, 'Best Tide', bestTide['stage']),
+            if (bestWeather != null)
+              _buildSummaryRow(Icons.wb_sunny, 'Best Weather', bestWeather['condition']),
+            if (bestWind != null)
+              _buildSummaryRow(Icons.air, 'Best Wind', bestWind['direction']),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSummaryRow(IconData icon, String label, String? value) {
+    if (value == null) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        children: [
+          Icon(icon, size: 16, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Text(
+            '$label: ',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey[600],
+                ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w600,
+                  ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMoonPhaseInsights() {
+    final insights = _environmentalInsights;
+    if (insights == null) return const SizedBox.shrink();
+
+    final mostCommon = insights['mostCommonMoonPhase'] as Map<String, dynamic>?;
+    final mostSuccessful = insights['mostSuccessfulMoonPhase'] as Map<String, dynamic>?;
+
+    if (mostCommon == null && mostSuccessful == null) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.nightlight,
+                  color: Colors.blue,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Moon Phase',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (mostCommon != null)
+              _buildInsightRow(
+                icon: Icons.bar_chart,
+                title: 'Most Common',
+                value: mostCommon['phase'],
+                subtitle: '${mostCommon['count']} catches',
+              ),
+            if (mostCommon != null && mostSuccessful != null)
+              const SizedBox(height: 12),
+            if (mostSuccessful != null)
+              _buildInsightRow(
+                icon: Icons.emoji_events,
+                title: 'Most Successful',
+                value: mostSuccessful['phase'],
+                subtitle: 'Average Length ${mostSuccessful['avgLength'].toStringAsFixed(0)} cm',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTideInsights() {
+    final insights = _environmentalInsights;
+    if (insights == null) return const SizedBox.shrink();
+
+    final mostCommon = insights['mostCommonTideStage'] as Map<String, dynamic>?;
+    final mostSuccessful = insights['mostSuccessfulTideStage'] as Map<String, dynamic>?;
+
+    if (mostCommon == null && mostSuccessful == null) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.waves,
+                  color: Colors.blue,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Tide',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (mostCommon != null)
+              _buildInsightRow(
+                icon: Icons.bar_chart,
+                title: 'Most Common',
+                value: mostCommon['stage'],
+                subtitle: '${mostCommon['count']} catches',
+              ),
+            if (mostCommon != null && mostSuccessful != null)
+              const SizedBox(height: 12),
+            if (mostSuccessful != null)
+              _buildInsightRow(
+                icon: Icons.emoji_events,
+                title: 'Most Successful',
+                value: mostSuccessful['stage'],
+                subtitle: 'Average Length ${mostSuccessful['avgLength'].toStringAsFixed(0)} cm',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWeatherInsights() {
+    final insights = _environmentalInsights;
+    if (insights == null) return const SizedBox.shrink();
+
+    final mostCommon = insights['mostCommonWeather'] as Map<String, dynamic>?;
+    final mostSuccessful = insights['mostSuccessfulWeather'] as Map<String, dynamic>?;
+
+    if (mostCommon == null && mostSuccessful == null) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.wb_sunny,
+                  color: Colors.orange,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Weather',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (mostCommon != null)
+              _buildInsightRow(
+                icon: Icons.bar_chart,
+                title: 'Most Common',
+                value: mostCommon['condition'],
+                subtitle: '${mostCommon['count']} catches',
+              ),
+            if (mostCommon != null && mostSuccessful != null)
+              const SizedBox(height: 12),
+            if (mostSuccessful != null)
+              _buildInsightRow(
+                icon: Icons.emoji_events,
+                title: 'Most Successful',
+                value: mostSuccessful['condition'],
+                subtitle: 'Average Length ${mostSuccessful['avgLength'].toStringAsFixed(0)} cm',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWindInsights() {
+    final insights = _environmentalInsights;
+    if (insights == null) return const SizedBox.shrink();
+
+    final mostCommon = insights['mostCommonWindDirection'] as Map<String, dynamic>?;
+    final mostSuccessful = insights['mostSuccessfulWindDirection'] as Map<String, dynamic>?;
+
+    if (mostCommon == null && mostSuccessful == null) return const SizedBox.shrink();
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.air,
+                  color: Colors.teal,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Wind',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (mostCommon != null)
+              _buildInsightRow(
+                icon: Icons.bar_chart,
+                title: 'Most Common',
+                value: mostCommon['direction'],
+                subtitle: '${mostCommon['count']} catches',
+              ),
+            if (mostCommon != null && mostSuccessful != null)
+              const SizedBox(height: 12),
+            if (mostSuccessful != null)
+              _buildInsightRow(
+                icon: Icons.emoji_events,
+                title: 'Most Successful',
+                value: mostSuccessful['direction'],
+                subtitle: 'Average Length ${mostSuccessful['avgLength'].toStringAsFixed(0)} cm',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTemperatureInsights() {
+    final insights = _environmentalInsights;
+    if (insights == null) return const SizedBox.shrink();
+
+    final tempData = insights['averageTemperature'] as Map<String, dynamic>?;
+    if (tempData == null) return const SizedBox.shrink();
+
+    final avg = tempData['avg'] as double?;
+    final minCatch = tempData['minCatch'] as Map<String, dynamic>?;
+    final maxCatch = tempData['maxCatch'] as Map<String, dynamic>?;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(
+                  Icons.thermostat,
+                  color: Colors.red,
+                  size: 20,
+                ),
+                const SizedBox(width: 8),
+                Text(
+                  'Temperature',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            if (avg != null)
+              _buildInsightRow(
+                icon: Icons.device_thermostat,
+                title: 'Average',
+                value: '${avg.toStringAsFixed(1)}°C',
+                subtitle: null,
+              ),
+            if (avg != null && (minCatch != null || maxCatch != null))
+              const SizedBox(height: 12),
+            if (minCatch != null)
+              _buildInsightRow(
+                icon: Icons.ac_unit,
+                title: 'Coldest Catch',
+                value: '${minCatch['temperature']?.toStringAsFixed(1)}°C',
+                subtitle: '${minCatch['fishType']}',
+              ),
+            if (minCatch != null && maxCatch != null)
+              const SizedBox(height: 12),
+            if (maxCatch != null)
+              _buildInsightRow(
+                icon: Icons.local_fire_department,
+                title: 'Hottest Catch',
+                value: '${maxCatch['temperature']?.toStringAsFixed(1)}°C',
+                subtitle: '${maxCatch['fishType']}',
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInsightRow({
+    required IconData icon,
+    required String title,
+    required String? value,
+    String? subtitle,
+  }) {
+    if (value == null) return const SizedBox.shrink();
+    return Row(
+      children: [
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            color: Theme.of(context).colorScheme.primary,
+            size: 20,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: Colors.grey[600],
+                    ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.grey[500],
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ],
+          ),
+        ),
       ],
     );
   }
