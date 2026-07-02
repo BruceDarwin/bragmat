@@ -5,6 +5,8 @@ import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
 import '../models/environmental_condition.dart';
+import '../models/fishing_trip.dart';
+import '../widgets/bragmat_section_card.dart';
 import 'add_catch_screen.dart';
 import 'photo_viewer_screen.dart';
 import 'catch_map_screen.dart';
@@ -190,424 +192,481 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
         ],
       ),
       body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Photo Section
             if (_mediaItems.isNotEmpty)
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 2,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemCount: _mediaItems.length,
-                itemBuilder: (context, index) {
-                  final media = _mediaItems[index];
-                  return Stack(
-                    children: [
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => PhotoViewerScreen(imagePath: media.filePath),
-                            ),
-                          );
-                        },
-                        child: Hero(
-                          tag: 'catch_photo_${media.id}',
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.file(
-                              File(media.filePath),
-                              width: double.infinity,
-                              height: 200,
-                              fit: BoxFit.cover,
-                            ),
-                          ),
-                        ),
-                      ),
-                      if (media.role == 'primary')
-                        Positioned(
-                          top: 8,
-                          left: 8,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              'Primary',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 12,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                        ),
-                      Positioned(
-                        top: 8,
-                        right: 8,
-                        child: PopupMenuButton<String>(
-                          icon: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.more_vert,
-                              color: Colors.white,
-                              size: 20,
-                            ),
-                          ),
-                          onSelected: (value) async {
-                            if (value == 'delete') {
-                              final confirmed = await showDialog<bool>(
-                                context: context,
-                                builder: (context) => AlertDialog(
-                                  title: const Text('Delete Photo'),
-                                  content: const Text('Are you sure you want to delete this photo?'),
-                                  actions: [
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context, false),
-                                      child: const Text('Cancel'),
-                                    ),
-                                    TextButton(
-                                      onPressed: () => Navigator.pop(context, true),
-                                      child: const Text('Delete'),
-                                    ),
-                                  ],
+              BragmatSectionCard(
+                icon: Icons.photo_camera,
+                title: 'Catch Photo',
+                children: [
+                  GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 8,
+                      mainAxisSpacing: 8,
+                    ),
+                    itemCount: _mediaItems.length,
+                    itemBuilder: (context, index) {
+                      final media = _mediaItems[index];
+                      return Stack(
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (_) => PhotoViewerScreen(imagePath: media.filePath),
                                 ),
                               );
-                              if (confirmed == true) {
-                                await _deleteMedia(media.id!);
-                              }
-                            } else if (value == 'primary') {
-                              await _setAsPrimary(media.id!);
-                            }
-                          },
-                          itemBuilder: (context) => [
-                            if (media.role != 'primary')
-                              const PopupMenuItem(
-                                value: 'primary',
-                                child: Text('Set as Primary'),
-                              ),
-                            const PopupMenuItem(
-                              value: 'delete',
-                              child: Text('Delete'),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  );
-                },
-              ),
-            Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    _catchItem.fishType,
-                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  if (_fishingBuddyName != null && _fishingBuddyName != 'Me')
-                    Padding(
-                      padding: const EdgeInsets.only(top: 8),
-                      child: Text(
-                        'Caught by $_fishingBuddyName',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Colors.grey[600],
-                          fontStyle: FontStyle.italic,
-                        ),
-                      ),
-                    ),
-                  const SizedBox(height: 24),
-                  _buildSection('Basic Info', [
-                    if (_catchItem.dateCaught != null)
-                      _buildDetailRow('Date Caught',
-                          '${_catchItem.dateCaught!.day}/${_catchItem.dateCaught!.month}/${_catchItem.dateCaught!.year} ${_catchItem.dateCaught!.hour.toString().padLeft(2, '0')}:${_catchItem.dateCaught!.minute.toString().padLeft(2, '0')}'),
-                    _buildDetailRow('Length', '${_catchItem.lengthCm} cm'),
-                    if (_catchItem.photoDateTime != null)
-                      _buildDetailRow('Photo Taken',
-                          '${_catchItem.photoDateTime!.day}/${_catchItem.photoDateTime!.month}/${_catchItem.photoDateTime!.year} ${_catchItem.photoDateTime!.hour.toString().padLeft(2, '0')}:${_catchItem.photoDateTime!.minute.toString().padLeft(2, '0')}'),
-                  ]),
-                  if (_catchItem.location != null && _catchItem.location!.isNotEmpty ||
-                      (_catchItem.latitude != null && _catchItem.longitude != null))
-                    _buildSection('Location', [
-                      if (_catchItem.location != null && _catchItem.location!.isNotEmpty)
-                        _buildDetailRow('Location', _catchItem.location!),
-                      if (_catchItem.latitude != null && _catchItem.longitude != null)
-                        _buildDetailRow('GPS Location',
-                            '${_catchItem.latitude!.toStringAsFixed(6)}, ${_catchItem.longitude!.toStringAsFixed(6)}'),
-                      if (_catchItem.latitude != null && _catchItem.longitude != null)
-                        _buildDetailRow('Coordinate Source', _getCoordinateSource()),
-                      if (!_isOnline && _catchItem.latitude != null && _catchItem.longitude != null)
-                        Padding(
-                          padding: const EdgeInsets.only(top: 8),
-                          child: Container(
-                            padding: const EdgeInsets.all(8),
-                            decoration: BoxDecoration(
-                              color: Colors.orange.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.orange.shade200),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.cloud_off,
-                                  size: 16,
-                                  color: Colors.orange.shade700,
+                            },
+                            child: Hero(
+                              tag: 'catch_photo_${media.id}',
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.file(
+                                  File(media.filePath),
+                                  width: double.infinity,
+                                  height: 200,
+                                  fit: BoxFit.cover,
                                 ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: Text(
-                                    'Map imagery unavailable while offline',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.orange.shade900,
-                                    ),
+                              ),
+                            ),
+                          ),
+                          if (media.role == 'primary')
+                            Positioned(
+                              top: 8,
+                              left: 8,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: Colors.blue,
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'Primary',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
                                   ),
+                                ),
+                              ),
+                            ),
+                          Positioned(
+                            top: 8,
+                            right: 8,
+                            child: PopupMenuButton<String>(
+                              icon: Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                  color: Colors.black54,
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                child: const Icon(
+                                  Icons.more_vert,
+                                  color: Colors.white,
+                                  size: 20,
+                                ),
+                              ),
+                              onSelected: (value) async {
+                                if (value == 'delete') {
+                                  final confirmed = await showDialog<bool>(
+                                    context: context,
+                                    builder: (context) => AlertDialog(
+                                      title: const Text('Delete Photo'),
+                                      content: const Text('Are you sure you want to delete this photo?'),
+                                      actions: [
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context, false),
+                                          child: const Text('Cancel'),
+                                        ),
+                                        TextButton(
+                                          onPressed: () => Navigator.pop(context, true),
+                                          child: const Text('Delete'),
+                                        ),
+                                      ],
+                                    ),
+                                  );
+                                  if (confirmed == true) {
+                                    await _deleteMedia(media.id!);
+                                  }
+                                } else if (value == 'primary') {
+                                  await _setAsPrimary(media.id!);
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                if (media.role != 'primary')
+                                  const PopupMenuItem(
+                                    value: 'primary',
+                                    child: Text('Set as Primary'),
+                                  ),
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Text('Delete'),
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                    ]),
-                  if (_catchItem.notes != null && _catchItem.notes!.isNotEmpty)
-                    _buildSection('Notes', [
-                      _buildDetailRow('Notes', _catchItem.notes!),
-                    ]),
-                  if (_environmentalCondition != null)
-                    _buildEnvironmentalSection(),
+                        ],
+                      );
+                    },
+                  ),
                 ],
               ),
+            if (_mediaItems.isNotEmpty) const SizedBox(height: 16),
+
+            // Catch Details Section
+            BragmatSectionCard(
+              icon: Icons.catching_pokemon,
+              title: 'Catch Details',
+              children: [
+                Text(
+                  _catchItem.fishType,
+                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.bold,
+                      ),
+                ),
+                if (_fishingBuddyName != null && _fishingBuddyName != 'Me')
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      'Caught by $_fishingBuddyName',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Colors.grey[600],
+                            fontStyle: FontStyle.italic,
+                          ),
+                    ),
+                  ),
+                const SizedBox(height: 12),
+                BragmatDataRow(
+                  icon: Icons.straighten,
+                  label: 'Length',
+                  value: '${_catchItem.lengthCm} cm',
+                ),
+                if (_catchItem.photoDateTime != null)
+                  BragmatDataRow(
+                    icon: Icons.camera_alt,
+                    label: 'Photo Taken',
+                    value: '${_catchItem.photoDateTime!.day}/${_catchItem.photoDateTime!.month}/${_catchItem.photoDateTime!.year} ${_catchItem.photoDateTime!.hour.toString().padLeft(2, '0')}:${_catchItem.photoDateTime!.minute.toString().padLeft(2, '0')}',
+                  ),
+              ],
             ),
+            const SizedBox(height: 16),
+
+            // Date & Time Section
+            if (_catchItem.dateCaught != null)
+              BragmatSectionCard(
+                icon: Icons.calendar_today,
+                title: 'Date & Time',
+                children: [
+                  BragmatDataRow(
+                    icon: Icons.event,
+                    label: 'Date Caught',
+                    value: '${_catchItem.dateCaught!.day}/${_catchItem.dateCaught!.month}/${_catchItem.dateCaught!.year}',
+                  ),
+                  BragmatDataRow(
+                    icon: Icons.access_time,
+                    label: 'Time Caught',
+                    value: '${_catchItem.dateCaught!.hour.toString().padLeft(2, '0')}:${_catchItem.dateCaught!.minute.toString().padLeft(2, '0')}',
+                  ),
+                ],
+              ),
+            if (_catchItem.dateCaught != null) const SizedBox(height: 16),
+
+            // Location Section
+            if (_catchItem.location != null && _catchItem.location!.isNotEmpty ||
+                (_catchItem.latitude != null && _catchItem.longitude != null))
+              BragmatSectionCard(
+                icon: Icons.location_on,
+                title: 'Location',
+                children: [
+                  if (_catchItem.location != null && _catchItem.location!.isNotEmpty)
+                    BragmatDataRow(
+                      icon: Icons.place,
+                      label: 'Location Name',
+                      value: _catchItem.location!,
+                    ),
+                  if (_catchItem.latitude != null && _catchItem.longitude != null)
+                    BragmatDataRow(
+                      icon: Icons.gps_fixed,
+                      label: 'GPS Coordinates',
+                      value: '${_catchItem.latitude!.toStringAsFixed(6)}, ${_catchItem.longitude!.toStringAsFixed(6)}',
+                    ),
+                  if (_catchItem.latitude != null && _catchItem.longitude != null)
+                    BragmatDataRow(
+                      icon: Icons.info_outline,
+                      label: 'Coordinate Source',
+                      value: _getCoordinateSource(),
+                    ),
+                  if (!_isOnline && _catchItem.latitude != null && _catchItem.longitude != null)
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.shade50,
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.cloud_off,
+                            size: 20,
+                            color: Colors.orange.shade700,
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Map imagery unavailable while offline',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Colors.orange.shade900,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            if (_catchItem.location != null && _catchItem.location!.isNotEmpty ||
+                (_catchItem.latitude != null && _catchItem.longitude != null))
+              const SizedBox(height: 16),
+
+            // Trip Section
+            if (_catchItem.tripId != null || _fishingBuddyName != null)
+              BragmatSectionCard(
+                icon: Icons.directions_boat,
+                title: 'Trip',
+                children: [
+                  if (_catchItem.tripId != null)
+                    FutureBuilder(
+                      future: DatabaseHelper.instance.getFishingTrip(_catchItem.tripId!),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData && snapshot.data != null) {
+                          return BragmatDataRow(
+                            icon: Icons.directions_boat,
+                            label: 'Fishing Trip',
+                            value: snapshot.data!.name,
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      },
+                    ),
+                  if (_fishingBuddyName != null && _fishingBuddyName != 'Me')
+                    BragmatDataRow(
+                      icon: Icons.person,
+                      label: 'Fishing Buddy',
+                      value: _fishingBuddyName!,
+                    ),
+                ],
+              ),
+            if (_catchItem.tripId != null || _fishingBuddyName != null)
+              const SizedBox(height: 16),
+
+            // Environmental Conditions Section
+            if (_environmentalCondition != null)
+              BragmatSectionCard(
+                icon: Icons.wb_sunny,
+                title: 'Environmental Conditions',
+                initiallyExpanded: false,
+                children: _buildEnvironmentalDetails(),
+              ),
+            if (_environmentalCondition != null) const SizedBox(height: 16),
+
+            // Notes Section
+            if (_catchItem.notes != null && _catchItem.notes!.isNotEmpty)
+              BragmatSectionCard(
+                icon: Icons.note,
+                title: 'Notes',
+                children: [
+                  Text(
+                    _catchItem.notes!,
+                    style: Theme.of(context).textTheme.bodyLarge,
+                  ),
+                ],
+              ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildSection(String title, List<Widget> children) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: Theme.of(context).textTheme.titleLarge?.copyWith(
-            fontWeight: FontWeight.bold,
-            color: Theme.of(context).colorScheme.primary,
-          ),
-        ),
-        const SizedBox(height: 12),
-        ...children,
-        const SizedBox(height: 24),
-      ],
-    );
-  }
-
-  Widget _buildDetailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (label.isNotEmpty)
-            Text(
-              label,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                color: Colors.grey[600],
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          if (label.isNotEmpty) const SizedBox(height: 4),
-          Text(
-            value,
-            style: Theme.of(context).textTheme.bodyLarge,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDetailRowWithIcon(String icon, String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                icon,
-                style: const TextStyle(fontSize: 18),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: Colors.grey[600],
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 4),
-          Padding(
-            padding: const EdgeInsets.only(left: 26),
-            child: Text(
-              value,
-              style: Theme.of(context).textTheme.bodyLarge,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEnvironmentalSection() {
-    final envService = EnvironmentalConditionsService();
-    final summary = envService.getEnvironmentalSummary(_environmentalCondition);
-    
+  List<Widget> _buildEnvironmentalDetails() {
     final condition = _environmentalCondition!;
     final details = <Widget>[];
-    
-    // Moon phase with icon
+
+    // Moon
     if (condition.moonPhase != null) {
-      final moonText = condition.moonIllumination != null 
+      final moonText = condition.moonIllumination != null
           ? '${condition.moonPhase!} (${condition.moonIllumination!.toStringAsFixed(0)}%)'
           : condition.moonPhase!;
-      details.add(_buildDetailRowWithIcon('🌙', 'Moon', moonText));
+      details.add(BragmatDataRow(
+        icon: Icons.nightlight,
+        label: 'Moon Phase',
+        value: moonText,
+      ));
     }
-    
-    // Sunrise with icon
-    if (condition.sunriseTime != null) {
+
+    // Sun times
+    if (condition.sunriseTime != null || condition.sunsetTime != null) {
       final sunService = SunTimesService();
-      final sunrise = sunService.formatTime(condition.sunriseTime!);
-      details.add(_buildDetailRowWithIcon('🌅', 'Sunrise', sunrise));
-    } else if (condition.latitude != null && condition.longitude != null) {
-      details.add(_buildDetailRowWithIcon('🌅', 'Sunrise', 'Not available'));
+      if (condition.sunriseTime != null) {
+        details.add(BragmatDataRow(
+          icon: Icons.wb_sunny,
+          label: 'Sunrise',
+          value: sunService.formatTime(condition.sunriseTime!),
+        ));
+      }
+      if (condition.sunsetTime != null) {
+        details.add(BragmatDataRow(
+          icon: Icons.bedtime,
+          label: 'Sunset',
+          value: sunService.formatTime(condition.sunsetTime!),
+        ));
+      }
     }
-    
-    // Sunset with icon
-    if (condition.sunsetTime != null) {
-      final sunService = SunTimesService();
-      final sunset = sunService.formatTime(condition.sunsetTime!);
-      details.add(_buildDetailRowWithIcon('🌇', 'Sunset', sunset));
-    } else if (condition.latitude != null && condition.longitude != null) {
-      details.add(_buildDetailRowWithIcon('🌇', 'Sunset', 'Not available'));
+
+    // Weather
+    if (condition.weatherCondition != null || condition.temperature != null) {
+      if (condition.weatherCondition != null && condition.weatherCondition != 'Unknown') {
+        details.add(BragmatDataRow(
+          icon: Icons.cloud,
+          label: 'Weather',
+          value: condition.weatherCondition!,
+        ));
+      }
+      if (condition.temperature != null) {
+        details.add(BragmatDataRow(
+          icon: Icons.thermostat,
+          label: 'Temperature',
+          value: '${condition.temperature!.toStringAsFixed(1)}°C',
+        ));
+      }
+      if (condition.humidity != null) {
+        details.add(BragmatDataRow(
+          icon: Icons.water_drop,
+          label: 'Humidity',
+          value: '${condition.humidity!.toStringAsFixed(0)}%',
+        ));
+      }
+      if (condition.cloudCover != null) {
+        details.add(BragmatDataRow(
+          icon: Icons.cloud_queue,
+          label: 'Cloud Cover',
+          value: '${condition.cloudCover!.toStringAsFixed(0)}%',
+        ));
+      }
     }
-    
-    // Tide section with icon
-    final hasTideData = (condition.tideStage != null && condition.tideStage != 'Unknown') ||
-                       condition.tideStrength != null ||
-                       (condition.tideNotes != null && condition.tideNotes!.isNotEmpty) ||
-                       condition.tideHeight != null ||
-                       condition.tideMovement != null ||
-                       (condition.tideStation != null && condition.tideStation!.isNotEmpty);
-    
-    if (hasTideData) {
+
+    // Wind
+    if (condition.windDirection != null || condition.windSpeed != null) {
+      final windText = condition.windDirection != null && condition.windDirection != 'Unknown'
+          ? (condition.windSpeed != null
+              ? '${condition.windDirection!} • ${condition.windSpeed!.toStringAsFixed(0)} km/h'
+              : condition.windDirection!)
+          : (condition.windSpeed != null
+              ? '${condition.windSpeed!.toStringAsFixed(0)} km/h'
+              : null);
+      if (windText != null) {
+        details.add(BragmatDataRow(
+          icon: Icons.air,
+          label: 'Wind',
+          value: windText,
+        ));
+      }
+    }
+
+    // Tide
+    if (condition.tideStage != null || condition.tideStrength != null) {
       final tideDetails = <String>[];
-      
       if (condition.tideStage != null && condition.tideStage != 'Unknown') {
         tideDetails.add(condition.tideStage!);
       }
       if (condition.tideStrength != null) {
         tideDetails.add(condition.tideStrength!);
       }
-      
       if (tideDetails.isNotEmpty) {
-        details.add(_buildDetailRowWithIcon('🌊', 'Tide', tideDetails.join(' • ')));
+        details.add(BragmatDataRow(
+          icon: Icons.waves,
+          label: 'Tide',
+          value: tideDetails.join(' • '),
+        ));
       }
-      
-      if (condition.tideNotes != null && condition.tideNotes!.isNotEmpty) {
-        details.add(_buildDetailRow('', condition.tideNotes!));
-      }
-      
       if (condition.tideHeight != null) {
-        details.add(_buildDetailRow('', 'Height: ${condition.tideHeight!.toStringAsFixed(2)} m'));
+        details.add(BragmatDataRow(
+          icon: Icons.straighten,
+          label: 'Tide Height',
+          value: '${condition.tideHeight!.toStringAsFixed(2)} m',
+        ));
       }
-      
       if (condition.tideMovement != null) {
-        details.add(_buildDetailRow('', 'Movement: ${condition.tideMovement!}'));
+        details.add(BragmatDataRow(
+          icon: Icons.compare_arrows,
+          label: 'Tide Movement',
+          value: condition.tideMovement!,
+        ));
       }
-      
-      if (condition.tideStation != null && condition.tideStation!.isNotEmpty) {
-        details.add(_buildDetailRow('', 'Station: ${condition.tideStation!}'));
-      }
-    }
-    
-    // Weather section with icon
-    final hasWeatherData = condition.weatherCondition != null ||
-                          condition.temperature != null ||
-                          condition.humidity != null ||
-                          condition.cloudCover != null;
-    
-    if (hasWeatherData) {
-      if (condition.weatherCondition != null && condition.weatherCondition != 'Unknown') {
-        details.add(_buildDetailRowWithIcon('☀️', 'Weather', condition.weatherCondition!));
-      }
-      
-      if (condition.temperature != null) {
-        details.add(_buildDetailRow('', '${condition.temperature!.toStringAsFixed(1)}°C'));
-      }
-      
-      if (condition.humidity != null) {
-        details.add(_buildDetailRow('', 'Humidity ${condition.humidity!.toStringAsFixed(0)}%'));
-      }
-      
-      if (condition.cloudCover != null) {
-        details.add(_buildDetailRow('', 'Cloud Cover ${condition.cloudCover!.toStringAsFixed(0)}%'));
+      if (condition.tideNotes != null && condition.tideNotes!.isNotEmpty) {
+        details.add(Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          child: Text(
+            condition.tideNotes!,
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+        ));
       }
     }
-    
-    // Wind
-    if (condition.windDirection != null && condition.windDirection != 'Unknown') {
-      final windText = condition.windSpeed != null 
-          ? '${condition.windDirection!} • ${condition.windSpeed!.toStringAsFixed(0)} km/h'
-          : condition.windDirection!;
-      details.add(_buildDetailRowWithIcon('💨', 'Wind', windText));
-    } else if (condition.windSpeed != null) {
-      details.add(_buildDetailRowWithIcon('💨', 'Wind', '${condition.windSpeed!.toStringAsFixed(0)} km/h'));
+
+    // Water conditions
+    if (condition.waterClarity != null || condition.riverFlow != null) {
+      if (condition.waterClarity != null && condition.waterClarity != 'Unknown') {
+        details.add(BragmatDataRow(
+          icon: Icons.visibility,
+          label: 'Water Clarity',
+          value: condition.waterClarity!,
+        ));
+      }
+      if (condition.riverFlow != null) {
+        details.add(BragmatDataRow(
+          icon: Icons.waves,
+          label: 'River Flow',
+          value: condition.riverFlow!,
+        ));
+      }
     }
-    
-    // Other conditions
+
+    // Other
     if (condition.barometricPressure != null) {
-      details.add(_buildDetailRow('Barometric Pressure', '${condition.barometricPressure!.toStringAsFixed(1)} hPa'));
+      details.add(BragmatDataRow(
+        icon: Icons.speed,
+        label: 'Barometric Pressure',
+        value: '${condition.barometricPressure!.toStringAsFixed(1)} hPa',
+      ));
     }
     if (condition.rainfall != null) {
-      details.add(_buildDetailRow('Rainfall', '${condition.rainfall!.toStringAsFixed(1)} mm'));
+      details.add(BragmatDataRow(
+        icon: Icons.grain,
+        label: 'Rainfall',
+        value: '${condition.rainfall!.toStringAsFixed(1)} mm',
+      ));
     }
-    if (condition.riverFlow != null) {
-      details.add(_buildDetailRow('River Flow', condition.riverFlow!));
-    }
-    if (condition.waterClarity != null && condition.waterClarity != 'Unknown') {
-      details.add(_buildDetailRow('Water Clarity', condition.waterClarity!));
-    }
-    
-    return _buildSection('Fishing Conditions', details);
+
+    return details;
   }
 
   String _getCoordinateSource() {
-    // Use the coordinateSource field from the catch
     if (_catchItem.coordinateSource != null && _catchItem.coordinateSource!.isNotEmpty) {
       return _catchItem.coordinateSource!;
     }
     
-    // Fallback: Check if any media item has GPS coordinates that match the catch coordinates
     if (_mediaItems.isNotEmpty) {
       for (final media in _mediaItems) {
         if (media.latitude != null && media.longitude != null) {
-          // Check if media coordinates match catch coordinates (within small tolerance)
           final latDiff = (media.latitude! - (_catchItem.latitude ?? 0)).abs();
           final lonDiff = (media.longitude! - (_catchItem.longitude ?? 0)).abs();
           if (latDiff < 0.000001 && lonDiff < 0.000001) {

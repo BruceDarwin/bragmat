@@ -13,6 +13,7 @@ import '../models/environmental_condition.dart';
 import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
+import '../widgets/bragmat_section_card.dart';
 import 'location_picker_screen.dart';
 
 class AddCatchScreen extends StatefulWidget {
@@ -1014,513 +1015,595 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-            if (_mediaItems.isNotEmpty)
-              GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                  crossAxisCount: 3,
-                  crossAxisSpacing: 8,
-                  mainAxisSpacing: 8,
-                ),
-                itemCount: _mediaItems.length,
-                itemBuilder: (context, index) {
-                  final media = _mediaItems[index];
-                  return Stack(
-                    children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.file(
-                          File(media.filePath),
-                          height: 100,
-                          width: double.infinity,
-                          fit: BoxFit.cover,
-                        ),
+              // Photo Section
+              BragmatSectionCard(
+                icon: Icons.photo_camera,
+                title: 'Catch Photo',
+                children: [
+                  if (_mediaItems.isNotEmpty)
+                    GridView.builder(
+                      shrinkWrap: true,
+                      physics: const NeverScrollableScrollPhysics(),
+                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                        crossAxisCount: 3,
+                        crossAxisSpacing: 8,
+                        mainAxisSpacing: 8,
                       ),
-                      if (media.role == 'primary')
-                        Positioned(
-                          top: 4,
-                          left: 4,
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.blue,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: const Text(
-                              'Primary',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 10,
-                                fontWeight: FontWeight.bold,
+                      itemCount: _mediaItems.length,
+                      itemBuilder: (context, index) {
+                        final media = _mediaItems[index];
+                        return Stack(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: Image.file(
+                                File(media.filePath),
+                                height: 100,
+                                width: double.infinity,
+                                fit: BoxFit.cover,
                               ),
                             ),
+                            if (media.role == 'primary')
+                              Positioned(
+                                top: 4,
+                                left: 4,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.blue,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: const Text(
+                                    'Primary',
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            Positioned(
+                              top: 4,
+                              right: 4,
+                              child: GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _mediaItems.removeAt(index);
+                                    if (media.role == 'primary' && _mediaItems.isNotEmpty) {
+                                      _mediaItems[0] = _mediaItems[0].copyWith(role: 'primary');
+                                    }
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.close,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _takePhoto,
+                          icon: const Icon(Icons.camera_alt),
+                          label: const Text('Take Photo'),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _pickImage,
+                          icon: const Icon(Icons.photo_library),
+                          label: const Text('Add Photo'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Catch Details Section
+              BragmatSectionCard(
+                icon: Icons.catching_pokemon,
+                title: 'Catch Details',
+                children: [
+                  DropdownButtonFormField<String>(
+                    value: _selectedFishType,
+                    decoration: const InputDecoration(labelText: 'Fish Type'),
+                    items: [
+                      ..._fishTypes.map((type) {
+                        return DropdownMenuItem(
+                          value: type,
+                          child: Text(type),
+                        );
+                      }),
+                      const DropdownMenuItem(
+                        value: 'add_new',
+                        child: Text('+ Add New Fish Type'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == 'add_new') {
+                        _showAddFishTypeDialog();
+                      } else {
+                        setState(() {
+                          _selectedFishType = value;
+                          _fishTypeController.text = value ?? '';
+                          _onFieldChanged();
+                        });
+                      }
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _lengthController,
+                    decoration: const InputDecoration(labelText: 'Size (cm)'),
+                    keyboardType: TextInputType.number,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Date & Time Section
+              BragmatSectionCard(
+                icon: Icons.calendar_today,
+                title: 'Date & Time',
+                children: [
+                  ListTile(
+                    title: const Text('Date Caught'),
+                    subtitle: Text(
+                      _dateCaught != null
+                          ? '${_dateCaught!.day}/${_dateCaught!.month}/${_dateCaught!.year}'
+                          : 'Not set',
+                    ),
+                    trailing: const Icon(Icons.calendar_today),
+                    onTap: _selectDate,
+                  ),
+                  ListTile(
+                    title: const Text('Time Caught'),
+                    subtitle: Text(
+                      _dateCaught != null
+                          ? '${_dateCaught!.hour.toString().padLeft(2, '0')}:${_dateCaught!.minute.toString().padLeft(2, '0')}'
+                          : 'Not set',
+                    ),
+                    trailing: const Icon(Icons.access_time),
+                    onTap: _selectTime,
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Location Section
+              BragmatSectionCard(
+                icon: Icons.location_on,
+                title: 'Location',
+                children: [
+                  TextField(
+                    controller: _locationController,
+                    decoration: const InputDecoration(labelText: 'Location Name'),
+                  ),
+                  const SizedBox(height: 12),
+                  if (_favouriteSpots.isNotEmpty)
+                    DropdownButtonFormField<int>(
+                      value: _selectedFavouriteSpotId,
+                      decoration: const InputDecoration(
+                        labelText: 'Favourite Spot (optional)',
+                        prefixIcon: Icon(Icons.place),
+                      ),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('None')),
+                        ..._favouriteSpots.map((spot) {
+                          return DropdownMenuItem(
+                            value: spot.id,
+                            child: Text(spot.name),
+                          );
+                        }),
+                      ],
+                      onChanged: (value) {
+                        final spot = value != null
+                            ? _favouriteSpots.firstWhere((s) => s.id == value)
+                            : null;
+                        _onFavouriteSpotSelected(spot);
+                      },
+                    ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _latitudeController,
+                          decoration: const InputDecoration(
+                            labelText: 'Latitude (optional)',
+                            hintText: 'e.g., -33.8688',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _longitudeController,
+                          decoration: const InputDecoration(
+                            labelText: 'Longitude (optional)',
+                            hintText: 'e.g., 151.2093',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _getCurrentLocation,
+                          icon: const Icon(Icons.my_location),
+                          label: const Text('Use Current Location'),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 48),
                           ),
                         ),
-                      Positioned(
-                        top: 4,
-                        right: 4,
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              _mediaItems.removeAt(index);
-                              // If we removed the primary, set the first remaining as primary
-                              if (media.role == 'primary' && _mediaItems.isNotEmpty) {
-                                _mediaItems[0] = _mediaItems[0].copyWith(role: 'primary');
-                              }
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.all(4),
-                            decoration: BoxDecoration(
-                              color: Colors.black54,
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            child: const Icon(
-                              Icons.close,
-                              color: Colors.white,
-                              size: 16,
-                            ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: _pickLocationOnMap,
+                          icon: const Icon(Icons.map),
+                          label: const Text('Pick on Map'),
+                          style: ElevatedButton.styleFrom(
+                            minimumSize: const Size(double.infinity, 48),
                           ),
                         ),
                       ),
                     ],
-                  );
-                },
-              ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _takePhoto,
-                    icon: const Icon(Icons.camera_alt),
-                    label: Text(_mediaItems.isEmpty ? 'Take Photo' : 'Take Photo'),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _pickImage,
-                    icon: const Icon(Icons.photo_library),
-                    label: Text(_mediaItems.isEmpty ? 'Add Photo' : 'Add Photo'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 24),
-            ListTile(
-              title: const Text('Date Caught'),
-              subtitle: Text(
-                _dateCaught != null
-                    ? '${_dateCaught!.day}/${_dateCaught!.month}/${_dateCaught!.year}'
-                    : 'Not set',
-              ),
-              trailing: const Icon(Icons.calendar_today),
-              onTap: _selectDate,
-            ),
-            ListTile(
-              title: const Text('Time Caught'),
-              subtitle: Text(
-                _dateCaught != null
-                    ? '${_dateCaught!.hour.toString().padLeft(2, '0')}:${_dateCaught!.minute.toString().padLeft(2, '0')}'
-                    : 'Not set',
-              ),
-              trailing: const Icon(Icons.access_time),
-              onTap: _selectTime,
-            ),
-            const SizedBox(height: 24),
-            DropdownButtonFormField<int>(
-              initialValue: _selectedTripId,
-              decoration: const InputDecoration(labelText: 'Fishing Trip'),
-              items: _fishingTrips.isEmpty
-                  ? []
-                  : _fishingTrips.map((trip) {
-                      return DropdownMenuItem(
-                        value: trip.id,
-                        child: Text(trip.name),
-                      );
-                    }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedTripId = value;
-                  _onFieldChanged();
-                });
-              },
-            ),
-            const SizedBox(height: 24),
-            DropdownButtonFormField<int>(
-              initialValue: _selectedFishingBuddyId,
-              decoration: const InputDecoration(labelText: 'Fishing Buddy'),
-              items: _fishingBuddies.isEmpty
-                  ? []
-                  : _fishingBuddies.map((buddy) {
-                      return DropdownMenuItem(
-                        value: buddy.id,
-                        child: Text(buddy.name),
-                      );
-                    }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedFishingBuddyId = value;
-                  _onFieldChanged();
-                });
-              },
-            ),
-            const SizedBox(height: 24),
-            DropdownButtonFormField<String>(
-              initialValue: _selectedFishType,
-              decoration: const InputDecoration(labelText: 'Fish Type'),
-              items: [
-                ..._fishTypes.map((type) {
-                  return DropdownMenuItem(
-                    value: type,
-                    child: Text(type),
-                  );
-                }),
-                const DropdownMenuItem(
-                  value: 'add_new',
-                  child: Text('+ Add New Fish Type'),
-                ),
-              ],
-              onChanged: (value) {
-                if (value == 'add_new') {
-                  _showAddFishTypeDialog();
-                } else {
-                  setState(() {
-                    _selectedFishType = value;
-                    _fishTypeController.text = value ?? '';
-                    _onFieldChanged();
-                  });
-                }
-              },
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _lengthController,
-              decoration: const InputDecoration(labelText: 'Size (cm)'),
-              keyboardType: TextInputType.number,
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _locationController,
-              decoration: const InputDecoration(labelText: 'Location'),
-            ),
-            const SizedBox(height: 8),
-            if (_favouriteSpots.isNotEmpty)
-              DropdownButtonFormField<int>(
-                value: _selectedFavouriteSpotId,
-                decoration: const InputDecoration(
-                  labelText: 'Favourite Spot (optional)',
-                  prefixIcon: Icon(Icons.place),
-                ),
-                items: [
-                  const DropdownMenuItem(value: null, child: Text('None')),
-                  ..._favouriteSpots.map((spot) {
-                    return DropdownMenuItem(
-                      value: spot.id,
-                      child: Text(spot.name),
-                    );
-                  }),
                 ],
-                onChanged: (value) {
-                  final spot = value != null
-                      ? _favouriteSpots.firstWhere((s) => s.id == value)
-                      : null;
-                  _onFavouriteSpotSelected(spot);
-                },
               ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _latitudeController,
+              const SizedBox(height: 16),
+
+              // Trip Section
+              BragmatSectionCard(
+                icon: Icons.directions_boat,
+                title: 'Trip',
+                children: [
+                  DropdownButtonFormField<int>(
+                    initialValue: _selectedTripId,
+                    decoration: const InputDecoration(labelText: 'Fishing Trip'),
+                    items: _fishingTrips.isEmpty
+                        ? []
+                        : _fishingTrips.map((trip) {
+                            return DropdownMenuItem(
+                              value: trip.id,
+                              child: Text(trip.name),
+                            );
+                          }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedTripId = value;
+                        _onFieldChanged();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<int>(
+                    initialValue: _selectedFishingBuddyId,
+                    decoration: const InputDecoration(labelText: 'Fishing Buddy'),
+                    items: _fishingBuddies.isEmpty
+                        ? []
+                        : _fishingBuddies.map((buddy) {
+                            return DropdownMenuItem(
+                              value: buddy.id,
+                              child: Text(buddy.name),
+                            );
+                          }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedFishingBuddyId = value;
+                        _onFieldChanged();
+                      });
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Environmental Conditions Section
+              BragmatSectionCard(
+                icon: Icons.wb_sunny,
+                title: 'Environmental Conditions',
+                initiallyExpanded: false,
+                children: [
+                  // Weather
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Weather',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ),
+                  DropdownButtonFormField<String>(
+                    value: _selectedWeatherCondition,
+                    decoration: const InputDecoration(labelText: 'Weather Condition'),
+                    items: EnvironmentalCondition.weatherConditions.map((condition) {
+                      return DropdownMenuItem(
+                        value: condition,
+                        child: Text(condition),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedWeatherCondition = value;
+                        _onFieldChanged();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _temperatureController,
+                          decoration: const InputDecoration(
+                            labelText: 'Temperature (°C)',
+                            hintText: 'e.g., 25',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _humidityController,
+                          decoration: const InputDecoration(
+                            labelText: 'Humidity (%)',
+                            hintText: 'e.g., 65',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _cloudCoverController,
                     decoration: const InputDecoration(
-                      labelText: 'Latitude (optional)',
-                      hintText: 'e.g., -33.8688',
+                      labelText: 'Cloud Cover (%)',
+                      hintText: 'e.g., 40',
                     ),
-                    keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: _longitudeController,
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedWindDirection,
+                          decoration: const InputDecoration(labelText: 'Wind Direction'),
+                          items: EnvironmentalCondition.windDirections.map((direction) {
+                            return DropdownMenuItem(
+                              value: direction,
+                              child: Text(direction),
+                            );
+                          }).toList(),
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedWindDirection = value;
+                              _onFieldChanged();
+                            });
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _windSpeedController,
                     decoration: const InputDecoration(
-                      labelText: 'Longitude (optional)',
-                      hintText: 'e.g., 151.2093',
+                      labelText: 'Wind Speed (km/h)',
+                      hintText: 'e.g., 15',
                     ),
-                    keyboardType: const TextInputType.numberWithOptions(signed: true, decimal: true),
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _getCurrentLocation,
-                    icon: const Icon(Icons.location_on),
-                    label: const Text('Use Current Location'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
+                  const SizedBox(height: 16),
+
+                  // Tide
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Tide',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton.icon(
-                    onPressed: _pickLocationOnMap,
-                    icon: const Icon(Icons.map),
-                    label: const Text('Pick on Map'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
+                  DropdownButtonFormField<String>(
+                    value: _selectedTideStage,
+                    decoration: const InputDecoration(labelText: 'Tide Stage'),
+                    items: EnvironmentalCondition.tideStages.map((stage) {
+                      return DropdownMenuItem(
+                        value: stage,
+                        child: Text(stage),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedTideStage = value;
+                        _onFieldChanged();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _selectedTideStrength,
+                    decoration: const InputDecoration(labelText: 'Tide Strength (Optional)'),
+                    items: EnvironmentalCondition.tideStrengths.map((strength) {
+                      return DropdownMenuItem(
+                        value: strength,
+                        child: Text(strength),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedTideStrength = value;
+                        _onFieldChanged();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _selectedTideMovement,
+                          decoration: const InputDecoration(labelText: 'Tide Movement'),
+                          items: const [
+                            DropdownMenuItem(value: null, child: Text('Unknown')),
+                            DropdownMenuItem(value: 'Run-in', child: Text('Run-in')),
+                            DropdownMenuItem(value: 'Run-out', child: Text('Run-out')),
+                            DropdownMenuItem(value: 'Slack', child: Text('Slack')),
+                          ],
+                          onChanged: (value) {
+                            setState(() {
+                              _selectedTideMovement = value;
+                              _onFieldChanged();
+                            });
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _tideHeightController,
+                          decoration: const InputDecoration(
+                            labelText: 'Tide Height (m)',
+                            hintText: 'e.g., 1.5',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _tideNotesController,
+                    decoration: const InputDecoration(
+                      labelText: 'Tide Notes (Optional)',
+                      hintText: 'e.g., Big spring tide, Dirty run-out',
+                    ),
+                    maxLines: 2,
+                    onChanged: (_) => _onFieldChanged(),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _tideStationController,
+                    decoration: const InputDecoration(
+                      labelText: 'Tide Station (optional)',
+                      hintText: 'e.g., Sydney Harbour',
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _notesController,
-              decoration: const InputDecoration(labelText: 'Notes'),
-              maxLines: 3,
-            ),
-            const SizedBox(height: 24),
-            const Text(
-              'Fishing Conditions (Optional)',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _selectedTideStage,
-              decoration: const InputDecoration(labelText: 'Tide Stage'),
-              items: EnvironmentalCondition.tideStages.map((stage) {
-                return DropdownMenuItem(
-                  value: stage,
-                  child: Text(stage),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedTideStage = value;
-                  _onFieldChanged();
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _selectedTideStrength,
-              decoration: const InputDecoration(labelText: 'Tide Strength (Optional)'),
-              items: EnvironmentalCondition.tideStrengths.map((strength) {
-                return DropdownMenuItem(
-                  value: strength,
-                  child: Text(strength),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedTideStrength = value;
-                  _onFieldChanged();
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _tideNotesController,
-              decoration: const InputDecoration(
-                labelText: 'Tide Notes (Optional)',
-                hintText: 'e.g., Big spring tide, Dirty run-out',
-              ),
-              maxLines: 2,
-              onChanged: (_) => _onFieldChanged(),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedTideMovement,
-                    decoration: const InputDecoration(labelText: 'Tide Movement'),
+                  const SizedBox(height: 16),
+
+                  // Water Conditions
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Water Conditions',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ),
+                  DropdownButtonFormField<String>(
+                    value: _selectedWaterClarity,
+                    decoration: const InputDecoration(labelText: 'Water Clarity'),
+                    items: EnvironmentalCondition.waterClarities.map((clarity) {
+                      return DropdownMenuItem(
+                        value: clarity,
+                        child: Text(clarity),
+                      );
+                    }).toList(),
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedWaterClarity = value;
+                        _onFieldChanged();
+                      });
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  DropdownButtonFormField<String>(
+                    value: _selectedRiverFlow,
+                    decoration: const InputDecoration(labelText: 'River Flow (optional)'),
                     items: const [
                       DropdownMenuItem(value: null, child: Text('Unknown')),
-                      DropdownMenuItem(value: 'Run-in', child: Text('Run-in')),
-                      DropdownMenuItem(value: 'Run-out', child: Text('Run-out')),
-                      DropdownMenuItem(value: 'Slack', child: Text('Slack')),
+                      DropdownMenuItem(value: 'Low', child: Text('Low')),
+                      DropdownMenuItem(value: 'Normal', child: Text('Normal')),
+                      DropdownMenuItem(value: 'High', child: Text('High')),
+                      DropdownMenuItem(value: 'Flood', child: Text('Flood')),
                     ],
                     onChanged: (value) {
                       setState(() {
-                        _selectedTideMovement = value;
+                        _selectedRiverFlow = value;
                         _onFieldChanged();
                       });
                     },
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: _tideHeightController,
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _barometricPressureController,
                     decoration: const InputDecoration(
-                      labelText: 'Tide Height (m)',
-                      hintText: 'e.g., 1.5',
+                      labelText: 'Barometric Pressure (hPa)',
+                      hintText: 'e.g., 1013',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _tideStationController,
-              decoration: const InputDecoration(
-                labelText: 'Tide Station (optional)',
-                hintText: 'e.g., Sydney Harbour',
-              ),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _selectedWeatherCondition,
-              decoration: const InputDecoration(labelText: 'Weather'),
-              items: EnvironmentalCondition.weatherConditions.map((condition) {
-                return DropdownMenuItem(
-                  value: condition,
-                  child: Text(condition),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedWeatherCondition = value;
-                  _onFieldChanged();
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _temperatureController,
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _rainfallController,
                     decoration: const InputDecoration(
-                      labelText: 'Temperature (°C)',
-                      hintText: 'e.g., 25',
+                      labelText: 'Rainfall (mm)',
+                      hintText: 'e.g., 5',
                     ),
                     keyboardType: const TextInputType.numberWithOptions(decimal: true),
                   ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: TextField(
-                    controller: _humidityController,
-                    decoration: const InputDecoration(
-                      labelText: 'Humidity (%)',
-                      hintText: 'e.g., 65',
-                    ),
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                ],
+              ),
+              const SizedBox(height: 16),
+
+              // Notes Section
+              BragmatSectionCard(
+                icon: Icons.note,
+                title: 'Notes',
+                children: [
+                  TextField(
+                    controller: _notesController,
+                    decoration: const InputDecoration(labelText: 'Catch Notes'),
+                    maxLines: 3,
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _cloudCoverController,
-              decoration: const InputDecoration(
-                labelText: 'Cloud Cover (%)',
-                hintText: 'e.g., 40',
+                ],
               ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: DropdownButtonFormField<String>(
-                    value: _selectedWindDirection,
-                    decoration: const InputDecoration(labelText: 'Wind Direction'),
-                    items: EnvironmentalCondition.windDirections.map((direction) {
-                      return DropdownMenuItem(
-                        value: direction,
-                        child: Text(direction),
-                      );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedWindDirection = value;
-                        _onFieldChanged();
-                      });
-                    },
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _windSpeedController,
-              decoration: const InputDecoration(
-                labelText: 'Wind Speed (km/h)',
-                hintText: 'e.g., 15',
-              ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _selectedWaterClarity,
-              decoration: const InputDecoration(labelText: 'Water Clarity'),
-              items: EnvironmentalCondition.waterClarities.map((clarity) {
-                return DropdownMenuItem(
-                  value: clarity,
-                  child: Text(clarity),
-                );
-              }).toList(),
-              onChanged: (value) {
-                setState(() {
-                  _selectedWaterClarity = value;
-                  _onFieldChanged();
-                });
-              },
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _barometricPressureController,
-              decoration: const InputDecoration(
-                labelText: 'Barometric Pressure (hPa)',
-                hintText: 'e.g., 1013',
-              ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _rainfallController,
-              decoration: const InputDecoration(
-                labelText: 'Rainfall (mm)',
-                hintText: 'e.g., 5',
-              ),
-              keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            ),
-            const SizedBox(height: 16),
-            DropdownButtonFormField<String>(
-              value: _selectedRiverFlow,
-              decoration: const InputDecoration(labelText: 'River Flow (optional)'),
-              items: const [
-                DropdownMenuItem(value: null, child: Text('Unknown')),
-                DropdownMenuItem(value: 'Low', child: Text('Low')),
-                DropdownMenuItem(value: 'Normal', child: Text('Normal')),
-                DropdownMenuItem(value: 'High', child: Text('High')),
-                DropdownMenuItem(value: 'Flood', child: Text('Flood')),
-              ],
-              onChanged: (value) {
-                setState(() {
-                  _selectedRiverFlow = value;
-                  _onFieldChanged();
-                });
-              },
-            ),
-          ],
-        ),
+            ],
+          ),
       ),
       bottomNavigationBar: SafeArea(
         child: Container(
