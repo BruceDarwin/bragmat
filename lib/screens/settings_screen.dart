@@ -10,6 +10,7 @@ import '../models/fishing_buddy.dart';
 import '../models/favourite_spot.dart';
 import '../services/backup_service.dart';
 import '../services/preferences_service.dart';
+import '../widgets/bragmat_section_card.dart';
 import 'favourite_spots_screen.dart';
 import 'achievements_screen.dart';
 
@@ -80,6 +81,220 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _defaultFishType = fishType;
     });
+  }
+
+  Future<void> _showFishTypesDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Fish Types'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showAddFishTypeDialog();
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Fish Type'),
+              ),
+              const SizedBox(height: 16),
+              if (_fishTypes.isEmpty)
+                const Text('No fish types yet')
+              else
+                Expanded(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _fishTypes.length,
+                    itemBuilder: (context, index) {
+                      final fishType = _fishTypes[index];
+                      return ListTile(
+                        title: Text(fishType),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showEditFishTypeDialog(fishType);
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showDeleteFishTypeDialog(fishType);
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showFishingBuddiesDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Fishing Buddies'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showAddFishingBuddyDialog();
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Fishing Buddy'),
+              ),
+              const SizedBox(height: 16),
+              if (_fishingBuddies.isEmpty)
+                const Text('No fishing buddies yet')
+              else
+                Expanded(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _fishingBuddies.length,
+                    itemBuilder: (context, index) {
+                      final buddy = _fishingBuddies[index];
+                      return ListTile(
+                        title: Text(buddy.name),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showEditFishingBuddyDialog(buddy);
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showDeleteFishingBuddyDialog(buddy);
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showClearAllDataDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear All Data'),
+        content: const Text(
+          'This will permanently delete all catches, fish types, fishing buddies, and favourite spots. This action cannot be undone.\n\nAre you sure you want to continue?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Clear All Data'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await DatabaseHelper.instance.deleteAllCatches();
+      await DatabaseHelper.instance.deleteAllFishTypes();
+      await DatabaseHelper.instance.deleteAllFishingBuddies();
+      // Delete all favourite spots
+      final spots = await DatabaseHelper.instance.getFavouriteSpots();
+      for (final spot in spots) {
+        await DatabaseHelper.instance.deleteFavouriteSpot(spot.id!);
+      }
+      await DatabaseHelper.instance.deleteAllFishingTrips();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('All data cleared')),
+        );
+        _loadStatistics();
+        _loadFishTypes();
+        _loadFishingBuddies();
+      }
+    }
+  }
+
+  Future<void> _showAboutDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('About Bragmat'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Bragmat helps anglers record, manage and review their fishing catches.',
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Version: 1.0.0',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Database Version: 1',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Website: Coming Soon',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showAddFishTypeDialog() async {
@@ -1172,14 +1387,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final mostRecentCatch = _catches.isNotEmpty
-        ? _catches.reduce((a, b) {
-            final aDate = a.dateCaught ?? a.createdAt;
-            final bDate = b.dateCaught ?? b.createdAt;
-            return aDate.isAfter(bDate) ? a : b;
-          })
-        : null;
-
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
@@ -1187,471 +1394,200 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          // App Information Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'App Information',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
+          // Preferences Section
+          BragmatSectionCard(
+            icon: Icons.tune,
+            title: 'Preferences',
+            children: [
+              DropdownButtonFormField<FishTypeSelectionMode>(
+                initialValue: _fishTypeSelectionMode,
+                decoration: const InputDecoration(
+                  labelText: 'Fish Type Selection Mode',
+                  border: OutlineInputBorder(),
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: FishTypeSelectionMode.noDefault,
+                    child: Text('No Default'),
                   ),
-                  const SizedBox(height: 16),
-                  _buildInfoRow('App Name', 'Bragmat'),
-                  _buildInfoRow('Version', '1.0.0'),
-                  _buildInfoRow('Build Number', '1'),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Statistics Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Statistics',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
+                  DropdownMenuItem(
+                    value: FishTypeSelectionMode.defaultFishType,
+                    child: Text('Default Fish Type'),
                   ),
-                  const SizedBox(height: 16),
-                  _buildInfoRow('Total Catches', '${_catches.length}'),
-                  _buildInfoRow('Total Fish Types', '${_fishTypes.length}'),
-                  _buildInfoRow(
-                    'Most Recent Catch',
-                    mostRecentCatch != null
-                        ? mostRecentCatch.dateCaught?.toString().split(' ')[0] ?? mostRecentCatch.createdAt.toString().split(' ')[0]
-                        : 'No catches yet',
+                  DropdownMenuItem(
+                    value: FishTypeSelectionMode.rememberLastUsed,
+                    child: Text('Remember Last Used Fish Type'),
                   ),
                 ],
+                onChanged: (value) {
+                  if (value != null) {
+                    _setFishTypeSelectionMode(value);
+                  }
+                },
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Fish Type Preferences Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Fish Type Preferences',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
+              if (_fishTypeSelectionMode == FishTypeSelectionMode.defaultFishType) ...[
+                const SizedBox(height: 12),
+                DropdownButtonFormField<String>(
+                  initialValue: _defaultFishType,
+                  decoration: const InputDecoration(
+                    labelText: 'Default Fish Type',
+                    border: OutlineInputBorder(),
                   ),
-                  const SizedBox(height: 16),
-                  DropdownButtonFormField<FishTypeSelectionMode>(
-                    value: _fishTypeSelectionMode,
-                    decoration: const InputDecoration(
-                      labelText: 'Fish Type Selection Mode',
-                      border: OutlineInputBorder(),
+                  items: [
+                    const DropdownMenuItem(
+                      value: null,
+                      child: Text('None'),
                     ),
-                    items: const [
-                      DropdownMenuItem(
-                        value: FishTypeSelectionMode.noDefault,
-                        child: Text('No Default'),
-                      ),
-                      DropdownMenuItem(
-                        value: FishTypeSelectionMode.defaultFishType,
-                        child: Text('Default Fish Type'),
-                      ),
-                      DropdownMenuItem(
-                        value: FishTypeSelectionMode.rememberLastUsed,
-                        child: Text('Remember Last Used Fish Type'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) {
-                        _setFishTypeSelectionMode(value);
-                      }
-                    },
-                  ),
-                  if (_fishTypeSelectionMode == FishTypeSelectionMode.defaultFishType) ...[
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: _defaultFishType,
-                      decoration: const InputDecoration(
-                        labelText: 'Default Fish Type',
-                        border: OutlineInputBorder(),
-                      ),
-                      items: [
-                        const DropdownMenuItem(
-                          value: null,
-                          child: Text('None'),
-                        ),
-                        ..._fishTypes.map((type) {
-                          return DropdownMenuItem(
-                            value: type,
-                            child: Text(type),
-                          );
-                        }),
-                      ],
-                      onChanged: (value) {
-                        _setDefaultFishType(value);
-                      },
-                    ),
+                    ..._fishTypes.map((type) {
+                      return DropdownMenuItem(
+                        value: type,
+                        child: Text(type),
+                      );
+                    }),
                   ],
-                ],
-              ),
-            ),
+                  onChanged: (value) {
+                    _setDefaultFishType(value);
+                  },
+                ),
+              ],
+            ],
           ),
           const SizedBox(height: 16),
 
-          // Backup & Restore Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Backup & Restore',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: _backupData,
-                    icon: const Icon(Icons.backup),
-                    label: const Text('Backup Data'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: _restoreData,
-                    icon: const Icon(Icons.restore),
-                    label: const Text('Restore Data'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Backup creates a JSON file with all your data. Restore imports a backup file.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
+          // Manage Lists Section
+          BragmatSectionCard(
+            icon: Icons.list,
+            title: 'Manage Lists',
+            children: [
+              ListTile(
+                leading: const Icon(Icons.set_meal),
+                title: const Text('Fish Types'),
+                subtitle: Text('${_fishTypes.length} types'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _showFishTypesDialog,
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Diagnostic Tools Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Diagnostic Tools',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: _testPhotoGPS,
-                    icon: const Icon(Icons.gps_fixed),
-                    label: const Text('Test Photo GPS'),
-                    style: ElevatedButton.styleFrom(
-                      minimumSize: const Size(double.infinity, 48),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Test whether a photo contains EXIF GPS coordinates. Select a photo from gallery to view its GPS metadata.',
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      color: Colors.grey[600],
-                    ),
-                  ),
-                ],
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.people),
+                title: const Text('Fishing Buddies'),
+                subtitle: Text('${_fishingBuddies.length} buddies'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _showFishingBuddiesDialog,
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Fish Types Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Fish Types',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.place),
+                title: const Text('Favourite Fishing Spots'),
+                subtitle: const Text('Manage your spots'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const FavouriteSpotsScreen(),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: _showAddFishTypeDialog,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add Fish Type'),
-                  ),
-                  const SizedBox(height: 16),
-                  if (_fishTypes.isEmpty)
-                    const Text('No fish types yet'),
-                  ..._fishTypes.map((fishType) {
-                    return ListTile(
-                      title: Text(fishType),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () => _showEditFishTypeDialog(fishType),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => _showDeleteFishTypeDialog(fishType),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
+                  );
+                },
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Fishing Buddies Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Fishing Buddies',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: _showAddFishingBuddyDialog,
-                    icon: const Icon(Icons.add),
-                    label: const Text('Add Fishing Buddy'),
-                  ),
-                  const SizedBox(height: 16),
-                  if (_fishingBuddies.isEmpty)
-                    const Text('No fishing buddies yet'),
-                  ..._fishingBuddies.map((buddy) {
-                    return ListTile(
-                      title: Text(buddy.name),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const Icon(Icons.edit),
-                            onPressed: () => _showEditFishingBuddyDialog(buddy),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.delete),
-                            onPressed: () => _showDeleteFishingBuddyDialog(buddy),
-                          ),
-                        ],
-                      ),
-                    );
-                  }),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Favourite Spots Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Favourite Fishing Spots',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const FavouriteSpotsScreen(),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.place),
-                    label: const Text('Manage Favourite Spots'),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Save your favourite fishing locations for quick access when adding catches.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 24),
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Achievements',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const AchievementsScreen(),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.emoji_events),
-                    label: const Text('View Achievements'),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Track your fishing milestones and achievements.',
-                    style: TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                ],
-              ),
-            ),
+            ],
           ),
           const SizedBox(height: 16),
 
           // Data Management Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Data Management',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ListTile(
-                    leading: const Icon(Icons.file_upload),
-                    title: const Text('Export Catches'),
-                    onTap: _exportCatchesToCSV,
-                  ),
-                  // Temporarily disabled due to file_picker build issue
-                  // ListTile(
-                  //   leading: const Icon(Icons.file_download),
-                  //   title: const Text('Import Catches'),
-                  //   onTap: _importCatchesFromCSV,
-                  // ),
-                  _buildComingSoonMenuItem(Icons.file_download, 'Import Catches (Temporarily Disabled)'),
-                  _buildComingSoonMenuItem(Icons.backup, 'Backup and Restore'),
-                ],
+          BragmatSectionCard(
+            icon: Icons.storage,
+            title: 'Data Management',
+            children: [
+              ListTile(
+                leading: const Icon(Icons.backup),
+                title: const Text('Backup Data'),
+                subtitle: const Text('Create a backup of all your data'),
+                onTap: _backupData,
               ),
-            ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.restore),
+                title: const Text('Restore Data'),
+                subtitle: const Text('Restore from a backup file'),
+                onTap: _restoreData,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.file_upload),
+                title: const Text('Export CSV'),
+                subtitle: const Text('Export catches to CSV file'),
+                onTap: _exportCatchesToCSV,
+              ),
+              const Divider(height: 1),
+              _buildComingSoonMenuItem(Icons.file_download, 'Import CSV (Coming Soon)'),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.delete_forever, color: Colors.red),
+                title: const Text('Clear All Data', style: TextStyle(color: Colors.red)),
+                subtitle: const Text('Permanently delete all catches and data', style: TextStyle(color: Colors.red)),
+                onTap: _showClearAllDataDialog,
+              ),
+            ],
           ),
           const SizedBox(height: 16),
 
-          // About Bragmat Section
-          Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'About Bragmat',
-                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Theme.of(context).colorScheme.primary,
+          // App Section
+          BragmatSectionCard(
+            icon: Icons.info,
+            title: 'App',
+            children: [
+              ListTile(
+                leading: const Icon(Icons.emoji_events),
+                title: const Text('Achievements'),
+                subtitle: const Text('View your fishing milestones'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const AchievementsScreen(),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Bragmat helps anglers record, manage and review their fishing catches.',
-                    style: TextStyle(fontSize: 14),
-                  ),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Website: Coming Soon',
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
+                  );
+                },
+              ),
+              const Divider(height: 1),
+              _buildInfoRow('App Version', '1.0.0'),
+              const Divider(height: 1),
+              _buildInfoRow('Database Version', '1'),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.description),
+                title: const Text('About Bragmat'),
+                subtitle: const Text('Learn more about the app'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _showAboutDialog,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // Developer Section (collapsed by default)
+          BragmatSectionCard(
+            icon: Icons.code,
+            title: 'Developer',
+            children: [
+              ExpansionTile(
+                title: const Text('Database Info'),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _buildInfoRow('Catches', '${_catches.length}'),
+                        _buildInfoRow('Fish Types', '${_fishTypes.length}'),
+                        _buildInfoRow('Fishing Buddies', '${_fishingBuddies.length}'),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ),
-          ),
-          const SizedBox(height: 16),
-
-          // Developer Section
-          Card(
-            child: ExpansionTile(
-              title: Text(
-                'Developer',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.primary,
-                ),
-              ),
-              children: [
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildInfoRow('SQLite Database Version', '1'),
-                      _buildInfoRow('Catches Table Records', '${_catches.length}'),
-                      _buildInfoRow('Fish Types Table Records', '${_fishTypes.length}'),
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            ],
           ),
         ],
       ),
