@@ -112,14 +112,12 @@ class MainScreenState extends State<MainScreen> {
       case 0:
         return const CatchListScreen();
       case 1:
-        return AddCatchScreen(onCatchSaved: switchToMyCatches);
-      case 2:
         return const StatisticsScreen();
-      case 3:
+      case 2:
         return const FishingTripsScreen();
-      case 4:
+      case 3:
         return const CatchMapScreen();
-      case 5:
+      case 4:
         return const SettingsScreen();
       default:
         return const CatchListScreen();
@@ -152,10 +150,6 @@ class MainScreenState extends State<MainScreen> {
             NavigationDestination(
               icon: Icon(Icons.list),
               label: 'Catches',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.add),
-              label: 'Add',
             ),
             NavigationDestination(
               icon: Icon(Icons.bar_chart),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import '../database/database_helper.dart';
 import '../models/favourite_spot.dart';
+import '../widgets/location_action_buttons.dart';
 import 'location_picker_screen.dart';
 
 class AddEditFavouriteSpotScreen extends StatefulWidget {
@@ -189,30 +190,10 @@ class _AddEditFavouriteSpotScreenState extends State<AddEditFavouriteSpotScreen>
               ],
             ),
             const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _isLoading ? null : _getCurrentLocation,
-                    icon: _isLoading
-                        ? const SizedBox(
-                            width: 16,
-                            height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.my_location),
-                    label: const Text('Use Current Location'),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: _pickLocationOnMap,
-                    icon: const Icon(Icons.map),
-                    label: const Text('Pick on Map'),
-                  ),
-                ),
-              ],
+            LocationActionButtons(
+              onUseCurrentLocation: _isLoading ? null : _getCurrentLocation,
+              onPickOnMap: _pickLocationOnMap,
+              isLoading: _isLoading,
             ),
             const SizedBox(height: 16),
             TextFormField(

@@ -5,6 +5,7 @@ import '../models/catch.dart';
 import '../models/fishing_trip.dart';
 import '../services/current_trip_service.dart';
 import 'catch_details_screen.dart';
+import 'add_catch_screen.dart';
 
 class CatchListScreen extends StatefulWidget {
   const CatchListScreen({super.key});
@@ -839,6 +840,20 @@ class _CatchListScreenState extends State<CatchListScreen> {
             ),
           ),
         ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const AddCatchScreen(),
+            ),
+          );
+          if (result == true) {
+            _loadCatches();
+          }
+        },
+        child: const Icon(Icons.add),
       ),
     );
   }

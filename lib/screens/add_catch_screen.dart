@@ -14,12 +14,12 @@ import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
 import '../widgets/bragmat_section_card.dart';
+import '../widgets/location_action_buttons.dart';
 import 'location_picker_screen.dart';
 
 class AddCatchScreen extends StatefulWidget {
   final Catch? catchToEdit;
-  final VoidCallback? onCatchSaved;
-  const AddCatchScreen({super.key, this.catchToEdit, this.onCatchSaved});
+  const AddCatchScreen({super.key, this.catchToEdit});
 
   @override
   State<AddCatchScreen> createState() => _AddCatchScreenState();
@@ -984,14 +984,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
 
     if (!mounted) return;
 
-    // Only pop if editing (catchToEdit != null)
-    // When adding from bottom nav, use callback to switch to My Catches
-    if (widget.catchToEdit != null) {
-      Navigator.pop(context, savedCatch);
-    } else {
-      // Call callback to switch to My Catches tab
-      widget.onCatchSaved?.call();
-    }
+    // Always pop with result to refresh the calling screen
+    Navigator.pop(context, true);
   }
 
   @override
@@ -1248,30 +1242,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                     ],
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _getCurrentLocation,
-                          icon: const Icon(Icons.my_location),
-                          label: const Text('Use Current Location'),
-                          style: ElevatedButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 48),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: _pickLocationOnMap,
-                          icon: const Icon(Icons.map),
-                          label: const Text('Pick on Map'),
-                          style: ElevatedButton.styleFrom(
-                            minimumSize: const Size(double.infinity, 48),
-                          ),
-                        ),
-                      ),
-                    ],
+                  LocationActionButtons(
+                    onUseCurrentLocation: _getCurrentLocation,
+                    onPickOnMap: _pickLocationOnMap,
                   ),
                 ],
               ),
