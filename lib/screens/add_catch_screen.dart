@@ -995,7 +995,16 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       child: Scaffold(
         appBar: AppBar(
           title: Text(widget.catchToEdit != null ? 'Edit Catch' : 'Add Catch'),
-          automaticallyImplyLeading: widget.catchToEdit != null,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () async {
+              if (await _onWillPop()) {
+                if (mounted) {
+                  Navigator.pop(context);
+                }
+              }
+            },
+          ),
           actions: [
             IconButton(
               icon: const Icon(Icons.refresh),
