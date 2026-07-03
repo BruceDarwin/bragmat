@@ -31,7 +31,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 20,
+      version: 22,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -191,6 +191,11 @@ class DatabaseHelper {
         tide_height REAL,
         tide_movement TEXT,
         tide_station TEXT,
+        tide_data_source TEXT,
+        tide_confidence TEXT,
+        derived_tide_stage TEXT,
+        tide_observed_or_estimated TEXT,
+        tide_diagnostics TEXT,
         weather_condition TEXT,
         temperature REAL,
         humidity REAL,
@@ -445,6 +450,10 @@ class DatabaseHelper {
           tide_height REAL,
           tide_movement TEXT,
           tide_station TEXT,
+          tide_data_source TEXT,
+          tide_confidence TEXT,
+          derived_tide_stage TEXT,
+          tide_observed_or_estimated TEXT,
           weather_condition TEXT,
           temperature REAL,
           humidity REAL,
@@ -485,6 +494,37 @@ class DatabaseHelper {
       }
       try {
         await db.execute('ALTER TABLE environmental_conditions ADD COLUMN cloud_cover REAL');
+      } catch (e) {
+        // Column might already exist
+      }
+    }
+    if (oldVersion < 21) {
+      // Add automated tide data columns to environmental_conditions
+      try {
+        await db.execute('ALTER TABLE environmental_conditions ADD COLUMN tide_data_source TEXT');
+      } catch (e) {
+        // Column might already exist
+      }
+      try {
+        await db.execute('ALTER TABLE environmental_conditions ADD COLUMN tide_confidence TEXT');
+      } catch (e) {
+        // Column might already exist
+      }
+      try {
+        await db.execute('ALTER TABLE environmental_conditions ADD COLUMN derived_tide_stage TEXT');
+      } catch (e) {
+        // Column might already exist
+      }
+      try {
+        await db.execute('ALTER TABLE environmental_conditions ADD COLUMN tide_observed_or_estimated TEXT');
+      } catch (e) {
+        // Column might already exist
+      }
+    }
+    if (oldVersion < 22) {
+      // Add tide_diagnostics column to environmental_conditions
+      try {
+        await db.execute('ALTER TABLE environmental_conditions ADD COLUMN tide_diagnostics TEXT');
       } catch (e) {
         // Column might already exist
       }

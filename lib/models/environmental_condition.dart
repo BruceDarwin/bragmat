@@ -15,6 +15,11 @@ class EnvironmentalCondition {
   final double? tideHeight;
   final String? tideMovement;
   final String? tideStation;
+  final String? tideDataSource;
+  final String? tideConfidence;
+  final String? derivedTideStage;
+  final String? tideObservedOrEstimated;
+  final String? tideDiagnostics;
   final String? weatherCondition;
   final double? temperature;
   final double? humidity;
@@ -46,6 +51,11 @@ class EnvironmentalCondition {
     this.tideHeight,
     this.tideMovement,
     this.tideStation,
+    this.tideDataSource,
+    this.tideConfidence,
+    this.derivedTideStage,
+    this.tideObservedOrEstimated,
+    this.tideDiagnostics,
     this.weatherCondition,
     this.temperature,
     this.humidity,
@@ -80,6 +90,11 @@ class EnvironmentalCondition {
       'tide_height': tideHeight,
       'tide_movement': tideMovement,
       'tide_station': tideStation,
+      'tide_data_source': tideDataSource,
+      'tide_confidence': tideConfidence,
+      'derived_tide_stage': derivedTideStage,
+      'tide_observed_or_estimated': tideObservedOrEstimated,
+      'tide_diagnostics': tideDiagnostics,
       'weather_condition': weatherCondition,
       'temperature': temperature,
       'humidity': humidity,
@@ -119,6 +134,11 @@ class EnvironmentalCondition {
       tideHeight: map['tide_height'] as double?,
       tideMovement: map['tide_movement'] as String?,
       tideStation: map['tide_station'] as String?,
+      tideDataSource: map['tide_data_source'] as String?,
+      tideConfidence: map['tide_confidence'] as String?,
+      derivedTideStage: map['derived_tide_stage'] as String?,
+      tideObservedOrEstimated: map['tide_observed_or_estimated'] as String?,
+      tideDiagnostics: map['tide_diagnostics'] as String?,
       weatherCondition: map['weather_condition'] as String?,
       temperature: map['temperature'] as double?,
       humidity: map['humidity'] as double?,
@@ -153,6 +173,11 @@ class EnvironmentalCondition {
     double? tideHeight,
     String? tideMovement,
     String? tideStation,
+    String? tideDataSource,
+    String? tideConfidence,
+    String? derivedTideStage,
+    String? tideObservedOrEstimated,
+    String? tideDiagnostics,
     String? weatherCondition,
     double? temperature,
     double? humidity,
@@ -184,6 +209,11 @@ class EnvironmentalCondition {
       tideHeight: tideHeight ?? this.tideHeight,
       tideMovement: tideMovement ?? this.tideMovement,
       tideStation: tideStation ?? this.tideStation,
+      tideDataSource: tideDataSource ?? this.tideDataSource,
+      tideConfidence: tideConfidence ?? this.tideConfidence,
+      derivedTideStage: derivedTideStage ?? this.derivedTideStage,
+      tideObservedOrEstimated: tideObservedOrEstimated ?? this.tideObservedOrEstimated,
+      tideDiagnostics: tideDiagnostics ?? this.tideDiagnostics,
       weatherCondition: weatherCondition ?? this.weatherCondition,
       temperature: temperature ?? this.temperature,
       humidity: humidity ?? this.humidity,

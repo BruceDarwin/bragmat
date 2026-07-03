@@ -4,6 +4,7 @@ import '../models/catch.dart';
 import 'moon_phase_service.dart';
 import 'sun_times_service.dart';
 import 'weather_service.dart';
+import 'tide_service.dart';
 import 'package:flutter/foundation.dart';
 
 class EnvironmentalConditionsService {
@@ -163,7 +164,7 @@ class EnvironmentalConditionsService {
     );
   }
 
-  /// Calculate environmental data (moon phase, sun times, weather) from coordinates
+  /// Calculate environmental data (moon phase, sun times, weather, tide) from coordinates
   Future<EnvironmentalCondition> _calculateEnvironmentalData(EnvironmentalCondition condition) async {
     if (condition.latitude == null || condition.longitude == null) {
       return condition;
@@ -210,6 +211,53 @@ class EnvironmentalConditionsService {
     final mergedWindDirection = _useManualOrApiText(condition.windDirection, windDirectionCompass);
     final mergedRainfall = _useManualOrApiNumber(condition.rainfall, weatherData?.rainfall);
 
+    // Fetch tide data (non-blocking, continues on failure)
+    TideInfo? tideInfo;
+    try {
+      tideInfo = await TideService.getTideInfo(
+        latitude: condition.latitude!,
+        longitude: condition.longitude!,
+        catchTime: condition.observationDateTime,
+      );
+    } catch (e) {
+      debugPrint('Tide fetch failed, continuing without tide data: $e');
+    }
+
+    // Merge manual and API tide values - manual takes precedence
+    String? mergedTideStage = condition.tideStage;
+    String? mergedTideMovement = condition.tideMovement;
+    double? mergedTideHeight = condition.tideHeight;
+    String? mergedTideDataSource = condition.tideDataSource;
+    String? mergedTideConfidence = condition.tideConfidence;
+    String? mergedDerivedTideStage = condition.derivedTideStage;
+    String? mergedTideObservedOrEstimated = condition.tideObservedOrEstimated;
+    String? mergedTideDiagnostics = condition.tideDiagnostics;
+
+    // Only use API tide data if manual tide stage is blank/unknown
+    if (_isBlank(condition.tideStage) || condition.tideStage == 'Unknown') {
+      if (tideInfo != null) {
+        // Convert enum to string for storage
+        final tideStageString = _tideStageToString(tideInfo.derivedTideStage);
+        final tideMovementString = _tideMovementToString(tideInfo.tideMovement);
+        final confidenceString = _tideConfidenceToString(tideInfo.confidence);
+
+        mergedTideStage = tideStageString;
+        mergedTideMovement = tideMovementString;
+        // Do NOT save API tide height - it's relative to MSL, not tide chart datum
+        // Only manual tide heights should be displayed
+        mergedTideDataSource = tideInfo.dataSource;
+        mergedTideConfidence = confidenceString;
+        mergedDerivedTideStage = tideStageString;
+        mergedTideObservedOrEstimated = 'Estimated';
+        // Save diagnostics as JSON string
+        mergedTideDiagnostics = tideInfo.diagnostics.toString();
+      }
+    } else {
+      // Manual tide exists, mark as observed
+      mergedTideObservedOrEstimated = 'Observed';
+      mergedTideDataSource = 'Manual';
+    }
+
     return condition.copyWith(
       moonPhase: moonInfo.phaseName,
       moonIllumination: moonInfo.illumination,
@@ -222,8 +270,58 @@ class EnvironmentalConditionsService {
       windSpeed: mergedWindSpeed,
       windDirection: mergedWindDirection,
       rainfall: mergedRainfall,
-      dataSource: weatherData != null ? 'Open-Meteo' : (condition.dataSource ?? 'Calculated'),
+      tideStage: mergedTideStage,
+      tideMovement: mergedTideMovement,
+      tideHeight: mergedTideHeight,
+      tideDataSource: mergedTideDataSource,
+      tideConfidence: mergedTideConfidence,
+      derivedTideStage: mergedDerivedTideStage,
+      tideObservedOrEstimated: mergedTideObservedOrEstimated,
+      tideDiagnostics: mergedTideDiagnostics,
+      dataSource: weatherData != null || tideInfo != null ? 'Open-Meteo' : (condition.dataSource ?? 'Calculated'),
     );
+  }
+
+  /// Convert TideStage enum to display string
+  String _tideStageToString(TideStage stage) {
+    switch (stage) {
+      case TideStage.runIn:
+        return 'Run-In Tide';
+      case TideStage.runOut:
+        return 'Run-Out Tide';
+      case TideStage.slackHigh:
+        return 'Slack High';
+      case TideStage.slackLow:
+        return 'Slack Low';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  /// Convert TideMovement enum to display string
+  String _tideMovementToString(TideMovement movement) {
+    switch (movement) {
+      case TideMovement.rising:
+        return 'Rising';
+      case TideMovement.falling:
+        return 'Falling';
+      case TideMovement.slack:
+        return 'Slack';
+      default:
+        return 'Unknown';
+    }
+  }
+
+  /// Convert TideConfidence enum to display string
+  String _tideConfidenceToString(TideConfidence confidence) {
+    switch (confidence) {
+      case TideConfidence.high:
+        return 'High';
+      case TideConfidence.medium:
+        return 'Medium';
+      default:
+        return 'Low';
+    }
   }
 
   /// Create or update environmental condition for a catch
@@ -417,7 +515,8 @@ class EnvironmentalConditionsService {
         condition.barometricPressure != null ||
         condition.rainfall != null ||
         condition.riverFlow != null ||
-        condition.waterClarity != null;
+        condition.waterClarity != null ||
+        condition.tideObservedOrEstimated == 'Observed';
   }
 
   /// Get catch counts grouped by tide stage for a trip

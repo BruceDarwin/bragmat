@@ -297,6 +297,97 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _showDataSourcesDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Data Sources'),
+        content: const SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Weather Data',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('Open-Meteo Weather API'),
+              Text('Free, non-commercial use'),
+              SizedBox(height: 16),
+              Text(
+                'Tide Data',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('Open-Meteo Marine API'),
+              Text('Model-based sea level height including ocean tides'),
+              SizedBox(height: 8),
+              Text(
+                'Important:',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+              ),
+              Text(
+                'Tide data is model-based and indicative only.',
+                style: TextStyle(color: Colors.orange),
+              ),
+              Text(
+                'Not suitable for navigation.',
+                style: TextStyle(color: Colors.orange),
+              ),
+              Text(
+                'May be inaccurate in coastal areas, rivers, and estuaries.',
+                style: TextStyle(color: Colors.orange),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Datum Difference:',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange),
+              ),
+              Text(
+                'Open-Meteo tide data is relative to mean sea level (MSL).',
+                style: TextStyle(color: Colors.orange),
+              ),
+              Text(
+                'Official tide tables use tide chart datum (LAT/MLLW).',
+                style: TextStyle(color: Colors.orange),
+              ),
+              Text(
+                'Open-Meteo is used only to estimate tide movement/stage.',
+                style: TextStyle(color: Colors.orange),
+              ),
+              Text(
+                'It is NOT equivalent to official tide table heights.',
+                style: TextStyle(color: Colors.orange),
+              ),
+              SizedBox(height: 16),
+              Text(
+                'Moon & Sun Data',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('Calculated using astronomical algorithms'),
+              SizedBox(height: 16),
+              Text(
+                'Data Accuracy',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text('Manual observations always take precedence'),
+              Text('API data is for reference only'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _showAddFishTypeDialog() async {
     final controller = TextEditingController();
     final confirmed = await showDialog<bool>(
@@ -1561,6 +1652,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: const Text('Learn more about the app'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _showAboutDialog,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.public),
+                title: const Text('Data Sources'),
+                subtitle: const Text('Weather, tide, and environmental data'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _showDataSourcesDialog,
               ),
             ],
           ),
