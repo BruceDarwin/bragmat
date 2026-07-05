@@ -31,7 +31,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 22,
+      version: 23,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -196,6 +196,22 @@ class DatabaseHelper {
         derived_tide_stage TEXT,
         tide_observed_or_estimated TEXT,
         tide_diagnostics TEXT,
+        tide_station_name TEXT,
+        tide_station_distance_km REAL,
+        reference_tide_event_type TEXT,
+        reference_tide_event_time TEXT,
+        reference_tide_event_height REAL,
+        reference_tide_event_relation TEXT,
+        minutes_from_reference_tide_event INTEGER,
+        previous_tide_event_type TEXT,
+        previous_tide_event_time TEXT,
+        previous_tide_event_height REAL,
+        next_tide_event_type TEXT,
+        next_tide_event_time TEXT,
+        next_tide_event_height REAL,
+        tide_context_phrase TEXT,
+        tide_context_data_source TEXT,
+        tide_context_confidence TEXT,
         weather_condition TEXT,
         temperature REAL,
         humidity REAL,
@@ -527,6 +543,35 @@ class DatabaseHelper {
         await db.execute('ALTER TABLE environmental_conditions ADD COLUMN tide_diagnostics TEXT');
       } catch (e) {
         // Column might already exist
+      }
+    }
+    if (oldVersion < 23) {
+      // Add tide context columns to environmental_conditions
+      final tideContextColumns = [
+        'tide_station_name TEXT',
+        'tide_station_distance_km REAL',
+        'reference_tide_event_type TEXT',
+        'reference_tide_event_time TEXT',
+        'reference_tide_event_height REAL',
+        'reference_tide_event_relation TEXT',
+        'minutes_from_reference_tide_event INTEGER',
+        'previous_tide_event_type TEXT',
+        'previous_tide_event_time TEXT',
+        'previous_tide_event_height REAL',
+        'next_tide_event_type TEXT',
+        'next_tide_event_time TEXT',
+        'next_tide_event_height REAL',
+        'tide_context_phrase TEXT',
+        'tide_context_data_source TEXT',
+        'tide_context_confidence TEXT',
+      ];
+      
+      for (final column in tideContextColumns) {
+        try {
+          await db.execute('ALTER TABLE environmental_conditions ADD COLUMN $column');
+        } catch (e) {
+          // Column might already exist
+        }
       }
     }
     

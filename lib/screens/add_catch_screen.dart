@@ -13,6 +13,7 @@ import '../models/environmental_condition.dart';
 import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
+import '../helpers/tide_context_helper.dart';
 import '../widgets/bragmat_section_card.dart';
 import '../widgets/location_action_buttons.dart';
 import 'location_picker_screen.dart';
@@ -51,6 +52,13 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   final _tideHeightController = TextEditingController();
   String? _selectedTideMovement;
   final _tideStationController = TextEditingController();
+  // Tide context fields
+  bool _showTideContext = false;
+  final _tideStationNameController = TextEditingController();
+  String? _selectedReferenceTideEventType; // High / Low
+  DateTime? _referenceTideEventTime;
+  final _referenceTideEventHeightController = TextEditingController();
+  String? _selectedReferenceTideEventRelation; // Before / After
   String? _selectedWeatherCondition;
   final _temperatureController = TextEditingController();
   final _humidityController = TextEditingController();
@@ -84,16 +92,20 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _originalCatch = widget.catchToEdit;
       _loadMediaForCatch();
       _loadEnvironmentalCondition();
-      _fishTypeController.text = widget.catchToEdit!.fishType;
+      // Safely set fish type - will add to list if not present
+      final fishType = widget.catchToEdit!.fishType;
+      _fishTypeController.text = fishType;
+      _selectedFishType = _safeFishTypeValue(fishType);
       _lengthController.text = widget.catchToEdit!.lengthCm.toString();
       _notesController.text = widget.catchToEdit!.notes ?? '';
       _locationController.text = widget.catchToEdit!.location ?? '';
       _dateCaught = widget.catchToEdit!.dateCaught;
+      // Trip and buddy IDs will be validated after lists are loaded
       _selectedTripId = widget.catchToEdit!.tripId;
+      _selectedFishingBuddyId = widget.catchToEdit!.fishingBuddyId;
       _latitudeController.text = widget.catchToEdit!.latitude?.toString() ?? '';
       _longitudeController.text = widget.catchToEdit!.longitude?.toString() ?? '';
       _coordinateSource = widget.catchToEdit!.coordinateSource;
-      _selectedFishingBuddyId = widget.catchToEdit!.fishingBuddyId;
     } else {
       // For new catches, pre-select the current trip if set
       _loadCurrentTrip();
@@ -144,6 +156,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _longitudeController.dispose();
     _tideHeightController.dispose();
     _tideStationController.dispose();
+    _tideStationNameController.dispose();
+    _referenceTideEventHeightController.dispose();
     _temperatureController.dispose();
     _humidityController.dispose();
     _cloudCoverController.dispose();
@@ -196,6 +210,34 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     // This is a simplified check - in practice we'd need to load original media count
     // For now, we'll use the _hasUnsavedChanges flag for media changes
     return _mediaItems.length;
+  }
+
+  String _generateTideContextPhrase() {
+    if (_tideStationNameController.text.isEmpty ||
+        _selectedReferenceTideEventType == null ||
+        _referenceTideEventTime == null ||
+        _referenceTideEventHeightController.text.isEmpty ||
+        _selectedReferenceTideEventRelation == null) {
+      return '';
+    }
+
+    final stationName = _tideStationNameController.text.trim();
+    final eventType = _selectedReferenceTideEventType!;
+    final eventTime = _referenceTideEventTime!;
+    final eventHeight = double.tryParse(_referenceTideEventHeightController.text) ?? 0.0;
+    final relation = _selectedReferenceTideEventRelation!;
+    final catchTime = _dateCaught ?? DateTime.now();
+
+    final minutesFromEvent = TideContextHelper.calculateMinutesBetween(catchTime, eventTime);
+
+    return TideContextHelper.generatePhrase(
+      stationName: stationName,
+      eventType: eventType,
+      eventTime: eventTime,
+      eventHeight: eventHeight,
+      relation: relation,
+      minutesFromEvent: minutesFromEvent,
+    );
   }
 
   Future<bool> _onWillPop() async {
@@ -320,6 +362,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     if (mounted) {
       setState(() {
         _fishingTrips = trips;
+        // Validate selected trip ID after list is loaded
+        if (widget.catchToEdit != null && widget.catchToEdit!.tripId != null) {
+          final tripExists = trips.any((t) => t.id == widget.catchToEdit!.tripId);
+          if (!tripExists) {
+            debugPrint('Trip ID ${widget.catchToEdit!.tripId} not found in trips list, setting to null');
+            _selectedTripId = null;
+          }
+        }
       });
     }
   }
@@ -333,6 +383,73 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     }
   }
 
+  /// Safely validate a dropdown value against allowed values
+  String? _safeDropdownValue(String? value, List<String> allowedValues, String fieldName) {
+    if (value == null || value.isEmpty) {
+      debugPrint('Dropdown $fieldName: value is null or empty, using null');
+      return null;
+    }
+    if (allowedValues.contains(value)) {
+      debugPrint('Dropdown $fieldName: value "$value" is valid');
+      return value;
+    }
+    debugPrint('Dropdown $fieldName: value "$value" is NOT in allowed list $allowedValues, using null');
+    return null;
+  }
+
+  /// Safely validate a fish type value against current fish types list
+  String? _safeFishTypeValue(String? value) {
+    if (value == null || value.isEmpty) {
+      debugPrint('Fish type: value is null or empty, using null');
+      return null;
+    }
+    if (_fishTypes.contains(value)) {
+      debugPrint('Fish type: value "$value" is valid');
+      return value;
+    }
+    debugPrint('Fish type: value "$value" is NOT in current fish types list, adding it to list');
+    // Add the missing fish type to the list so it can be selected
+    setState(() {
+      _fishTypes = [..._fishTypes, value];
+    });
+    return value;
+  }
+
+  /// Safely validate an integer ID dropdown value against available items
+  int? _safeIdValue(int? value, List<dynamic> items, String fieldName) {
+    if (value == null) {
+      debugPrint('Dropdown $fieldName: value is null, using null');
+      return null;
+    }
+    // Check if the ID exists in the items list
+    final idExists = items.any((item) => item is Map && item['id'] == value);
+    if (idExists) {
+      debugPrint('Dropdown $fieldName: value $value is valid');
+      return value;
+    }
+    debugPrint('Dropdown $fieldName: value $value is NOT in available items, using null');
+    return null;
+  }
+
+  /// Debug helper to log dropdown state before building
+  void _debugDropdown(String fieldName, dynamic value, List<dynamic> items) {
+    debugPrint('=== BUILDING $fieldName DROPDOWN ===');
+    debugPrint('Current value: $value');
+    debugPrint('Items count: ${items.length}');
+    final matchingItems = items.where((item) {
+      if (item is DropdownMenuItem) {
+        return item.value == value;
+      }
+      return false;
+    }).length;
+    debugPrint('Matching items count: $matchingItems');
+    if (matchingItems == 0) {
+      debugPrint('WARNING: Zero matching items - this will cause assertion!');
+    } else if (matchingItems > 1) {
+      debugPrint('WARNING: Multiple matching items - this will cause assertion!');
+    }
+  }
+
   Future<void> _loadEnvironmentalCondition() async {
     if (widget.catchToEdit == null) return;
     
@@ -342,22 +459,30 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     if (condition != null) {
       setState(() {
         _existingEnvironmentalCondition = condition;
-        _selectedTideStage = condition.tideStage;
-        _selectedTideStrength = condition.tideStrength;
+        _selectedTideStage = _safeDropdownValue(condition.tideStage, EnvironmentalCondition.tideStages, 'tideStage');
+        _selectedTideStrength = _safeDropdownValue(condition.tideStrength, EnvironmentalCondition.tideStrengths, 'tideStrength');
         _tideNotesController.text = condition.tideNotes ?? '';
         _tideHeightController.text = condition.tideHeight?.toString() ?? '';
-        _selectedTideMovement = condition.tideMovement;
+        _selectedTideMovement = condition.tideMovement; // Tide movement has custom items with null allowed
         _tideStationController.text = condition.tideStation ?? '';
-        _selectedWeatherCondition = condition.weatherCondition;
+        // Tide context fields
+        _tideStationNameController.text = condition.tideStationName ?? '';
+        _selectedReferenceTideEventType = _safeDropdownValue(condition.referenceTideEventType, ['High', 'Low'], 'referenceTideEventType');
+        _referenceTideEventTime = condition.referenceTideEventTime;
+        _referenceTideEventHeightController.text = condition.referenceTideEventHeight?.toString() ?? '';
+        _selectedReferenceTideEventRelation = _safeDropdownValue(condition.referenceTideEventRelation, ['Before', 'After'], 'referenceTideEventRelation');
+        // Show tide context if data exists
+        _showTideContext = condition.tideContextPhrase != null && condition.tideContextPhrase!.isNotEmpty;
+        _selectedWeatherCondition = _safeDropdownValue(condition.weatherCondition, EnvironmentalCondition.weatherConditions, 'weatherCondition');
         _temperatureController.text = condition.temperature?.toString() ?? '';
         _humidityController.text = condition.humidity?.toString() ?? '';
         _cloudCoverController.text = condition.cloudCover?.toString() ?? '';
         _windSpeedController.text = condition.windSpeed?.toString() ?? '';
-        _selectedWindDirection = condition.windDirection;
+        _selectedWindDirection = _safeDropdownValue(condition.windDirection, EnvironmentalCondition.windDirections, 'windDirection');
         _barometricPressureController.text = condition.barometricPressure?.toString() ?? '';
         _rainfallController.text = condition.rainfall?.toString() ?? '';
-        _selectedRiverFlow = condition.riverFlow;
-        _selectedWaterClarity = condition.waterClarity;
+        _selectedRiverFlow = condition.riverFlow; // River flow has custom items with null allowed
+        _selectedWaterClarity = _safeDropdownValue(condition.waterClarity, EnvironmentalCondition.waterClarities, 'waterClarity');
         _environmentalNotesController.text = condition.riverFlow ?? '';
       });
     }
@@ -405,14 +530,11 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       }
       // If editing, set the selected fishing buddy only if it's in the list
       if (widget.catchToEdit != null && widget.catchToEdit!.fishingBuddyId != null) {
-        final buddy = buddies.firstWhere(
-          (b) => b.id == widget.catchToEdit!.fishingBuddyId,
-          orElse: () => meBuddy!,
-        );
-        // Only set if the buddy is actually in the list
-        if (buddies.any((b) => b.id == buddy.id)) {
-          _selectedFishingBuddyId = buddy.id;
+        final buddyExists = buddies.any((b) => b.id == widget.catchToEdit!.fishingBuddyId);
+        if (buddyExists) {
+          _selectedFishingBuddyId = widget.catchToEdit!.fishingBuddyId;
         } else {
+          debugPrint('Fishing buddy ID ${widget.catchToEdit!.fishingBuddyId} not found in buddies list, setting to null');
           _selectedFishingBuddyId = null;
         }
       }
@@ -843,6 +965,11 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _tideHeightController.text.isNotEmpty ||
         _selectedTideMovement != null ||
         _tideStationController.text.isNotEmpty ||
+        _tideStationNameController.text.isNotEmpty ||
+        _selectedReferenceTideEventType != null ||
+        _referenceTideEventTime != null ||
+        _referenceTideEventHeightController.text.isNotEmpty ||
+        _selectedReferenceTideEventRelation != null ||
         _selectedWeatherCondition != null ||
         _temperatureController.text.isNotEmpty ||
         _humidityController.text.isNotEmpty ||
@@ -866,6 +993,21 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     final latitude = existing?.latitude ?? double.tryParse(_latitudeController.text);
     final longitude = existing?.longitude ?? double.tryParse(_longitudeController.text);
     
+    // Generate tide context phrase if all fields are present
+    String? tideContextPhrase;
+    int? minutesFromReferenceTideEvent;
+    if (_tideStationNameController.text.isNotEmpty &&
+        _selectedReferenceTideEventType != null &&
+        _referenceTideEventTime != null &&
+        _referenceTideEventHeightController.text.isNotEmpty &&
+        _selectedReferenceTideEventRelation != null) {
+      tideContextPhrase = _generateTideContextPhrase();
+      minutesFromReferenceTideEvent = TideContextHelper.calculateMinutesBetween(
+        observationDateTime,
+        _referenceTideEventTime!,
+      );
+    }
+    
     await envService.saveEnvironmentalConditionForCatch(
       catchId,
       observationDateTime,
@@ -877,6 +1019,16 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       tideHeight: double.tryParse(_tideHeightController.text),
       tideMovement: _selectedTideMovement,
       tideStation: _tideStationController.text.trim().isEmpty ? null : _tideStationController.text.trim(),
+      // Tide context fields
+      tideStationName: _tideStationNameController.text.trim().isEmpty ? null : _tideStationNameController.text.trim(),
+      referenceTideEventType: _selectedReferenceTideEventType,
+      referenceTideEventTime: _referenceTideEventTime,
+      referenceTideEventHeight: double.tryParse(_referenceTideEventHeightController.text),
+      referenceTideEventRelation: _selectedReferenceTideEventRelation,
+      minutesFromReferenceTideEvent: minutesFromReferenceTideEvent,
+      tideContextPhrase: tideContextPhrase,
+      tideContextDataSource: 'Manual',
+      tideContextConfidence: 'High',
       weatherCondition: (_selectedWeatherCondition == null || _selectedWeatherCondition == 'Unknown') ? null : _selectedWeatherCondition,
       temperature: double.tryParse(_temperatureController.text),
       humidity: double.tryParse(_humidityController.text),
@@ -1125,33 +1277,40 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                 icon: Icons.catching_pokemon,
                 title: 'Catch Details',
                 children: [
-                  DropdownButtonFormField<String>(
-                    value: _selectedFishType,
-                    decoration: const InputDecoration(labelText: 'Fish Type'),
-                    items: [
-                      ..._fishTypes.map((type) {
-                        return DropdownMenuItem(
-                          value: type,
-                          child: Text(type),
-                        );
-                      }),
-                      const DropdownMenuItem(
-                        value: 'add_new',
-                        child: Text('+ Add New Fish Type'),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value == 'add_new') {
-                        _showAddFishTypeDialog();
-                      } else {
-                        setState(() {
-                          _selectedFishType = value;
-                          _fishTypeController.text = value ?? '';
-                          _onFieldChanged();
-                        });
-                      }
-                    },
-                  ),
+                  (() {
+                    debugPrint('=== BUILDING FISH TYPE DROPDOWN ===');
+                    debugPrint('Current value: $_selectedFishType');
+                    debugPrint('Fish types list: $_fishTypes');
+                    final matchingItems = _fishTypes.where((t) => t == _selectedFishType).length;
+                    debugPrint('Matching items count: $matchingItems');
+                    return DropdownButtonFormField<String>(
+                      value: _selectedFishType,
+                      decoration: const InputDecoration(labelText: 'Fish Type'),
+                      items: [
+                        ..._fishTypes.map((type) {
+                          return DropdownMenuItem(
+                            value: type,
+                            child: Text(type),
+                          );
+                        }),
+                        const DropdownMenuItem(
+                          value: 'add_new',
+                          child: Text('+ Add New Fish Type'),
+                        ),
+                      ],
+                      onChanged: (value) {
+                        if (value == 'add_new') {
+                          _showAddFishTypeDialog();
+                        } else {
+                          setState(() {
+                            _selectedFishType = value;
+                            _fishTypeController.text = value ?? '';
+                            _onFieldChanged();
+                          });
+                        }
+                      },
+                    );
+                  })(),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _lengthController,
@@ -1202,28 +1361,32 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                   ),
                   const SizedBox(height: 12),
                   if (_favouriteSpots.isNotEmpty)
-                    DropdownButtonFormField<int>(
-                      value: _selectedFavouriteSpotId,
-                      decoration: const InputDecoration(
-                        labelText: 'Favourite Spot (optional)',
-                        prefixIcon: Icon(Icons.place),
-                      ),
-                      items: [
+                    (() {
+                      final items = <DropdownMenuItem<int?>>[
                         const DropdownMenuItem(value: null, child: Text('None')),
                         ..._favouriteSpots.map((spot) {
-                          return DropdownMenuItem(
+                          return DropdownMenuItem<int?>(
                             value: spot.id,
                             child: Text(spot.name),
                           );
                         }),
-                      ],
-                      onChanged: (value) {
-                        final spot = value != null
-                            ? _favouriteSpots.firstWhere((s) => s.id == value)
-                            : null;
-                        _onFavouriteSpotSelected(spot);
-                      },
-                    ),
+                      ];
+                      _debugDropdown('FAVOURITE SPOT', _selectedFavouriteSpotId, items);
+                      return DropdownButtonFormField<int?>(
+                        value: _selectedFavouriteSpotId,
+                        decoration: const InputDecoration(
+                          labelText: 'Favourite Spot (optional)',
+                          prefixIcon: Icon(Icons.place),
+                        ),
+                        items: items,
+                        onChanged: (value) {
+                          final spot = value != null
+                              ? _favouriteSpots.firstWhere((s) => s.id == value)
+                              : null;
+                          _onFavouriteSpotSelected(spot);
+                        },
+                      );
+                    })(),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -1264,43 +1427,51 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                 icon: Icons.directions_boat,
                 title: 'Trip',
                 children: [
-                  DropdownButtonFormField<int>(
-                    initialValue: _selectedTripId,
-                    decoration: const InputDecoration(labelText: 'Fishing Trip'),
-                    items: _fishingTrips.isEmpty
-                        ? []
+                  (() {
+                    final items = _fishingTrips.isEmpty
+                        ? <DropdownMenuItem<int?>>[]
                         : _fishingTrips.map((trip) {
-                            return DropdownMenuItem(
+                            return DropdownMenuItem<int?>(
                               value: trip.id,
                               child: Text(trip.name),
                             );
-                          }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedTripId = value;
-                        _onFieldChanged();
-                      });
-                    },
-                  ),
+                          }).toList();
+                    _debugDropdown('FISHING TRIP', _selectedTripId, items);
+                    return DropdownButtonFormField<int?>(
+                      initialValue: _selectedTripId,
+                      decoration: const InputDecoration(labelText: 'Fishing Trip'),
+                      items: items,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedTripId = value;
+                          _onFieldChanged();
+                        });
+                      },
+                    );
+                  })(),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<int>(
-                    initialValue: _selectedFishingBuddyId,
-                    decoration: const InputDecoration(labelText: 'Fishing Buddy'),
-                    items: _fishingBuddies.isEmpty
-                        ? []
+                  (() {
+                    final items = _fishingBuddies.isEmpty
+                        ? <DropdownMenuItem<int?>>[]
                         : _fishingBuddies.map((buddy) {
-                            return DropdownMenuItem(
+                            return DropdownMenuItem<int?>(
                               value: buddy.id,
                               child: Text(buddy.name),
                             );
-                          }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedFishingBuddyId = value;
-                        _onFieldChanged();
-                      });
-                    },
-                  ),
+                          }).toList();
+                    _debugDropdown('FISHING BUDDY', _selectedFishingBuddyId, items);
+                    return DropdownButtonFormField<int?>(
+                      initialValue: _selectedFishingBuddyId,
+                      decoration: const InputDecoration(labelText: 'Fishing Buddy'),
+                      items: items,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedFishingBuddyId = value;
+                          _onFieldChanged();
+                        });
+                      },
+                    );
+                  })(),
                 ],
               ),
               const SizedBox(height: 16),
@@ -1322,22 +1493,26 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                       ),
                     ),
                   ),
-                  DropdownButtonFormField<String>(
-                    value: _selectedWeatherCondition,
-                    decoration: const InputDecoration(labelText: 'Weather Condition'),
-                    items: EnvironmentalCondition.weatherConditions.map((condition) {
+                  (() {
+                    final items = EnvironmentalCondition.weatherConditions.map((condition) {
                       return DropdownMenuItem(
                         value: condition,
                         child: Text(condition),
                       );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedWeatherCondition = value;
-                        _onFieldChanged();
-                      });
-                    },
-                  ),
+                    }).toList();
+                    _debugDropdown('WEATHER CONDITION', _selectedWeatherCondition, items);
+                    return DropdownButtonFormField<String>(
+                      value: _selectedWeatherCondition,
+                      decoration: const InputDecoration(labelText: 'Weather Condition'),
+                      items: items,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedWeatherCondition = value;
+                          _onFieldChanged();
+                        });
+                      },
+                    );
+                  })(),
                   const SizedBox(height: 12),
                   Row(
                     children: [
@@ -1377,22 +1552,26 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                   Row(
                     children: [
                       Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _selectedWindDirection,
-                          decoration: const InputDecoration(labelText: 'Wind Direction'),
-                          items: EnvironmentalCondition.windDirections.map((direction) {
+                        child: (() {
+                          final items = EnvironmentalCondition.windDirections.map((direction) {
                             return DropdownMenuItem(
                               value: direction,
                               child: Text(direction),
                             );
-                          }).toList(),
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedWindDirection = value;
-                              _onFieldChanged();
-                            });
-                          },
-                        ),
+                          }).toList();
+                          _debugDropdown('WIND DIRECTION', _selectedWindDirection, items);
+                          return DropdownButtonFormField<String>(
+                            value: _selectedWindDirection,
+                            decoration: const InputDecoration(labelText: 'Wind Direction'),
+                            items: items,
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedWindDirection = value;
+                                _onFieldChanged();
+                              });
+                            },
+                          );
+                        })(),
                       ),
                     ],
                   ),
@@ -1418,59 +1597,71 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                       ),
                     ),
                   ),
-                  DropdownButtonFormField<String>(
-                    value: _selectedTideStage,
-                    decoration: const InputDecoration(labelText: 'Tide Stage'),
-                    items: EnvironmentalCondition.tideStages.map((stage) {
+                  (() {
+                    final items = EnvironmentalCondition.tideStages.map((stage) {
                       return DropdownMenuItem(
                         value: stage,
                         child: Text(stage),
                       );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedTideStage = value;
-                        _onFieldChanged();
-                      });
-                    },
-                  ),
+                    }).toList();
+                    _debugDropdown('TIDE STAGE', _selectedTideStage, items);
+                    return DropdownButtonFormField<String>(
+                      value: _selectedTideStage,
+                      decoration: const InputDecoration(labelText: 'Tide Stage'),
+                      items: items,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedTideStage = value;
+                          _onFieldChanged();
+                        });
+                      },
+                    );
+                  })(),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: _selectedTideStrength,
-                    decoration: const InputDecoration(labelText: 'Tide Strength (Optional)'),
-                    items: EnvironmentalCondition.tideStrengths.map((strength) {
+                  (() {
+                    final items = EnvironmentalCondition.tideStrengths.map((strength) {
                       return DropdownMenuItem(
                         value: strength,
                         child: Text(strength),
                       );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedTideStrength = value;
-                        _onFieldChanged();
-                      });
-                    },
-                  ),
+                    }).toList();
+                    _debugDropdown('TIDE STRENGTH', _selectedTideStrength, items);
+                    return DropdownButtonFormField<String>(
+                      value: _selectedTideStrength,
+                      decoration: const InputDecoration(labelText: 'Tide Strength (Optional)'),
+                      items: items,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedTideStrength = value;
+                          _onFieldChanged();
+                        });
+                      },
+                    );
+                  })(),
                   const SizedBox(height: 12),
                   Row(
                     children: [
                       Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: _selectedTideMovement,
-                          decoration: const InputDecoration(labelText: 'Tide Movement'),
-                          items: const [
-                            DropdownMenuItem(value: null, child: Text('Unknown')),
-                            DropdownMenuItem(value: 'Run-in', child: Text('Run-in')),
-                            DropdownMenuItem(value: 'Run-out', child: Text('Run-out')),
-                            DropdownMenuItem(value: 'Slack', child: Text('Slack')),
-                          ],
-                          onChanged: (value) {
-                            setState(() {
-                              _selectedTideMovement = value;
-                              _onFieldChanged();
-                            });
-                          },
-                        ),
+                        child: (() {
+                          const items = [
+                            DropdownMenuItem<String?>(value: null, child: Text('Unknown')),
+                            DropdownMenuItem<String?>(value: 'Run-in', child: Text('Run-in')),
+                            DropdownMenuItem<String?>(value: 'Run-out', child: Text('Run-out')),
+                            DropdownMenuItem<String?>(value: 'Slack', child: Text('Slack')),
+                          ];
+                          _debugDropdown('TIDE MOVEMENT', _selectedTideMovement, items);
+                          return DropdownButtonFormField<String?>(
+                            value: _selectedTideMovement,
+                            decoration: const InputDecoration(labelText: 'Tide Movement'),
+                            items: items,
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedTideMovement = value;
+                                _onFieldChanged();
+                              });
+                            },
+                          );
+                        })(),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
@@ -1503,6 +1694,210 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                       hintText: 'e.g., Sydney Harbour',
                     ),
                   ),
+                  const SizedBox(height: 12),
+                  
+                  // Tide Context - discoverable button
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.blue.shade200),
+                      borderRadius: BorderRadius.circular(8),
+                      color: _showTideContext ? Colors.blue.shade50 : Colors.transparent,
+                    ),
+                    child: Column(
+                      children: [
+                        InkWell(
+                          onTap: () {
+                            setState(() {
+                              _showTideContext = !_showTideContext;
+                            });
+                          },
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.waves,
+                                  color: Colors.blue.shade700,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        'Record tide timing',
+                                        style: TextStyle(
+                                          fontWeight: FontWeight.w600,
+                                          color: Colors.blue.shade700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        'Optional: record how this catch relates to a high or low tide',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Icon(
+                                  _showTideContext ? Icons.expand_less : Icons.expand_more,
+                                  color: Colors.blue.shade700,
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (_showTideContext) ...[
+                          const Divider(height: 1),
+                          Padding(
+                            padding: const EdgeInsets.all(16),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                TextField(
+                                  controller: _tideStationNameController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Tide Station Name',
+                                    hintText: 'e.g., Darwin',
+                                  ),
+                                  onChanged: (_) => _onFieldChanged(),
+                                ),
+                                const SizedBox(height: 12),
+                                (() {
+                                  const items = [
+                                    DropdownMenuItem(value: 'High', child: Text('High Tide')),
+                                    DropdownMenuItem(value: 'Low', child: Text('Low Tide')),
+                                  ];
+                                  _debugDropdown('REFERENCE TIDE EVENT TYPE', _selectedReferenceTideEventType, items);
+                                  return DropdownButtonFormField<String>(
+                                    value: _selectedReferenceTideEventType,
+                                    decoration: const InputDecoration(labelText: 'Reference Event'),
+                                    items: items,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _selectedReferenceTideEventType = value;
+                                        _onFieldChanged();
+                                      });
+                                    },
+                                  );
+                                })(),
+                                const SizedBox(height: 12),
+                                InkWell(
+                                  onTap: () async {
+                                    final pickedDate = await showDatePicker(
+                                      context: context,
+                                      initialDate: _referenceTideEventTime ?? DateTime.now(),
+                                      firstDate: DateTime(2000),
+                                      lastDate: DateTime(2100),
+                                    );
+                                    if (pickedDate != null && mounted) {
+                                      final pickedTime = await showTimePicker(
+                                        context: context,
+                                        initialTime: TimeOfDay.fromDateTime(
+                                          _referenceTideEventTime ?? DateTime.now(),
+                                        ),
+                                      );
+                                      if (pickedTime != null) {
+                                        setState(() {
+                                          _referenceTideEventTime = DateTime(
+                                            pickedDate.year,
+                                            pickedDate.month,
+                                            pickedDate.day,
+                                            pickedTime.hour,
+                                            pickedTime.minute,
+                                          );
+                                          _onFieldChanged();
+                                        });
+                                      }
+                                    }
+                                  },
+                                  child: InputDecorator(
+                                    decoration: const InputDecoration(
+                                      labelText: 'Reference Event Time',
+                                    ),
+                                    child: Text(
+                                      _referenceTideEventTime != null
+                                          ? '${_referenceTideEventTime!.day}/${_referenceTideEventTime!.month}/${_referenceTideEventTime!.year} ${_referenceTideEventTime!.hour}:${_referenceTideEventTime!.minute.toString().padLeft(2, '0')}'
+                                          : 'Select date and time',
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                TextField(
+                                  controller: _referenceTideEventHeightController,
+                                  decoration: const InputDecoration(
+                                    labelText: 'Reference Event Height (m)',
+                                    hintText: 'e.g., 6.37',
+                                  ),
+                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                  onChanged: (_) => _onFieldChanged(),
+                                ),
+                                const SizedBox(height: 12),
+                                (() {
+                                  const items = [
+                                    DropdownMenuItem(value: 'Before', child: Text('Before')),
+                                    DropdownMenuItem(value: 'After', child: Text('After')),
+                                  ];
+                                  _debugDropdown('REFERENCE TIDE EVENT RELATION', _selectedReferenceTideEventRelation, items);
+                                  return DropdownButtonFormField<String>(
+                                    value: _selectedReferenceTideEventRelation,
+                                    decoration: const InputDecoration(labelText: 'Relation'),
+                                    items: items,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _selectedReferenceTideEventRelation = value;
+                                        _onFieldChanged();
+                                      });
+                                    },
+                                  );
+                                })(),
+                                const SizedBox(height: 16),
+                                // Phrase preview
+                                if (_tideStationNameController.text.isNotEmpty &&
+                                    _selectedReferenceTideEventType != null &&
+                                    _referenceTideEventTime != null &&
+                                    _referenceTideEventHeightController.text.isNotEmpty &&
+                                    _selectedReferenceTideEventRelation != null)
+                                  Container(
+                                    padding: const EdgeInsets.all(12),
+                                    decoration: BoxDecoration(
+                                      color: Colors.blue.shade100,
+                                      borderRadius: BorderRadius.circular(8),
+                                      border: Border.all(color: Colors.blue.shade300),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        const Text(
+                                          'Preview:',
+                                          style: TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 12,
+                                            color: Colors.grey,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          _generateTideContextPhrase(),
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            color: Colors.blue,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
                   const SizedBox(height: 16),
 
                   // Water Conditions
@@ -1516,40 +1911,48 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                       ),
                     ),
                   ),
-                  DropdownButtonFormField<String>(
-                    value: _selectedWaterClarity,
-                    decoration: const InputDecoration(labelText: 'Water Clarity'),
-                    items: EnvironmentalCondition.waterClarities.map((clarity) {
+                  (() {
+                    final items = EnvironmentalCondition.waterClarities.map((clarity) {
                       return DropdownMenuItem(
                         value: clarity,
                         child: Text(clarity),
                       );
-                    }).toList(),
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedWaterClarity = value;
-                        _onFieldChanged();
-                      });
-                    },
-                  ),
+                    }).toList();
+                    _debugDropdown('WATER CLARITY', _selectedWaterClarity, items);
+                    return DropdownButtonFormField<String>(
+                      value: _selectedWaterClarity,
+                      decoration: const InputDecoration(labelText: 'Water Clarity'),
+                      items: items,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedWaterClarity = value;
+                          _onFieldChanged();
+                        });
+                      },
+                    );
+                  })(),
                   const SizedBox(height: 12),
-                  DropdownButtonFormField<String>(
-                    value: _selectedRiverFlow,
-                    decoration: const InputDecoration(labelText: 'River Flow (optional)'),
-                    items: const [
-                      DropdownMenuItem(value: null, child: Text('Unknown')),
-                      DropdownMenuItem(value: 'Low', child: Text('Low')),
-                      DropdownMenuItem(value: 'Normal', child: Text('Normal')),
-                      DropdownMenuItem(value: 'High', child: Text('High')),
-                      DropdownMenuItem(value: 'Flood', child: Text('Flood')),
-                    ],
-                    onChanged: (value) {
-                      setState(() {
-                        _selectedRiverFlow = value;
-                        _onFieldChanged();
-                      });
-                    },
-                  ),
+                  (() {
+                    const items = [
+                      DropdownMenuItem<String?>(value: null, child: Text('Unknown')),
+                      DropdownMenuItem<String?>(value: 'Low', child: Text('Low')),
+                      DropdownMenuItem<String?>(value: 'Normal', child: Text('Normal')),
+                      DropdownMenuItem<String?>(value: 'High', child: Text('High')),
+                      DropdownMenuItem<String?>(value: 'Flood', child: Text('Flood')),
+                    ];
+                    _debugDropdown('RIVER FLOW', _selectedRiverFlow, items);
+                    return DropdownButtonFormField<String?>(
+                      value: _selectedRiverFlow,
+                      decoration: const InputDecoration(labelText: 'River Flow (optional)'),
+                      items: items,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedRiverFlow = value;
+                          _onFieldChanged();
+                        });
+                      },
+                    );
+                  })(),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _barometricPressureController,

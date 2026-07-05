@@ -337,6 +337,16 @@ class EnvironmentalConditionsService {
     double? tideHeight,
     String? tideMovement,
     String? tideStation,
+    // Tide context fields
+    String? tideStationName,
+    String? referenceTideEventType,
+    DateTime? referenceTideEventTime,
+    double? referenceTideEventHeight,
+    String? referenceTideEventRelation,
+    int? minutesFromReferenceTideEvent,
+    String? tideContextPhrase,
+    String? tideContextDataSource,
+    String? tideContextConfidence,
     String? weatherCondition,
     double? temperature,
     double? humidity,
@@ -365,6 +375,16 @@ class EnvironmentalConditionsService {
       tideHeight: tideHeight,
       tideMovement: tideMovement,
       tideStation: tideStation,
+      // Tide context fields
+      tideStationName: tideStationName,
+      referenceTideEventType: referenceTideEventType,
+      referenceTideEventTime: referenceTideEventTime,
+      referenceTideEventHeight: referenceTideEventHeight,
+      referenceTideEventRelation: referenceTideEventRelation,
+      minutesFromReferenceTideEvent: minutesFromReferenceTideEvent,
+      tideContextPhrase: tideContextPhrase,
+      tideContextDataSource: tideContextDataSource,
+      tideContextConfidence: tideContextConfidence,
       weatherCondition: weatherCondition,
       temperature: temperature,
       humidity: humidity,
@@ -471,6 +491,29 @@ class EnvironmentalConditionsService {
       tideHeight: existing?.tideHeight,
       tideMovement: existing?.tideMovement,
       tideStation: existing?.tideStation,
+      // Preserve existing tide context data
+      tideStationName: existing?.tideStationName,
+      tideStationDistanceKm: existing?.tideStationDistanceKm,
+      referenceTideEventType: existing?.referenceTideEventType,
+      referenceTideEventTime: existing?.referenceTideEventTime,
+      referenceTideEventHeight: existing?.referenceTideEventHeight,
+      referenceTideEventRelation: existing?.referenceTideEventRelation,
+      minutesFromReferenceTideEvent: existing?.minutesFromReferenceTideEvent,
+      previousTideEventType: existing?.previousTideEventType,
+      previousTideEventTime: existing?.previousTideEventTime,
+      previousTideEventHeight: existing?.previousTideEventHeight,
+      nextTideEventType: existing?.nextTideEventType,
+      nextTideEventTime: existing?.nextTideEventTime,
+      nextTideEventHeight: existing?.nextTideEventHeight,
+      tideContextPhrase: existing?.tideContextPhrase,
+      tideContextDataSource: existing?.tideContextDataSource,
+      tideContextConfidence: existing?.tideContextConfidence,
+      // Preserve existing automated tide data
+      tideDataSource: existing?.tideDataSource,
+      tideConfidence: existing?.tideConfidence,
+      derivedTideStage: existing?.derivedTideStage,
+      tideObservedOrEstimated: existing?.tideObservedOrEstimated,
+      tideDiagnostics: existing?.tideDiagnostics,
       weatherCondition: existing?.weatherCondition,
       temperature: existing?.temperature,
       humidity: existing?.humidity,
@@ -506,6 +549,12 @@ class EnvironmentalConditionsService {
         condition.tideHeight != null ||
         condition.tideMovement != null ||
         !_isBlank(condition.tideStation) ||
+        !_isBlank(condition.tideStationName) ||
+        condition.referenceTideEventType != null ||
+        condition.referenceTideEventTime != null ||
+        condition.referenceTideEventHeight != null ||
+        condition.referenceTideEventRelation != null ||
+        condition.tideContextPhrase != null ||
         !_isBlank(condition.weatherCondition) ||
         condition.temperature != null ||
         condition.humidity != null ||

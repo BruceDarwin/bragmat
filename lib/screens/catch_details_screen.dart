@@ -13,6 +13,7 @@ import 'catch_map_screen.dart';
 import '../services/connectivity_service.dart';
 import '../services/environmental_conditions_service.dart';
 import '../services/sun_times_service.dart';
+import '../helpers/tide_context_helper.dart';
 
 class CatchDetailsScreen extends StatefulWidget {
   final Catch catchItem;
@@ -94,15 +95,48 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
       final envService = EnvironmentalConditionsService();
       final condition = await envService.getEnvironmentalConditionForCatch(_catchItem.id!);
       debugPrint('Environmental condition found: ${condition != null}');
+      
+      EnvironmentalCondition? finalCondition = condition;
+      
       if (condition != null) {
         debugPrint('  Moon Phase: ${condition.moonPhase}');
         debugPrint('  Moon Illumination: ${condition.moonIllumination?.toStringAsFixed(1)}%');
         debugPrint('  Sunrise: ${condition.sunriseTime?.toIso8601String()}');
         debugPrint('  Sunset: ${condition.sunsetTime?.toIso8601String()}');
+        
+        // Regenerate tide context phrase if missing but fields exist
+        if ((condition.tideContextPhrase == null || condition.tideContextPhrase!.isEmpty) &&
+            condition.tideStationName != null &&
+            condition.tideStationName!.isNotEmpty &&
+            condition.referenceTideEventType != null &&
+            condition.referenceTideEventTime != null &&
+            condition.referenceTideEventHeight != null &&
+            condition.referenceTideEventRelation != null) {
+          final catchTime = _catchItem.dateCaught ?? _catchItem.createdAt;
+          final minutesFromEvent = TideContextHelper.calculateMinutesBetween(
+            catchTime,
+            condition.referenceTideEventTime!,
+          );
+          final phrase = TideContextHelper.generatePhrase(
+            stationName: condition.tideStationName!,
+            eventType: condition.referenceTideEventType!,
+            eventTime: condition.referenceTideEventTime!,
+            eventHeight: condition.referenceTideEventHeight!,
+            relation: condition.referenceTideEventRelation!,
+            minutesFromEvent: minutesFromEvent,
+          );
+          finalCondition = condition.copyWith(
+            tideContextPhrase: phrase,
+            minutesFromReferenceTideEvent: minutesFromEvent,
+          );
+          // Update the database with the regenerated phrase
+          await envService.updateEnvironmentalCondition(finalCondition!);
+          debugPrint('  Regenerated tide context phrase: $phrase');
+        }
       }
       if (mounted) {
         setState(() {
-          _environmentalCondition = condition;
+          _environmentalCondition = finalCondition;
         });
       }
     }
@@ -582,7 +616,37 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
     }
 
     // Tide
-    if (condition.tideStage != null || condition.tideStrength != null) {
+    if (condition.tideStage != null || condition.tideStrength != null || condition.tideContextPhrase != null) {
+      // Show tide context phrase prominently if available
+      if (condition.tideContextPhrase != null && condition.tideContextPhrase!.isNotEmpty) {
+        details.add(
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Colors.blue.shade200),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.waves, size: 24, color: Colors.blue),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    condition.tideContextPhrase!,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blue.shade900,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+        details.add(const SizedBox(height: 12));
+      }
+
       // Main tide stage display
       if (condition.tideStage != null && condition.tideStage != 'Unknown') {
         details.add(
@@ -714,6 +778,36 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                     condition.tideObservedOrEstimated == 'Estimated'
                         ? 'Estimated from ${condition.tideDataSource ?? 'Open-Meteo Marine'}'
                         : 'Manual observation',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontStyle: FontStyle.italic,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      // Tide context source (if different from main source)
+      if (condition.tideContextDataSource != null && 
+          condition.tideContextDataSource != condition.tideObservedOrEstimated) {
+        tideDetails.add(
+          Padding(
+            padding: const EdgeInsets.only(bottom: 4),
+            child: Row(
+              children: [
+                const SizedBox(width: 36),
+                Text(
+                  'Context Source: ',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Expanded(
+                  child: Text(
+                    condition.tideContextDataSource!,
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                       fontStyle: FontStyle.italic,
                       color: Colors.grey[600],

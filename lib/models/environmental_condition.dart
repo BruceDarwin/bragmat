@@ -20,6 +20,23 @@ class EnvironmentalCondition {
   final String? derivedTideStage;
   final String? tideObservedOrEstimated;
   final String? tideDiagnostics;
+  // Tide Context fields
+  final String? tideStationName;
+  final double? tideStationDistanceKm;
+  final String? referenceTideEventType; // High / Low
+  final DateTime? referenceTideEventTime;
+  final double? referenceTideEventHeight;
+  final String? referenceTideEventRelation; // Before / After
+  final int? minutesFromReferenceTideEvent;
+  final String? previousTideEventType;
+  final DateTime? previousTideEventTime;
+  final double? previousTideEventHeight;
+  final String? nextTideEventType;
+  final DateTime? nextTideEventTime;
+  final double? nextTideEventHeight;
+  final String? tideContextPhrase;
+  final String? tideContextDataSource;
+  final String? tideContextConfidence;
   final String? weatherCondition;
   final double? temperature;
   final double? humidity;
@@ -56,6 +73,23 @@ class EnvironmentalCondition {
     this.derivedTideStage,
     this.tideObservedOrEstimated,
     this.tideDiagnostics,
+    // Tide Context fields
+    this.tideStationName,
+    this.tideStationDistanceKm,
+    this.referenceTideEventType,
+    this.referenceTideEventTime,
+    this.referenceTideEventHeight,
+    this.referenceTideEventRelation,
+    this.minutesFromReferenceTideEvent,
+    this.previousTideEventType,
+    this.previousTideEventTime,
+    this.previousTideEventHeight,
+    this.nextTideEventType,
+    this.nextTideEventTime,
+    this.nextTideEventHeight,
+    this.tideContextPhrase,
+    this.tideContextDataSource,
+    this.tideContextConfidence,
     this.weatherCondition,
     this.temperature,
     this.humidity,
@@ -95,6 +129,23 @@ class EnvironmentalCondition {
       'derived_tide_stage': derivedTideStage,
       'tide_observed_or_estimated': tideObservedOrEstimated,
       'tide_diagnostics': tideDiagnostics,
+      // Tide Context fields
+      'tide_station_name': tideStationName,
+      'tide_station_distance_km': tideStationDistanceKm,
+      'reference_tide_event_type': referenceTideEventType,
+      'reference_tide_event_time': referenceTideEventTime?.toIso8601String(),
+      'reference_tide_event_height': referenceTideEventHeight,
+      'reference_tide_event_relation': referenceTideEventRelation,
+      'minutes_from_reference_tide_event': minutesFromReferenceTideEvent,
+      'previous_tide_event_type': previousTideEventType,
+      'previous_tide_event_time': previousTideEventTime?.toIso8601String(),
+      'previous_tide_event_height': previousTideEventHeight,
+      'next_tide_event_type': nextTideEventType,
+      'next_tide_event_time': nextTideEventTime?.toIso8601String(),
+      'next_tide_event_height': nextTideEventHeight,
+      'tide_context_phrase': tideContextPhrase,
+      'tide_context_data_source': tideContextDataSource,
+      'tide_context_confidence': tideContextConfidence,
       'weather_condition': weatherCondition,
       'temperature': temperature,
       'humidity': humidity,
@@ -139,6 +190,29 @@ class EnvironmentalCondition {
       derivedTideStage: map['derived_tide_stage'] as String?,
       tideObservedOrEstimated: map['tide_observed_or_estimated'] as String?,
       tideDiagnostics: map['tide_diagnostics'] as String?,
+      // Tide Context fields
+      tideStationName: map['tide_station_name'] as String?,
+      tideStationDistanceKm: map['tide_station_distance_km'] as double?,
+      referenceTideEventType: map['reference_tide_event_type'] as String?,
+      referenceTideEventTime: map['reference_tide_event_time'] != null
+          ? DateTime.parse(map['reference_tide_event_time'] as String)
+          : null,
+      referenceTideEventHeight: map['reference_tide_event_height'] as double?,
+      referenceTideEventRelation: map['reference_tide_event_relation'] as String?,
+      minutesFromReferenceTideEvent: map['minutes_from_reference_tide_event'] as int?,
+      previousTideEventType: map['previous_tide_event_type'] as String?,
+      previousTideEventTime: map['previous_tide_event_time'] != null
+          ? DateTime.parse(map['previous_tide_event_time'] as String)
+          : null,
+      previousTideEventHeight: map['previous_tide_event_height'] as double?,
+      nextTideEventType: map['next_tide_event_type'] as String?,
+      nextTideEventTime: map['next_tide_event_time'] != null
+          ? DateTime.parse(map['next_tide_event_time'] as String)
+          : null,
+      nextTideEventHeight: map['next_tide_event_height'] as double?,
+      tideContextPhrase: map['tide_context_phrase'] as String?,
+      tideContextDataSource: map['tide_context_data_source'] as String?,
+      tideContextConfidence: map['tide_context_confidence'] as String?,
       weatherCondition: map['weather_condition'] as String?,
       temperature: map['temperature'] as double?,
       humidity: map['humidity'] as double?,
@@ -178,6 +252,23 @@ class EnvironmentalCondition {
     String? derivedTideStage,
     String? tideObservedOrEstimated,
     String? tideDiagnostics,
+    // Tide Context fields
+    String? tideStationName,
+    double? tideStationDistanceKm,
+    String? referenceTideEventType,
+    DateTime? referenceTideEventTime,
+    double? referenceTideEventHeight,
+    String? referenceTideEventRelation,
+    int? minutesFromReferenceTideEvent,
+    String? previousTideEventType,
+    DateTime? previousTideEventTime,
+    double? previousTideEventHeight,
+    String? nextTideEventType,
+    DateTime? nextTideEventTime,
+    double? nextTideEventHeight,
+    String? tideContextPhrase,
+    String? tideContextDataSource,
+    String? tideContextConfidence,
     String? weatherCondition,
     double? temperature,
     double? humidity,
@@ -214,6 +305,23 @@ class EnvironmentalCondition {
       derivedTideStage: derivedTideStage ?? this.derivedTideStage,
       tideObservedOrEstimated: tideObservedOrEstimated ?? this.tideObservedOrEstimated,
       tideDiagnostics: tideDiagnostics ?? this.tideDiagnostics,
+      // Tide Context fields
+      tideStationName: tideStationName ?? this.tideStationName,
+      tideStationDistanceKm: tideStationDistanceKm ?? this.tideStationDistanceKm,
+      referenceTideEventType: referenceTideEventType ?? this.referenceTideEventType,
+      referenceTideEventTime: referenceTideEventTime ?? this.referenceTideEventTime,
+      referenceTideEventHeight: referenceTideEventHeight ?? this.referenceTideEventHeight,
+      referenceTideEventRelation: referenceTideEventRelation ?? this.referenceTideEventRelation,
+      minutesFromReferenceTideEvent: minutesFromReferenceTideEvent ?? this.minutesFromReferenceTideEvent,
+      previousTideEventType: previousTideEventType ?? this.previousTideEventType,
+      previousTideEventTime: previousTideEventTime ?? this.previousTideEventTime,
+      previousTideEventHeight: previousTideEventHeight ?? this.previousTideEventHeight,
+      nextTideEventType: nextTideEventType ?? this.nextTideEventType,
+      nextTideEventTime: nextTideEventTime ?? this.nextTideEventTime,
+      nextTideEventHeight: nextTideEventHeight ?? this.nextTideEventHeight,
+      tideContextPhrase: tideContextPhrase ?? this.tideContextPhrase,
+      tideContextDataSource: tideContextDataSource ?? this.tideContextDataSource,
+      tideContextConfidence: tideContextConfidence ?? this.tideContextConfidence,
       weatherCondition: weatherCondition ?? this.weatherCondition,
       temperature: temperature ?? this.temperature,
       humidity: humidity ?? this.humidity,
