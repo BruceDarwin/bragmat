@@ -17,6 +17,7 @@ class Catch {
   final int? baitId;
   final String? lureSize;
   final String? lureColour;
+  final String? lurePhotoPath;
 
   Catch({
     this.id,
@@ -37,6 +38,7 @@ class Catch {
     this.baitId,
     this.lureSize,
     this.lureColour,
+    this.lurePhotoPath,
   });
 
   Map<String, dynamic> toMap() {
@@ -59,6 +61,7 @@ class Catch {
       'bait_id': baitId,
       'lure_size': lureSize,
       'lure_colour': lureColour,
+      'lure_photo_path': lurePhotoPath,
     };
   }
 
@@ -88,6 +91,7 @@ factory Catch.fromMap(Map<String, dynamic> map) {
     baitId: map['bait_id'] as int?,
     lureSize: map['lure_size'] as String?,
     lureColour: map['lure_colour'] as String?,
+    lurePhotoPath: map['lure_photo_path'] as String?,
   );
 }
 
@@ -110,6 +114,7 @@ factory Catch.fromMap(Map<String, dynamic> map) {
     int? baitId,
     String? lureSize,
     String? lureColour,
+    String? lurePhotoPath,
   }) {
     return Catch(
       id: id ?? this.id,
@@ -130,6 +135,7 @@ factory Catch.fromMap(Map<String, dynamic> map) {
       baitId: baitId ?? this.baitId,
       lureSize: lureSize ?? this.lureSize,
       lureColour: lureColour ?? this.lureColour,
+      lurePhotoPath: lurePhotoPath ?? this.lurePhotoPath,
     );
   }
 }

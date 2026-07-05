@@ -52,6 +52,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   List<Bait> _baits = [];
   final _lureSizeController = TextEditingController();
   final _lureColourController = TextEditingController();
+  String? _lurePhotoPath;
   
   // Environmental conditions
   String? _selectedTideStage;
@@ -133,6 +134,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _selectedBaitId = _safeIdValue(widget.catchToEdit!.baitId, _baits, 'baitId');
       _lureSizeController.text = widget.catchToEdit!.lureSize ?? '';
       _lureColourController.text = widget.catchToEdit!.lureColour ?? '';
+      _lurePhotoPath = widget.catchToEdit!.lurePhotoPath;
       
       _latitudeController.text = widget.catchToEdit!.latitude?.toString() ?? '';
       _longitudeController.text = widget.catchToEdit!.longitude?.toString() ?? '';
@@ -686,6 +688,33 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     }
   }
 
+  Future<void> _pickLurePhoto(ImageSource source) async {
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: source,
+        imageQuality: 85,
+        maxWidth: 1920,
+        maxHeight: 1080,
+      );
+      
+      if (pickedFile != null) {
+        if (mounted) {
+          setState(() {
+            _lurePhotoPath = pickedFile.path;
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint('ERROR in _pickLurePhoto: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking lure photo: $e')),
+        );
+      }
+    }
+  }
+
   Future<void> _processPickedFile(File file, String source) async {
     final originalPath = file.path;
     
@@ -997,7 +1026,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           baitId: _selectedBaitId,
           lureSize: _lureSizeController.text.trim().isEmpty ? null : _lureSizeController.text.trim(),
           lureColour: _lureColourController.text.trim().isEmpty ? null : _lureColourController.text.trim(),
+          lurePhotoPath: _lurePhotoPath,
         );
+        debugPrint('BEFORE UPDATE - lureSize: ${updatedCatch.lureSize}, lureColour: ${updatedCatch.lureColour}, lurePhotoPath: ${updatedCatch.lurePhotoPath}');
         await DatabaseHelper.instance.updateCatch(updatedCatch);
         savedCatch = updatedCatch;
         
@@ -1031,7 +1062,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           baitId: _selectedBaitId,
           lureSize: _lureSizeController.text.trim().isEmpty ? null : _lureSizeController.text.trim(),
           lureColour: _lureColourController.text.trim().isEmpty ? null : _lureColourController.text.trim(),
+          lurePhotoPath: _lurePhotoPath,
         );
+        debugPrint('BEFORE INSERT - lureSize: ${newCatch.lureSize}, lureColour: ${newCatch.lureColour}, lurePhotoPath: ${newCatch.lurePhotoPath}');
         final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
         savedCatch = newCatch.copyWith(id: catchId);
         
@@ -1066,8 +1099,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
 
     if (!mounted) return;
 
-    // Always pop with result to refresh the calling screen
-    Navigator.pop(context, true);
+    // Pop with the saved catch to refresh the calling screen
+    Navigator.pop(context, savedCatch);
   }
 
   @override
@@ -1425,7 +1458,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                         ...lures.map((lure) {
                           return DropdownMenuItem<int?>(
                             value: lure.id,
-                            child: Text(lure.displayName),
+                            child: Text(lure.name),
                           );
                         }).toList(),
                       ];
@@ -1487,6 +1520,61 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                     onChanged: (value) {
                       _onFieldChanged();
                     },
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('Lure Photo (optional)', style: TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 8),
+                  if (_lurePhotoPath != null)
+                    Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            File(_lurePhotoPath!),
+                            height: 150,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                        Positioned(
+                          top: 4,
+                          right: 4,
+                          child: GestureDetector(
+                            onTap: () {
+                              setState(() {
+                                _lurePhotoPath = null;
+                              });
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.black54,
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(
+                                Icons.close,
+                                color: Colors.white,
+                                size: 20,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  Row(
+                    children: [
+                      ElevatedButton.icon(
+                        onPressed: () => _pickLurePhoto(ImageSource.camera),
+                        icon: const Icon(Icons.camera_alt),
+                        label: const Text('Camera'),
+                      ),
+                      const SizedBox(width: 8),
+                      ElevatedButton.icon(
+                        onPressed: () => _pickLurePhoto(ImageSource.gallery),
+                        icon: const Icon(Icons.photo_library),
+                        label: const Text('Gallery'),
+                      ),
+                    ],
                   ),
                 ],
               ),

@@ -84,11 +84,11 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
       final lures = await DatabaseHelper.instance.getLures();
       final lure = lures.firstWhere(
         (l) => l.id == _catchItem.lureId,
-        orElse: () => Lure(make: 'Unknown', model: 'lure'),
+        orElse: () => Lure(name: 'Unknown lure'),
       );
       if (mounted) {
         setState(() {
-          _lureName = lure.displayName;
+          _lureName = lure.name;
         });
       }
     }
@@ -231,9 +231,11 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                 ),
               );
               if (edited is Catch && mounted) {
+                debugPrint('CATCH DETAILS - Received edited catch: lureSize=${edited.lureSize}, lureColour=${edited.lureColour}, lurePhotoPath=${edited.lurePhotoPath}');
                 setState(() {
                   _catchItem = edited;
                 });
+                debugPrint('CATCH DETAILS - After setState: lureSize=${_catchItem.lureSize}, lureColour=${_catchItem.lureColour}, lurePhotoPath=${_catchItem.lurePhotoPath}');
                 // Reload fishing buddy name in case it changed
                 _loadFishingBuddyName();
                 // Reload lure and bait names in case they changed
@@ -426,6 +428,32 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                     icon: Icons.palette,
                     label: 'Colour',
                     value: _catchItem.lureColour!,
+                  ),
+                if (_catchItem.lurePhotoPath != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 8.0),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Lure Photo',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(8),
+                          child: Image.file(
+                            File(_catchItem.lurePhotoPath!),
+                            height: 150,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 if (_baitName != null)
                   BragmatDataRow(

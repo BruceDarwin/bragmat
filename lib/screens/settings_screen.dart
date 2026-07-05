@@ -824,8 +824,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     itemBuilder: (context, index) {
                       final lure = _lures[index];
                       return ListTile(
-                        title: Text(lure.displayName),
-                        subtitle: lure.lureType != null ? Text(lure.lureType!) : null,
+                        title: Text(lure.name),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -863,39 +862,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _showAddLureDialog() async {
-    final makeController = TextEditingController();
-    final modelController = TextEditingController();
-    final typeController = TextEditingController();
-    final notesController = TextEditingController();
-    
+    final controller = TextEditingController();
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Add Lure'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: makeController,
-                decoration: const InputDecoration(labelText: 'Make/Brand'),
-                autofocus: true,
-              ),
-              TextField(
-                controller: modelController,
-                decoration: const InputDecoration(labelText: 'Model'),
-              ),
-              TextField(
-                controller: typeController,
-                decoration: const InputDecoration(labelText: 'Lure Type (optional)'),
-              ),
-              TextField(
-                controller: notesController,
-                decoration: const InputDecoration(labelText: 'Notes (optional)'),
-                maxLines: 2,
-              ),
-            ],
-          ),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Lure Name'),
+          autofocus: true,
         ),
         actions: [
           TextButton(
@@ -910,35 +885,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
 
-    if (confirmed == true) {
-      final make = makeController.text.trim();
-      final model = modelController.text.trim();
-      
-      if (make.isEmpty && model.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please enter make or model')),
-          );
-        }
-        return;
-      }
+    if (confirmed == true && controller.text.trim().isNotEmpty) {
+      final name = controller.text.trim();
+      final normalized = name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+      final exists = _lures.any((lure) =>
+        lure.name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') == normalized);
 
-      final type = typeController.text.trim().isEmpty ? null : typeController.text.trim();
-      final notes = notesController.text.trim().isEmpty ? null : notesController.text.trim();
-
-      final result = await DatabaseHelper.instance.insertLure(
-        make: make,
-        model: model,
-        lureType: type,
-        notes: notes,
-      );
-      
-      if (result != -1) {
-        _loadLures();
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Lure added')),
-          );
+      if (!exists) {
+        final result = await DatabaseHelper.instance.insertLure(name);
+        if (result != -1) {
+          _loadLures();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Lure added')),
+            );
+          }
         }
       } else {
         if (mounted) {
@@ -951,39 +912,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _showEditLureDialog(Lure lure) async {
-    final makeController = TextEditingController(text: lure.make);
-    final modelController = TextEditingController(text: lure.model);
-    final typeController = TextEditingController(text: lure.lureType ?? '');
-    final notesController = TextEditingController(text: lure.notes ?? '');
-    
+    final controller = TextEditingController(text: lure.name);
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Edit Lure'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: makeController,
-                decoration: const InputDecoration(labelText: 'Make/Brand'),
-                autofocus: true,
-              ),
-              TextField(
-                controller: modelController,
-                decoration: const InputDecoration(labelText: 'Model'),
-              ),
-              TextField(
-                controller: typeController,
-                decoration: const InputDecoration(labelText: 'Lure Type (optional)'),
-              ),
-              TextField(
-                controller: notesController,
-                decoration: const InputDecoration(labelText: 'Notes (optional)'),
-                maxLines: 2,
-              ),
-            ],
-          ),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Lure Name'),
+          autofocus: true,
         ),
         actions: [
           TextButton(
@@ -998,35 +935,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
 
-    if (confirmed == true) {
-      final make = makeController.text.trim();
-      final model = modelController.text.trim();
-      
-      if (make.isEmpty && model.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Please enter make or model')),
-          );
+    if (confirmed == true && controller.text.trim().isNotEmpty) {
+      final name = controller.text.trim();
+      if (name != lure.name) {
+        // Delete old and insert new (simple approach for unique constraint)
+        await DatabaseHelper.instance.deleteLure(lure.id!);
+        final result = await DatabaseHelper.instance.insertLure(name);
+        if (result != -1) {
+          _loadLures();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Lure updated')),
+            );
+          }
         }
-        return;
-      }
-
-      final type = typeController.text.trim().isEmpty ? null : typeController.text.trim();
-      final notes = notesController.text.trim().isEmpty ? null : notesController.text.trim();
-
-      final updatedLure = lure.copyWith(
-        make: make,
-        model: model,
-        lureType: type,
-        notes: notes,
-      );
-
-      await DatabaseHelper.instance.updateLure(updatedLure);
-      _loadLures();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Lure updated')),
-        );
       }
     }
   }
@@ -1039,8 +961,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: const Text('Delete Lure'),
         content: Text(
           isUsed
-              ? 'This lure is used by catches. Deleting it will remove the lure reference from those catches. Are you sure you want to delete "${lure.displayName}"?'
-              : 'Are you sure you want to delete "${lure.displayName}"?',
+              ? 'This lure is used by catches. Deleting it will remove the lure reference from those catches. Are you sure you want to delete "${lure.name}"?'
+              : 'Are you sure you want to delete "${lure.name}"?',
         ),
         actions: [
           TextButton(

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/catch.dart';
@@ -33,7 +34,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 25,
+      version: 26,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -76,11 +77,7 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE lures (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        make TEXT NOT NULL DEFAULT '',
-        model TEXT NOT NULL DEFAULT '',
-        lure_type TEXT,
-        notes TEXT,
-        UNIQUE(make, model)
+        name TEXT UNIQUE NOT NULL
       )
     ''');
 
@@ -692,6 +689,56 @@ class DatabaseHelper {
         // Column might already exist
       }
     }
+    if (oldVersion < 26) {
+      // Revert lures table from make/model back to simple name
+      // First, create the new lures table with the simple schema
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS lures_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL
+        )
+      ''');
+      
+      // Migrate existing lures: combine make/model back to name
+      final existingLures = await db.query('lures');
+      for (final lure in existingLures) {
+        final make = lure['make'] as String? ?? '';
+        final model = lure['model'] as String? ?? '';
+        String name = model.isEmpty ? make : '$make $model';
+        
+        // Insert into new table
+        try {
+          await db.insert('lures_new', {
+            'name': name,
+          });
+        } catch (e) {
+          // Handle duplicate names
+          // Add a suffix to make it unique
+          int suffix = 1;
+          while (true) {
+            try {
+              await db.insert('lures_new', {
+                'name': '$name ($suffix)',
+              });
+              break;
+            } catch (e2) {
+              suffix++;
+            }
+          }
+        }
+      }
+      
+      // Drop old table and rename new table
+      await db.execute('DROP TABLE IF EXISTS lures');
+      await db.execute('ALTER TABLE lures_new RENAME TO lures');
+      
+      // Add lure_photo_path to catches table
+      try {
+        await db.execute('ALTER TABLE catches ADD COLUMN lure_photo_path TEXT');
+      } catch (e) {
+        // Column might already exist
+      }
+    }
     
     // Safety check: Ensure trip_id column exists in catches table
     // This handles cases where a database might be at a higher version but missing the column
@@ -818,12 +865,25 @@ class DatabaseHelper {
   // UPDATE
   Future<int> updateCatch(Catch catchItem) async {
     final db = await instance.database;
+    final map = catchItem.toMap();
+    debugPrint('DATABASE UPDATE - lure_size: ${map['lure_size']}, lure_colour: ${map['lure_colour']}, lure_photo_path: ${map['lure_photo_path']}');
     final result = await db.update(
       'catches',
-      catchItem.toMap(),
+      map,
       where: 'id = ?',
       whereArgs: [catchItem.id],
     );
+    
+    // Verify the update by reading back
+    final updated = await db.query(
+      'catches',
+      where: 'id = ?',
+      whereArgs: [catchItem.id],
+    );
+    if (updated.isNotEmpty) {
+      final row = updated.first;
+      debugPrint('DATABASE AFTER UPDATE - lure_size: ${row['lure_size']}, lure_colour: ${row['lure_colour']}, lure_photo_path: ${row['lure_photo_path']}');
+    }
     
     // Evaluate achievements
     await AchievementService().evaluateCatchAchievements();
@@ -864,24 +924,14 @@ class DatabaseHelper {
   // LURES
   Future<List<Lure>> getLures() async {
     final db = await instance.database;
-    final result = await db.query('lures', orderBy: 'make, model');
+    final result = await db.query('lures', orderBy: 'name');
     return result.map((json) => Lure.fromMap(json)).toList();
   }
 
-  Future<int> insertLure({
-    required String make,
-    required String model,
-    String? lureType,
-    String? notes,
-  }) async {
+  Future<int> insertLure(String name) async {
     final db = await instance.database;
     try {
-      return await db.insert('lures', {
-        'make': make,
-        'model': model,
-        'lure_type': lureType,
-        'notes': notes,
-      });
+      return await db.insert('lures', {'name': name});
     } catch (e) {
       // If lure already exists, return -1
       return -1;
