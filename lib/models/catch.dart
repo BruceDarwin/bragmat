@@ -13,6 +13,10 @@ class Catch {
   final int? fishingBuddyId;
   final int? tripId;
   final String? coordinateSource;
+  final int? lureId;
+  final int? baitId;
+  final String? lureSize;
+  final String? lureColour;
 
   Catch({
     this.id,
@@ -29,6 +33,10 @@ class Catch {
     this.fishingBuddyId,
     this.tripId,
     this.coordinateSource,
+    this.lureId,
+    this.baitId,
+    this.lureSize,
+    this.lureColour,
   });
 
   Map<String, dynamic> toMap() {
@@ -47,6 +55,10 @@ class Catch {
       'fishing_buddy_id': fishingBuddyId,
       'trip_id': tripId,
       'coordinate_source': coordinateSource,
+      'lure_id': lureId,
+      'bait_id': baitId,
+      'lure_size': lureSize,
+      'lure_colour': lureColour,
     };
   }
 
@@ -72,6 +84,10 @@ factory Catch.fromMap(Map<String, dynamic> map) {
     fishingBuddyId: map['fishing_buddy_id'] as int?,
     tripId: map['trip_id'] as int?,
     coordinateSource: map['coordinate_source'] as String?,
+    lureId: map['lure_id'] as int?,
+    baitId: map['bait_id'] as int?,
+    lureSize: map['lure_size'] as String?,
+    lureColour: map['lure_colour'] as String?,
   );
 }
 
@@ -90,6 +106,10 @@ factory Catch.fromMap(Map<String, dynamic> map) {
     int? fishingBuddyId,
     int? tripId,
     String? coordinateSource,
+    int? lureId,
+    int? baitId,
+    String? lureSize,
+    String? lureColour,
   }) {
     return Catch(
       id: id ?? this.id,
@@ -106,6 +126,10 @@ factory Catch.fromMap(Map<String, dynamic> map) {
       fishingBuddyId: fishingBuddyId ?? this.fishingBuddyId,
       tripId: tripId ?? this.tripId,
       coordinateSource: coordinateSource ?? this.coordinateSource,
+      lureId: lureId ?? this.lureId,
+      baitId: baitId ?? this.baitId,
+      lureSize: lureSize ?? this.lureSize,
+      lureColour: lureColour ?? this.lureColour,
     );
   }
 }

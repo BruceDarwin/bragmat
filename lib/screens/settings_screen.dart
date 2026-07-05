@@ -8,6 +8,8 @@ import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
 import '../models/favourite_spot.dart';
+import '../models/lure.dart';
+import '../models/bait.dart';
 import '../services/backup_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
@@ -26,6 +28,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<String> _fishTypes = [];
   List<Catch> _catches = [];
   List<FishingBuddy> _fishingBuddies = [];
+  List<Lure> _lures = [];
+  List<Bait> _baits = [];
   FishTypeSelectionMode _fishTypeSelectionMode = FishTypeSelectionMode.noDefault;
   String? _defaultFishType;
 
@@ -35,6 +39,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadFishTypes();
     _loadStatistics();
     _loadFishingBuddies();
+    _loadLures();
+    _loadBaits();
     _loadFishTypePreferences();
   }
 
@@ -58,6 +64,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final buddies = await DatabaseHelper.instance.getFishingBuddies();
     setState(() {
       _fishingBuddies = buddies;
+    });
+  }
+
+  Future<void> _loadLures() async {
+    final lures = await DatabaseHelper.instance.getLures();
+    setState(() {
+      _lures = lures;
+    });
+  }
+
+  Future<void> _loadBaits() async {
+    final baits = await DatabaseHelper.instance.getBaits();
+    setState(() {
+      _baits = baits;
     });
   }
 
@@ -770,6 +790,474 @@ class _SettingsScreenState extends State<SettingsScreen> {
             const SnackBar(content: Text('Fish type already exists')),
           );
         }
+      }
+    }
+  }
+
+  // LURES
+  Future<void> _showLuresDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Lures'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showAddLureDialog();
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Lure'),
+              ),
+              const SizedBox(height: 16),
+              if (_lures.isEmpty)
+                const Text('No lures yet')
+              else
+                Expanded(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _lures.length,
+                    itemBuilder: (context, index) {
+                      final lure = _lures[index];
+                      return ListTile(
+                        title: Text(lure.displayName),
+                        subtitle: lure.lureType != null ? Text(lure.lureType!) : null,
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showEditLureDialog(lure);
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showDeleteLureDialog(lure);
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAddLureDialog() async {
+    final makeController = TextEditingController();
+    final modelController = TextEditingController();
+    final typeController = TextEditingController();
+    final notesController = TextEditingController();
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Lure'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: makeController,
+                decoration: const InputDecoration(labelText: 'Make/Brand'),
+                autofocus: true,
+              ),
+              TextField(
+                controller: modelController,
+                decoration: const InputDecoration(labelText: 'Model'),
+              ),
+              TextField(
+                controller: typeController,
+                decoration: const InputDecoration(labelText: 'Lure Type (optional)'),
+              ),
+              TextField(
+                controller: notesController,
+                decoration: const InputDecoration(labelText: 'Notes (optional)'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final make = makeController.text.trim();
+      final model = modelController.text.trim();
+      
+      if (make.isEmpty && model.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please enter make or model')),
+          );
+        }
+        return;
+      }
+
+      final type = typeController.text.trim().isEmpty ? null : typeController.text.trim();
+      final notes = notesController.text.trim().isEmpty ? null : notesController.text.trim();
+
+      final result = await DatabaseHelper.instance.insertLure(
+        make: make,
+        model: model,
+        lureType: type,
+        notes: notes,
+      );
+      
+      if (result != -1) {
+        _loadLures();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Lure added')),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Lure already exists')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showEditLureDialog(Lure lure) async {
+    final makeController = TextEditingController(text: lure.make);
+    final modelController = TextEditingController(text: lure.model);
+    final typeController = TextEditingController(text: lure.lureType ?? '');
+    final notesController = TextEditingController(text: lure.notes ?? '');
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Lure'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: makeController,
+                decoration: const InputDecoration(labelText: 'Make/Brand'),
+                autofocus: true,
+              ),
+              TextField(
+                controller: modelController,
+                decoration: const InputDecoration(labelText: 'Model'),
+              ),
+              TextField(
+                controller: typeController,
+                decoration: const InputDecoration(labelText: 'Lure Type (optional)'),
+              ),
+              TextField(
+                controller: notesController,
+                decoration: const InputDecoration(labelText: 'Notes (optional)'),
+                maxLines: 2,
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      final make = makeController.text.trim();
+      final model = modelController.text.trim();
+      
+      if (make.isEmpty && model.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please enter make or model')),
+          );
+        }
+        return;
+      }
+
+      final type = typeController.text.trim().isEmpty ? null : typeController.text.trim();
+      final notes = notesController.text.trim().isEmpty ? null : notesController.text.trim();
+
+      final updatedLure = lure.copyWith(
+        make: make,
+        model: model,
+        lureType: type,
+        notes: notes,
+      );
+
+      await DatabaseHelper.instance.updateLure(updatedLure);
+      _loadLures();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lure updated')),
+        );
+      }
+    }
+  }
+
+  Future<void> _showDeleteLureDialog(Lure lure) async {
+    final isUsed = await DatabaseHelper.instance.isLureUsed(lure.id!);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Lure'),
+        content: Text(
+          isUsed
+              ? 'This lure is used by catches. Deleting it will remove the lure reference from those catches. Are you sure you want to delete "${lure.displayName}"?'
+              : 'Are you sure you want to delete "${lure.displayName}"?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await DatabaseHelper.instance.deleteLure(lure.id!);
+      _loadLures();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Lure deleted')),
+        );
+      }
+    }
+  }
+
+  // BAITS
+  Future<void> _showBaitsDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Baits'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _showAddBaitDialog();
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Add Bait'),
+              ),
+              const SizedBox(height: 16),
+              if (_baits.isEmpty)
+                const Text('No baits yet')
+              else
+                Expanded(
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _baits.length,
+                    itemBuilder: (context, index) {
+                      final bait = _baits[index];
+                      return ListTile(
+                        title: Text(bait.name),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.edit),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showEditBaitDialog(bait);
+                              },
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete),
+                              onPressed: () {
+                                Navigator.pop(context);
+                                _showDeleteBaitDialog(bait);
+                              },
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAddBaitDialog() async {
+    final controller = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add Bait'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Bait Name'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && controller.text.trim().isNotEmpty) {
+      final name = controller.text.trim();
+      final normalized = name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+      final exists = _baits.any((bait) =>
+        bait.name.toLowerCase().replaceAll(RegExp(r'\s+'), ' ') == normalized);
+
+      if (!exists) {
+        final result = await DatabaseHelper.instance.insertBait(name);
+        if (result != -1) {
+          _loadBaits();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Bait added')),
+            );
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Bait already exists')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _showEditBaitDialog(Bait bait) async {
+    final controller = TextEditingController(text: bait.name);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Bait'),
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(labelText: 'Bait Name'),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && controller.text.trim().isNotEmpty) {
+      final name = controller.text.trim();
+      if (name != bait.name) {
+        // Delete old and insert new (simple approach for unique constraint)
+        await DatabaseHelper.instance.deleteBait(bait.id!);
+        final result = await DatabaseHelper.instance.insertBait(name);
+        if (result != -1) {
+          _loadBaits();
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Bait updated')),
+            );
+          }
+        }
+      }
+    }
+  }
+
+  Future<void> _showDeleteBaitDialog(Bait bait) async {
+    final isUsed = await DatabaseHelper.instance.isBaitUsed(bait.id!);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete Bait'),
+        content: Text(
+          isUsed
+              ? 'This bait is used by catches. Deleting it will remove the bait reference from those catches. Are you sure you want to delete "${bait.name}"?'
+              : 'Are you sure you want to delete "${bait.name}"?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await DatabaseHelper.instance.deleteBait(bait.id!);
+      _loadBaits();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Bait deleted')),
+        );
       }
     }
   }
@@ -1899,6 +2387,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: Text('${_fishingBuddies.length} buddies'),
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _showFishingBuddiesDialog,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.phishing),
+                title: const Text('Lures'),
+                subtitle: Text('${_lures.length} lures'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _showLuresDialog,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.bug_report),
+                title: const Text('Baits'),
+                subtitle: Text('${_baits.length} baits'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _showBaitsDialog,
               ),
               const Divider(height: 1),
               ListTile(

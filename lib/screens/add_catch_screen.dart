@@ -10,6 +10,8 @@ import '../models/catch_media.dart';
 import '../models/fishing_trip.dart';
 import '../models/favourite_spot.dart';
 import '../models/environmental_condition.dart';
+import '../models/lure.dart';
+import '../models/bait.dart';
 import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
@@ -44,6 +46,12 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   String? _coordinateSource;
   int? _selectedFavouriteSpotId;
   List<FavouriteSpot> _favouriteSpots = [];
+  int? _selectedLureId;
+  List<Lure> _lures = [];
+  int? _selectedBaitId;
+  List<Bait> _baits = [];
+  final _lureSizeController = TextEditingController();
+  final _lureColourController = TextEditingController();
   
   // Environmental conditions
   String? _selectedTideStage;
@@ -98,6 +106,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _loadFishingBuddies(),
         _loadFishingTrips(),
         _loadFavouriteSpots(),
+        _loadLures(),
+        _loadBaits(),
       ]);
       
       // Load environmental condition after lists are loaded
@@ -119,6 +129,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       // Trip and buddy IDs - validate after lists are loaded
       _selectedTripId = _safeIdValue(widget.catchToEdit!.tripId, _fishingTrips, 'tripId');
       _selectedFishingBuddyId = _safeIdValue(widget.catchToEdit!.fishingBuddyId, _fishingBuddies, 'fishingBuddyId');
+      _selectedLureId = _safeIdValue(widget.catchToEdit!.lureId, _lures, 'lureId');
+      _selectedBaitId = _safeIdValue(widget.catchToEdit!.baitId, _baits, 'baitId');
+      _lureSizeController.text = widget.catchToEdit!.lureSize ?? '';
+      _lureColourController.text = widget.catchToEdit!.lureColour ?? '';
       
       _latitudeController.text = widget.catchToEdit!.latitude?.toString() ?? '';
       _longitudeController.text = widget.catchToEdit!.longitude?.toString() ?? '';
@@ -134,6 +148,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _loadFishingBuddies(),
         _loadFishingTrips(),
         _loadFavouriteSpots(),
+        _loadLures(),
+        _loadBaits(),
       ]);
       
       // Check for lost data when adding a new catch
@@ -372,6 +388,24 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     if (mounted) {
       setState(() {
         _favouriteSpots = spots;
+      });
+    }
+  }
+
+  Future<void> _loadLures() async {
+    final lures = await DatabaseHelper.instance.getLures();
+    if (mounted) {
+      setState(() {
+        _lures = lures;
+      });
+    }
+  }
+
+  Future<void> _loadBaits() async {
+    final baits = await DatabaseHelper.instance.getBaits();
+    if (mounted) {
+      setState(() {
+        _baits = baits;
       });
     }
   }
@@ -959,6 +993,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           latitude: latitude,
           longitude: longitude,
           coordinateSource: _coordinateSource,
+          lureId: _selectedLureId,
+          baitId: _selectedBaitId,
+          lureSize: _lureSizeController.text.trim().isEmpty ? null : _lureSizeController.text.trim(),
+          lureColour: _lureColourController.text.trim().isEmpty ? null : _lureColourController.text.trim(),
         );
         await DatabaseHelper.instance.updateCatch(updatedCatch);
         savedCatch = updatedCatch;
@@ -989,6 +1027,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           latitude: latitude,
           longitude: longitude,
           coordinateSource: _coordinateSource,
+          lureId: _selectedLureId,
+          baitId: _selectedBaitId,
+          lureSize: _lureSizeController.text.trim().isEmpty ? null : _lureSizeController.text.trim(),
+          lureColour: _lureColourController.text.trim().isEmpty ? null : _lureColourController.text.trim(),
         );
         final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
         savedCatch = newCatch.copyWith(id: catchId);
@@ -1365,6 +1407,91 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
               ),
               const SizedBox(height: 16),
 
+              // Lure and Bait Section
+              BragmatSectionCard(
+                icon: Icons.phishing,
+                title: 'Lure and Bait',
+                initiallyExpanded: false,
+                children: [
+                  FutureBuilder<List<Lure>>(
+                    future: DatabaseHelper.instance.getLures(),
+                    builder: (context, snapshot) {
+                      final lures = snapshot.data ?? [];
+                      final items = [
+                        const DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text('None'),
+                        ),
+                        ...lures.map((lure) {
+                          return DropdownMenuItem<int?>(
+                            value: lure.id,
+                            child: Text(lure.displayName),
+                          );
+                        }).toList(),
+                      ];
+                      return DropdownButtonFormField<int?>(
+                        initialValue: _selectedLureId,
+                        decoration: const InputDecoration(labelText: 'Lure'),
+                        items: items,
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedLureId = value;
+                            _onFieldChanged();
+                          });
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  FutureBuilder<List<Bait>>(
+                    future: DatabaseHelper.instance.getBaits(),
+                    builder: (context, snapshot) {
+                      final baits = snapshot.data ?? [];
+                      final items = [
+                        const DropdownMenuItem<int?>(
+                          value: null,
+                          child: Text('None'),
+                        ),
+                        ...baits.map((bait) {
+                          return DropdownMenuItem<int?>(
+                            value: bait.id,
+                            child: Text(bait.name),
+                          );
+                        }).toList(),
+                      ];
+                      return DropdownButtonFormField<int?>(
+                        initialValue: _selectedBaitId,
+                        decoration: const InputDecoration(labelText: 'Bait'),
+                        items: items,
+                        onChanged: (value) {
+                          setState(() {
+                            _selectedBaitId = value;
+                            _onFieldChanged();
+                          });
+                        },
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: _lureSizeController,
+                    decoration: const InputDecoration(labelText: 'Lure Size (optional)'),
+                    onChanged: (value) {
+                      _onFieldChanged();
+                    },
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _lureColourController,
+                    decoration: const InputDecoration(labelText: 'Lure Colour (optional)'),
+                    onChanged: (value) {
+                      _onFieldChanged();
+                    },
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+
               // Environmental Conditions Section
               BragmatSectionCard(
                 icon: Icons.wb_sunny,
@@ -1580,7 +1707,60 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                   ),
                   const SizedBox(height: 12),
                   
-                  // Tide Context - discoverable button
+                  // Official Tide Context Placeholder
+                  Container(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(8),
+                      color: Colors.grey.shade50,
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(
+                                Icons.info_outline,
+                                color: Colors.grey.shade600,
+                                size: 20,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  'Official Tide Context',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    color: Colors.grey.shade700,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Tide context not available',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey.shade600,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Official tide event data integration coming soon',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey.shade500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // Manual Tide Context - discoverable button
                   Container(
                     decoration: BoxDecoration(
                       border: Border.all(color: Colors.blue.shade200),

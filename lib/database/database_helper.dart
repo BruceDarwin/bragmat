@@ -11,6 +11,8 @@ import '../models/favourite_spot.dart';
 import '../models/achievement.dart';
 import '../models/user_achievement.dart';
 import '../models/environmental_condition.dart';
+import '../models/lure.dart';
+import '../models/bait.dart';
 import '../services/achievement_service.dart';
 
 class DatabaseHelper {
@@ -31,7 +33,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 23,
+      version: 25,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -66,6 +68,24 @@ class DatabaseHelper {
 
     await db.execute('''
       CREATE TABLE fishing_buddies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT UNIQUE NOT NULL
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE lures (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        make TEXT NOT NULL DEFAULT '',
+        model TEXT NOT NULL DEFAULT '',
+        lure_type TEXT,
+        notes TEXT,
+        UNIQUE(make, model)
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE baits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT UNIQUE NOT NULL
       )
@@ -574,6 +594,104 @@ class DatabaseHelper {
         }
       }
     }
+    if (oldVersion < 24) {
+      // Create lures and baits tables
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS lures (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS baits (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          name TEXT UNIQUE NOT NULL
+        )
+      ''');
+      // Add lure_id and bait_id to catches table
+      try {
+        await db.execute('ALTER TABLE catches ADD COLUMN lure_id INTEGER');
+      } catch (e) {
+        // Column might already exist
+      }
+      try {
+        await db.execute('ALTER TABLE catches ADD COLUMN bait_id INTEGER');
+      } catch (e) {
+        // Column might already exist
+      }
+    }
+    if (oldVersion < 25) {
+      // Migrate lures table from simple name to make/model structure
+      // First, create the new lures table with the new schema
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS lures_new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          make TEXT NOT NULL DEFAULT '',
+          model TEXT NOT NULL DEFAULT '',
+          lure_type TEXT,
+          notes TEXT,
+          UNIQUE(make, model)
+        )
+      ''');
+      
+      // Migrate existing lures: split name into make/model if possible
+      final existingLures = await db.query('lures');
+      for (final lure in existingLures) {
+        final oldName = lure['name'] as String;
+        String make = '';
+        String model = oldName;
+        
+        // Try to split on first space
+        final parts = oldName.split(' ');
+        if (parts.length >= 2) {
+          make = parts[0];
+          model = parts.sublist(1).join(' ');
+        }
+        
+        // Insert into new table
+        try {
+          await db.insert('lures_new', {
+            'make': make,
+            'model': model,
+            'lure_type': null,
+            'notes': null,
+          });
+        } catch (e) {
+          // Handle duplicate make/model combinations
+          // Add a suffix to make it unique
+          int suffix = 1;
+          while (true) {
+            try {
+              await db.insert('lures_new', {
+                'make': '$make ($suffix)',
+                'model': model,
+                'lure_type': null,
+                'notes': null,
+              });
+              break;
+            } catch (e2) {
+              suffix++;
+            }
+          }
+        }
+      }
+      
+      // Drop old table and rename new table
+      await db.execute('DROP TABLE IF EXISTS lures');
+      await db.execute('ALTER TABLE lures_new RENAME TO lures');
+      
+      // Add lure_size and lure_colour to catches table
+      try {
+        await db.execute('ALTER TABLE catches ADD COLUMN lure_size TEXT');
+      } catch (e) {
+        // Column might already exist
+      }
+      try {
+        await db.execute('ALTER TABLE catches ADD COLUMN lure_colour TEXT');
+      } catch (e) {
+        // Column might already exist
+      }
+    }
     
     // Safety check: Ensure trip_id column exists in catches table
     // This handles cases where a database might be at a higher version but missing the column
@@ -741,6 +859,92 @@ class DatabaseHelper {
       // If fish type already exists, return -1
       return -1;
     }
+  }
+
+  // LURES
+  Future<List<Lure>> getLures() async {
+    final db = await instance.database;
+    final result = await db.query('lures', orderBy: 'make, model');
+    return result.map((json) => Lure.fromMap(json)).toList();
+  }
+
+  Future<int> insertLure({
+    required String make,
+    required String model,
+    String? lureType,
+    String? notes,
+  }) async {
+    final db = await instance.database;
+    try {
+      return await db.insert('lures', {
+        'make': make,
+        'model': model,
+        'lure_type': lureType,
+        'notes': notes,
+      });
+    } catch (e) {
+      // If lure already exists, return -1
+      return -1;
+    }
+  }
+
+  Future<void> updateLure(Lure lure) async {
+    final db = await instance.database;
+    await db.update(
+      'lures',
+      lure.toMap(),
+      where: 'id = ?',
+      whereArgs: [lure.id],
+    );
+  }
+
+  Future<bool> isLureUsed(int lureId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'catches',
+      where: 'lure_id = ?',
+      whereArgs: [lureId],
+      limit: 1,
+    );
+    return result.isNotEmpty;
+  }
+
+  Future<void> deleteLure(int id) async {
+    final db = await instance.database;
+    await db.delete('lures', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // BAITS
+  Future<List<Bait>> getBaits() async {
+    final db = await instance.database;
+    final result = await db.query('baits', orderBy: 'name');
+    return result.map((json) => Bait.fromMap(json)).toList();
+  }
+
+  Future<int> insertBait(String name) async {
+    final db = await instance.database;
+    try {
+      return await db.insert('baits', {'name': name});
+    } catch (e) {
+      // If bait already exists, return -1
+      return -1;
+    }
+  }
+
+  Future<bool> isBaitUsed(int baitId) async {
+    final db = await instance.database;
+    final result = await db.query(
+      'catches',
+      where: 'bait_id = ?',
+      whereArgs: [baitId],
+      limit: 1,
+    );
+    return result.isNotEmpty;
+  }
+
+  Future<void> deleteBait(int id) async {
+    final db = await instance.database;
+    await db.delete('baits', where: 'id = ?', whereArgs: [id]);
   }
 
   Future<bool> isFishTypeUsed(String name) async {

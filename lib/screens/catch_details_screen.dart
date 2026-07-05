@@ -6,6 +6,8 @@ import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
 import '../models/environmental_condition.dart';
 import '../models/fishing_trip.dart';
+import '../models/lure.dart';
+import '../models/bait.dart';
 import '../widgets/bragmat_section_card.dart';
 import 'add_catch_screen.dart';
 import 'photo_viewer_screen.dart';
@@ -27,6 +29,8 @@ class CatchDetailsScreen extends StatefulWidget {
 class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
   late Catch _catchItem;
   String? _fishingBuddyName;
+  String? _lureName;
+  String? _baitName;
   List<CatchMedia> _mediaItems = [];
   bool _isOnline = true;
   final ConnectivityService _connectivityService = ConnectivityService();
@@ -37,6 +41,8 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
     super.initState();
     _catchItem = widget.catchItem;
     _loadFishingBuddyName();
+    _loadLureName();
+    _loadBaitName();
     _loadMedia();
     _loadEnvironmentalCondition();
     _checkConnectivity();
@@ -68,6 +74,36 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
       if (mounted) {
         setState(() {
           _fishingBuddyName = buddy.name;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadLureName() async {
+    if (_catchItem.lureId != null) {
+      final lures = await DatabaseHelper.instance.getLures();
+      final lure = lures.firstWhere(
+        (l) => l.id == _catchItem.lureId,
+        orElse: () => Lure(make: 'Unknown', model: 'lure'),
+      );
+      if (mounted) {
+        setState(() {
+          _lureName = lure.displayName;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadBaitName() async {
+    if (_catchItem.baitId != null) {
+      final baits = await DatabaseHelper.instance.getBaits();
+      final bait = baits.firstWhere(
+        (b) => b.id == _catchItem.baitId,
+        orElse: () => Bait(name: 'Unknown bait'),
+      );
+      if (mounted) {
+        setState(() {
+          _baitName = bait.name;
         });
       }
     }
@@ -200,6 +236,9 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                 });
                 // Reload fishing buddy name in case it changed
                 _loadFishingBuddyName();
+                // Reload lure and bait names in case they changed
+                _loadLureName();
+                _loadBaitName();
                 // Reload environmental condition to get updated tide data
                 _loadEnvironmentalCondition();
                 // Return true to parent to trigger refresh
@@ -370,6 +409,30 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                   label: 'Length',
                   value: '${_catchItem.lengthCm} cm',
                 ),
+                if (_lureName != null)
+                  BragmatDataRow(
+                    icon: Icons.phishing,
+                    label: 'Lure',
+                    value: _lureName!,
+                  ),
+                if (_catchItem.lureSize != null && _catchItem.lureSize!.isNotEmpty)
+                  BragmatDataRow(
+                    icon: Icons.straighten,
+                    label: 'Size',
+                    value: _catchItem.lureSize!,
+                  ),
+                if (_catchItem.lureColour != null && _catchItem.lureColour!.isNotEmpty)
+                  BragmatDataRow(
+                    icon: Icons.palette,
+                    label: 'Colour',
+                    value: _catchItem.lureColour!,
+                  ),
+                if (_baitName != null)
+                  BragmatDataRow(
+                    icon: Icons.bug_report,
+                    label: 'Bait',
+                    value: _baitName!,
+                  ),
                 if (_catchItem.photoDateTime != null)
                   BragmatDataRow(
                     icon: Icons.camera_alt,
