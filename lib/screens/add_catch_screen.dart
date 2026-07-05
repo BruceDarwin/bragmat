@@ -69,7 +69,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   final _rainfallController = TextEditingController();
   String? _selectedRiverFlow;
   String? _selectedWaterClarity;
-  final _environmentalNotesController = TextEditingController();
   EnvironmentalCondition? _existingEnvironmentalCondition;
   
   // Change tracking
@@ -92,10 +91,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       setState(() {
         _isLoadingInitialData = true;
       });
-      
-      // Debug: Log catch details to check trip/buddy references
-      final envService = EnvironmentalConditionsService();
-      await envService.debugCatchDetails(widget.catchToEdit!.id!, 'Loading in Edit Catch');
       
       // Load all lookup lists and environmental data in parallel where possible
       await Future.wait([
@@ -171,7 +166,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _windSpeedController.addListener(_onFieldChanged);
     _barometricPressureController.addListener(_onFieldChanged);
     _rainfallController.addListener(_onFieldChanged);
-    _environmentalNotesController.addListener(_onFieldChanged);
   }
 
   @override
@@ -190,7 +184,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _windSpeedController.removeListener(_onFieldChanged);
     _barometricPressureController.removeListener(_onFieldChanged);
     _rainfallController.removeListener(_onFieldChanged);
-    _environmentalNotesController.removeListener(_onFieldChanged);
     _fishTypeController.dispose();
     _lengthController.dispose();
     _notesController.dispose();
@@ -207,7 +200,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _windSpeedController.dispose();
     _barometricPressureController.dispose();
     _rainfallController.dispose();
-    _environmentalNotesController.dispose();
     super.dispose();
   }
 
@@ -310,74 +302,39 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   }
 
   Future<void> _applyFishTypePreference() async {
-    debugPrint('=== Applying Fish Type Preference ===');
-    debugPrint('Editing existing catch: ${widget.catchToEdit != null}');
-    debugPrint('Current fish types loaded: $_fishTypes');
-    
     final mode = await PreferencesService.getFishTypeSelectionMode();
-    debugPrint('Fish type selection mode: $mode');
     
     if (mode == FishTypeSelectionMode.defaultFishType) {
       final defaultFishType = await PreferencesService.getDefaultFishType();
-      debugPrint('Default fish type from preferences: $defaultFishType');
-      debugPrint('Default fish type exists in list: ${_fishTypes.contains(defaultFishType ?? "")}');
-      
       if (defaultFishType != null && _fishTypes.contains(defaultFishType)) {
-        debugPrint('Setting selected fish type to: $defaultFishType');
         setState(() {
           _selectedFishType = defaultFishType;
         });
-        debugPrint('Selected fish type after setState: $_selectedFishType');
-      } else {
-        debugPrint('NOT setting default fish type - either null or not in list');
       }
     } else if (mode == FishTypeSelectionMode.rememberLastUsed) {
       final lastUsedFishType = await PreferencesService.getLastUsedFishType();
-      debugPrint('Last used fish type from preferences: $lastUsedFishType');
-      debugPrint('Last used fish type exists in list: ${_fishTypes.contains(lastUsedFishType ?? "")}');
-      
       if (lastUsedFishType != null && _fishTypes.contains(lastUsedFishType)) {
-        debugPrint('Setting selected fish type to: $lastUsedFishType');
         setState(() {
           _selectedFishType = lastUsedFishType;
         });
-        debugPrint('Selected fish type after setState: $_selectedFishType');
-      } else {
-        debugPrint('NOT setting last used fish type - either null or not in list');
       }
-    } else {
-      debugPrint('No Default mode - leaving fish type unselected');
     }
-    debugPrint('=== End Applying Fish Type Preference ===');
   }
 
   Future<void> _retrieveLostData() async {
-    debugPrint('=== Checking for lost image picker data ===');
     final picker = ImagePicker();
     final lostData = await picker.retrieveLostData();
     if (lostData != null) {
-      debugPrint('Lost data found:');
-      debugPrint('  isEmpty: ${lostData.isEmpty}');
-      debugPrint('  file: ${lostData.file}');
-      debugPrint('  files: ${lostData.files}');
-      
       if (!lostData.isEmpty && lostData.file != null) {
-        debugPrint('Processing lost image: ${lostData.file!.path}');
         final file = File(lostData.file!.path);
         await _processPickedFile(file, 'lost_data');
       } else if (!lostData.isEmpty && lostData.files != null && lostData.files!.isNotEmpty) {
-        debugPrint('Processing ${lostData.files!.length} lost images');
         for (final lostFile in lostData.files!) {
           final file = File(lostFile.path);
           await _processPickedFile(file, 'lost_data');
         }
-      } else {
-        debugPrint('No lost data to recover');
       }
-    } else {
-      debugPrint('No lost data available');
     }
-    debugPrint('=== End checking for lost data ===');
   }
 
   Future<void> _loadCurrentTrip() async {
@@ -415,12 +372,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     if (mounted) {
       setState(() {
         _favouriteSpots = spots;
-        // Validate selected favourite spot ID after list is loaded
-        if (widget.catchToEdit != null) {
-          // Note: favouriteSpotId is not in Catch model, so we check from environmental condition
-          // This will be validated when environmental condition is loaded
-          debugPrint('Favourite spots loaded: ${spots.length} spots (catch ID: ${widget.catchToEdit!.id})');
-        }
       });
     }
   }
@@ -429,14 +380,11 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   /// Handles null, empty, and "Unknown" values defensively
   String? _safeDropdownValue(String? value, List<String> allowedValues, String fieldName, {int? catchId}) {
     if (value == null || value.isEmpty || value == 'Unknown') {
-      debugPrint('Dropdown $fieldName: value is null/empty/Unknown, using null${catchId != null ? " (catch ID: $catchId)" : ""}');
       return null;
     }
     if (allowedValues.contains(value)) {
-      debugPrint('Dropdown $fieldName: value "$value" is valid${catchId != null ? " (catch ID: $catchId)" : ""}');
       return value;
     }
-    debugPrint('Dropdown $fieldName: value "$value" is NOT in allowed list $allowedValues, using null${catchId != null ? " (catch ID: $catchId)" : ""}');
     return null;
   }
 
@@ -444,32 +392,25 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   /// For dropdowns that explicitly allow null as a valid option
   String? _safeDropdownValueWithNull(String? value, List<String?> allowedValues, String fieldName, {int? catchId}) {
     if (value == null) {
-      debugPrint('Dropdown $fieldName: value is null, using null${catchId != null ? " (catch ID: $catchId)" : ""}');
       return null;
     }
     if (value.isEmpty || value == 'Unknown') {
-      debugPrint('Dropdown $fieldName: value is empty/Unknown, using null${catchId != null ? " (catch ID: $catchId)" : ""}');
       return null;
     }
     if (allowedValues.contains(value)) {
-      debugPrint('Dropdown $fieldName: value "$value" is valid${catchId != null ? " (catch ID: $catchId)" : ""}');
       return value;
     }
-    debugPrint('Dropdown $fieldName: value "$value" is NOT in allowed list $allowedValues, using null${catchId != null ? " (catch ID: $catchId)" : ""}');
     return null;
   }
 
   /// Safely validate a fish type value against current fish types list
   String? _safeFishTypeValue(String? value) {
     if (value == null || value.isEmpty) {
-      debugPrint('Fish type: value is null or empty, using null');
       return null;
     }
     if (_fishTypes.contains(value)) {
-      debugPrint('Fish type: value "$value" is valid');
       return value;
     }
-    debugPrint('Fish type: value "$value" is NOT in current fish types list, adding it to list');
     // Add the missing fish type to the list so it can be selected
     setState(() {
       _fishTypes = [..._fishTypes, value];
@@ -480,42 +421,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   /// Safely validate an integer ID dropdown value against available items
   int? _safeIdValue(int? value, List<dynamic> items, String fieldName) {
     if (value == null) {
-      debugPrint('Dropdown $fieldName: value is null, using null');
       return null;
     }
     // Check if the ID exists in the items list
     final idExists = items.any((item) => item is Map && item['id'] == value);
     if (idExists) {
-      debugPrint('Dropdown $fieldName: value $value is valid');
       return value;
     }
-    debugPrint('Dropdown $fieldName: value $value is NOT in available items, using null');
     return null;
-  }
-
-  /// Debug helper to log dropdown state before building
-  void _debugDropdown(String fieldName, dynamic value, List<dynamic> items) {
-    debugPrint('=== BUILDING $fieldName DROPDOWN ===');
-    debugPrint('Current value: $value');
-    debugPrint('Items count: ${items.length}');
-    
-    // Only check for assertion issues if value is non-null
-    if (value != null) {
-      final matchingItems = items.where((item) {
-        if (item is DropdownMenuItem) {
-          return item.value == value;
-        }
-        return false;
-      }).length;
-      debugPrint('Matching items count: $matchingItems');
-      if (matchingItems == 0) {
-        debugPrint('WARNING: Zero matching items - this will cause assertion!');
-      } else if (matchingItems > 1) {
-        debugPrint('WARNING: Multiple matching items - this will cause assertion!');
-      }
-    } else {
-      debugPrint('Value is null - valid for optional dropdowns');
-    }
   }
 
   Future<void> _loadEnvironmentalCondition() async {
@@ -523,9 +436,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     
     final envService = EnvironmentalConditionsService();
     final catchId = widget.catchToEdit!.id!;
-    
-    // Debug: Log database state before loading
-    await envService.debugEnvironmentalConditionForCatch(catchId, 'After loading in Edit Catch');
     
     final condition = await envService.getEnvironmentalConditionForCatch(catchId);
     
@@ -558,7 +468,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         // River flow: validate against custom dropdown items
         _selectedRiverFlow = _safeDropdownValueWithNull(condition.riverFlow, [null, 'Low', 'Normal', 'High', 'Flood'], 'riverFlow', catchId: catchId);
         _selectedWaterClarity = _safeDropdownValue(condition.waterClarity, EnvironmentalCondition.waterClarities, 'waterClarity', catchId: catchId);
-        _environmentalNotesController.text = condition.riverFlow ?? '';
       });
     }
   }
@@ -696,15 +605,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   }
 
   Future<void> _pickImage() async {
-    debugPrint('=== Add Photo Button Tapped ===');
-    debugPrint('Current media items count: ${_mediaItems.length}');
-    debugPrint('Mounted: $mounted');
-    
     try {
-      debugPrint('Creating ImagePicker instance');
       final picker = ImagePicker();
-      debugPrint('Opening gallery picker');
-      
       final pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 85, // Compress to reduce memory pressure
@@ -712,89 +614,53 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         maxHeight: 1080,
       );
       
-      debugPrint('Gallery picker returned');
-      debugPrint('Picked file is null: ${pickedFile == null}');
-      
       if (pickedFile != null) {
-        debugPrint('Picked file path: ${pickedFile.path}');
-        debugPrint('Processing picked file');
         final file = File(pickedFile.path);
         await _processPickedFile(file, 'gallery');
-        debugPrint('File processing complete');
-      } else {
-        debugPrint('User cancelled gallery selection');
       }
-      
-      debugPrint('After gallery pick - media items count: ${_mediaItems.length}');
-      debugPrint('After gallery pick - mounted: $mounted');
     } catch (e, stackTrace) {
       debugPrint('ERROR in _pickImage: $e');
-      debugPrint('Stack trace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error picking image: $e')),
+        );
+      }
     }
-    
-    debugPrint('=== End _pickImage ===');
   }
 
   Future<void> _takePhoto() async {
-    debugPrint('=== Photo Source: Camera ===');
-    debugPrint('Current media items count: ${_mediaItems.length}');
-    debugPrint('Mounted: $mounted');
-    debugPrint('Editing existing catch: ${widget.catchToEdit != null}');
-    if (widget.catchToEdit != null) {
-      debugPrint('Existing catch id: ${widget.catchToEdit!.id}');
+    try {
+      final picker = ImagePicker();
+      final pickedFile = await picker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 85, // Compress to reduce memory pressure
+        maxWidth: 1920, // Limit resolution to reduce memory
+        maxHeight: 1080,
+      );
+      
+      if (pickedFile != null) {
+        final file = File(pickedFile.path);
+        await _processPickedFile(file, 'camera');
+      }
+    } catch (e, stackTrace) {
+      debugPrint('ERROR in _takePhoto: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error taking photo: $e')),
+        );
+      }
     }
-    
-    final picker = ImagePicker();
-    debugPrint('About to call picker.pickImage');
-    final pickedFile = await picker.pickImage(
-      source: ImageSource.camera,
-      imageQuality: 85, // Compress to reduce memory pressure
-      maxWidth: 1920, // Limit resolution to reduce memory
-      maxHeight: 1080,
-    );
-    debugPrint('Camera pick returned: ${pickedFile != null}');
-    
-    if (pickedFile != null) {
-      debugPrint('ORIGINAL Image path from image_picker: ${pickedFile.path}');
-      debugPrint('Mounted after camera pick: $mounted');
-      final file = File(pickedFile.path);
-      await _processPickedFile(file, 'camera');
-    } else {
-      debugPrint('Camera pick returned null (user cancelled or error)');
-    }
-    
-    debugPrint('After camera pick - media items count: ${_mediaItems.length}');
-    debugPrint('After camera pick - mounted: $mounted');
   }
 
   Future<void> _processPickedFile(File file, String source) async {
-    debugPrint('=== Processing Picked File ===');
-    debugPrint('Source: $source');
-    debugPrint('Editing existing catch: ${widget.catchToEdit != null}');
-    if (widget.catchToEdit != null) {
-      debugPrint('Existing catch id: ${widget.catchToEdit!.id}');
-    }
-    
     final originalPath = file.path;
-    debugPrint('ORIGINAL path: $originalPath');
     
-    final fileExists = await file.exists();
-    final fileSize = fileExists ? await file.length() : 0;
-    
-    debugPrint('File exists: $fileExists');
-    debugPrint('File size: $fileSize bytes');
-    
-    // Extract GPS data from ORIGINAL file immediately
-    debugPrint('=== Extracting GPS from ORIGINAL file ===');
+    // Extract GPS data from file immediately
     final gpsData = await _extractGpsData(originalPath);
     final latitude = gpsData['latitude'];
     final longitude = gpsData['longitude'];
-    debugPrint('GPS from ORIGINAL: lat=$latitude, lon=$longitude');
     
     final photoDateTime = DateTime.now();
-    
-    debugPrint('Before setState - media items count: ${_mediaItems.length}');
-    debugPrint('Before setState - mounted: $mounted');
     
     if (mounted) {
       setState(() {
@@ -809,10 +675,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           latitude: latitude,
           longitude: longitude,
         ));
-        
-        debugPrint('After adding media - media items count: ${_mediaItems.length}');
-        debugPrint('Stored path in CatchMedia: $originalPath');
-        debugPrint('Editing existing catch: ${widget.catchToEdit != null}');
         
         // Auto-populate latitude/longitude fields if GPS data found
         if (latitude != null && longitude != null) {
@@ -833,35 +695,17 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           );
         }
       });
-      
-      debugPrint('After setState - media items count: ${_mediaItems.length}');
-    } else {
-      debugPrint('ERROR: Widget not mounted, cannot setState');
     }
-    
-    debugPrint('=== End Processing Picked File ===');
   }
 
   Future<Map<String, double?>> _extractGpsData(String imagePath) async {
     double? latitude;
     double? longitude;
     
-    debugPrint('=== EXIF GPS Extraction ===');
-    debugPrint('Image path: $imagePath');
-    
     try {
       final file = File(imagePath);
       final bytes = await file.readAsBytes();
       final data = await readExifFromBytes(bytes);
-
-      debugPrint('EXIF data keys: ${data.keys.toList()}');
-      
-      // Log all GPS-related tags
-      final gpsTags = data.entries.where((e) => e.key.startsWith('GPS')).toList();
-      debugPrint('GPS tags found: ${gpsTags.length}');
-      for (final tag in gpsTags) {
-        debugPrint('  ${tag.key}: ${tag.value}');
-      }
 
       if (data.containsKey('GPSLatitude') && data.containsKey('GPSLongitude')) {
         final lat = data['GPSLatitude'];
@@ -869,27 +713,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         final lon = data['GPSLongitude'];
         final lonRef = data['GPSLongitudeRef'];
 
-        debugPrint('GPSLatitude: $lat');
-        debugPrint('GPSLatitudeRef: $latRef');
-        debugPrint('GPSLongitude: $lon');
-        debugPrint('GPSLongitudeRef: $lonRef');
-
         if (lat != null && latRef != null && lon != null && lonRef != null) {
           latitude = _convertToDecimalDegrees(lat, latRef);
           longitude = _convertToDecimalDegrees(lon, lonRef);
-          debugPrint('Extracted coordinates: $latitude, $longitude');
-        } else {
-          debugPrint('GPS data incomplete');
         }
-      } else {
-        debugPrint('No GPSLatitude or GPSLongitude found in EXIF');
       }
     } catch (e) {
       debugPrint('Error reading EXIF data: $e');
     }
-    
-    debugPrint('Final GPS data: latitude=$latitude, longitude=$longitude');
-    debugPrint('=== End EXIF GPS Extraction ===');
     
     return {'latitude': latitude, 'longitude': longitude};
   }
@@ -910,14 +741,11 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   }
 
   Future<void> _getCurrentLocation() async {
-    debugPrint('=== Getting Current Location ===');
-    
     bool serviceEnabled;
     LocationPermission permission;
 
     serviceEnabled = await Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      debugPrint('Location services are disabled');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Location services are disabled')),
@@ -930,7 +758,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     if (permission == LocationPermission.denied) {
       permission = await Geolocator.requestPermission();
       if (permission == LocationPermission.denied) {
-        debugPrint('Location permissions are denied');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Location permission denied')),
@@ -941,7 +768,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     }
 
     if (permission == LocationPermission.deniedForever) {
-      debugPrint('Location permissions are permanently denied');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('Location permission permanently denied')),
@@ -954,8 +780,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       final position = await Geolocator.getCurrentPosition(
         desiredAccuracy: LocationAccuracy.high,
       );
-      
-      debugPrint('Location captured: ${position.latitude}, ${position.longitude}');
       
       if (mounted) {
         setState(() {
@@ -977,8 +801,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         );
       }
     }
-    
-    debugPrint('=== End Getting Current Location ===');
   }
 
   Future<void> _pickLocationOnMap() async {
@@ -1248,33 +1070,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              // Debug diagnostics
-              if (widget.catchToEdit != null)
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  color: Colors.yellow.shade100,
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('DROPDOWN DIAGNOSTICS', style: TextStyle(fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 4),
-                      Text('Fish Type: $_selectedFishType'),
-                      Text('Favourite Spot ID: $_selectedFavouriteSpotId'),
-                      Text('Trip ID: $_selectedTripId'),
-                      Text('Fishing Buddy ID: $_selectedFishingBuddyId'),
-                      Text('Weather: $_selectedWeatherCondition'),
-                      Text('Wind: $_selectedWindDirection'),
-                      Text('Tide Stage: $_selectedTideStage'),
-                      Text('Tide Strength: $_selectedTideStrength'),
-                      Text('Tide Movement: $_selectedTideMovement'),
-                      Text('Ref Event Type: $_selectedReferenceTideEventType'),
-                      Text('Ref Event Relation: $_selectedReferenceTideEventRelation'),
-                      Text('Water Clarity: $_selectedWaterClarity'),
-                      Text('River Flow: $_selectedRiverFlow'),
-                    ],
-                  ),
-                ),
-              const SizedBox(height: 8),
               // Photo Section
               BragmatSectionCard(
                 icon: Icons.photo_camera,
@@ -1382,40 +1177,32 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                 icon: Icons.catching_pokemon,
                 title: 'Catch Details',
                 children: [
-                  (() {
-                    debugPrint('=== BUILDING FISH TYPE DROPDOWN ===');
-                    debugPrint('Current value: $_selectedFishType');
-                    debugPrint('Fish types list: $_fishTypes');
-                    final matchingItems = _fishTypes.where((t) => t == _selectedFishType).length;
-                    debugPrint('Matching items count: $matchingItems');
-                    return DropdownButtonFormField<String>(
-                      value: _selectedFishType,
-                      decoration: const InputDecoration(labelText: 'Fish Type'),
-                      items: [
-                        ..._fishTypes.map((type) {
-                          return DropdownMenuItem(
-                            value: type,
-                            child: Text(type),
-                          );
-                        }),
-                        const DropdownMenuItem(
-                          value: 'add_new',
-                          child: Text('+ Add New Fish Type'),
-                        ),
-                      ],
-                      onChanged: (value) {
-                        if (value == 'add_new') {
-                          _showAddFishTypeDialog();
-                        } else {
-                          setState(() {
-                            _selectedFishType = value;
-                            _fishTypeController.text = value ?? '';
-                            _onFieldChanged();
-                          });
-                        }
-                      },
-                    );
-                  })(),
+                  DropdownButtonFormField<String>(
+                    value: _selectedFishType,
+                    decoration: const InputDecoration(labelText: 'Fish Type'),
+                    items: [
+                      ..._fishTypes.map((type) {
+                        return DropdownMenuItem(
+                          value: type,
+                          child: Text(type),
+                        );
+                      }),
+                      const DropdownMenuItem(
+                        value: 'add_new',
+                        child: Text('+ Add New Fish Type'),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == 'add_new') {
+                        _showAddFishTypeDialog();
+                      } else {
+                        setState(() {
+                          _selectedFishType = value;
+                          _fishTypeController.text = value ?? '';
+                        });
+                      }
+                    },
+                  ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _lengthController,
@@ -1476,7 +1263,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                           );
                         }),
                       ];
-                      _debugDropdown('FAVOURITE SPOT', _selectedFavouriteSpotId, items);
                       return DropdownButtonFormField<int?>(
                         value: _selectedFavouriteSpotId,
                         decoration: const InputDecoration(
@@ -1541,7 +1327,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                               child: Text(trip.name),
                             );
                           }).toList();
-                    _debugDropdown('FISHING TRIP', _selectedTripId, items);
                     return DropdownButtonFormField<int?>(
                       initialValue: _selectedTripId,
                       decoration: const InputDecoration(labelText: 'Fishing Trip'),
@@ -1564,7 +1349,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                               child: Text(buddy.name),
                             );
                           }).toList();
-                    _debugDropdown('FISHING BUDDY', _selectedFishingBuddyId, items);
                     return DropdownButtonFormField<int?>(
                       initialValue: _selectedFishingBuddyId,
                       decoration: const InputDecoration(labelText: 'Fishing Buddy'),
@@ -1605,7 +1389,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                         child: Text(condition),
                       );
                     }).toList();
-                    _debugDropdown('WEATHER CONDITION', _selectedWeatherCondition, items);
                     return DropdownButtonFormField<String>(
                       value: _selectedWeatherCondition,
                       decoration: const InputDecoration(labelText: 'Weather Condition'),
@@ -1664,7 +1447,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                               child: Text(direction),
                             );
                           }).toList();
-                          _debugDropdown('WIND DIRECTION', _selectedWindDirection, items);
                           return DropdownButtonFormField<String>(
                             value: _selectedWindDirection,
                             decoration: const InputDecoration(labelText: 'Wind Direction'),
@@ -1709,7 +1491,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                         child: Text(stage),
                       );
                     }).toList();
-                    _debugDropdown('TIDE STAGE', _selectedTideStage, items);
                     return DropdownButtonFormField<String>(
                       value: _selectedTideStage,
                       decoration: const InputDecoration(labelText: 'Tide Stage'),
@@ -1730,7 +1511,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                         child: Text(strength),
                       );
                     }).toList();
-                    _debugDropdown('TIDE STRENGTH', _selectedTideStrength, items);
                     return DropdownButtonFormField<String>(
                       value: _selectedTideStrength,
                       decoration: const InputDecoration(labelText: 'Tide Strength (Optional)'),
@@ -1754,7 +1534,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                             DropdownMenuItem<String?>(value: 'Run-out', child: Text('Run-out')),
                             DropdownMenuItem<String?>(value: 'Slack', child: Text('Slack')),
                           ];
-                          _debugDropdown('TIDE MOVEMENT', _selectedTideMovement, items);
                           return DropdownButtonFormField<String?>(
                             value: _selectedTideMovement,
                             decoration: const InputDecoration(labelText: 'Tide Movement'),
@@ -1877,7 +1656,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                                     DropdownMenuItem(value: 'High', child: Text('High Tide')),
                                     DropdownMenuItem(value: 'Low', child: Text('Low Tide')),
                                   ];
-                                  _debugDropdown('REFERENCE TIDE EVENT TYPE', _selectedReferenceTideEventType, items);
                                   return DropdownButtonFormField<String>(
                                     value: _selectedReferenceTideEventType,
                                     decoration: const InputDecoration(labelText: 'Reference Event'),
@@ -1947,7 +1725,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                                     DropdownMenuItem(value: 'Before', child: Text('Before')),
                                     DropdownMenuItem(value: 'After', child: Text('After')),
                                   ];
-                                  _debugDropdown('REFERENCE TIDE EVENT RELATION', _selectedReferenceTideEventRelation, items);
                                   return DropdownButtonFormField<String>(
                                     value: _selectedReferenceTideEventRelation,
                                     decoration: const InputDecoration(labelText: 'Relation'),
@@ -2023,7 +1800,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                         child: Text(clarity),
                       );
                     }).toList();
-                    _debugDropdown('WATER CLARITY', _selectedWaterClarity, items);
                     return DropdownButtonFormField<String>(
                       value: _selectedWaterClarity,
                       decoration: const InputDecoration(labelText: 'Water Clarity'),
@@ -2045,7 +1821,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                       DropdownMenuItem<String?>(value: 'High', child: Text('High')),
                       DropdownMenuItem<String?>(value: 'Flood', child: Text('Flood')),
                     ];
-                    _debugDropdown('RIVER FLOW', _selectedRiverFlow, items);
                     return DropdownButtonFormField<String?>(
                       value: _selectedRiverFlow,
                       decoration: const InputDecoration(labelText: 'River Flow (optional)'),

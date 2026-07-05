@@ -85,36 +85,13 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
   }
 
   Future<void> _loadEnvironmentalCondition() async {
-    debugPrint('=== _loadEnvironmentalCondition ===');
-    debugPrint('Catch ID: ${_catchItem.id}');
-    debugPrint('Catch date: ${_catchItem.dateCaught?.toIso8601String()}');
-    debugPrint('Catch latitude: ${_catchItem.latitude}');
-    debugPrint('Catch longitude: ${_catchItem.longitude}');
-    
     if (_catchItem.id != null) {
       final envService = EnvironmentalConditionsService();
-      
-      // Debug: Log database state before loading
-      await envService.debugEnvironmentalConditionForCatch(_catchItem.id!, 'Before loading in Catch Details');
-      
       final condition = await envService.getEnvironmentalConditionForCatch(_catchItem.id!);
-      debugPrint('Environmental condition found: ${condition != null}');
       
       EnvironmentalCondition? finalCondition = condition;
       
       if (condition != null) {
-        debugPrint('  Moon Phase: ${condition.moonPhase}');
-        debugPrint('  Moon Illumination: ${condition.moonIllumination?.toStringAsFixed(1)}%');
-        debugPrint('  Sunrise: ${condition.sunriseTime?.toIso8601String()}');
-        debugPrint('  Sunset: ${condition.sunsetTime?.toIso8601String()}');
-        debugPrint('  Tide Stage: ${condition.tideStage}');
-        debugPrint('  Tide Strength: ${condition.tideStrength}');
-        debugPrint('  Tide Movement: ${condition.tideMovement}');
-        debugPrint('  Tide Height: ${condition.tideHeight}');
-        debugPrint('  Tide Data Source: ${condition.tideDataSource}');
-        debugPrint('  Tide Observed/Estimated: ${condition.tideObservedOrEstimated}');
-        debugPrint('  Tide Context Phrase: ${condition.tideContextPhrase}');
-        
         // Regenerate tide context phrase if missing but fields exist
         if ((condition.tideContextPhrase == null || condition.tideContextPhrase!.isEmpty) &&
             condition.tideStationName != null &&
@@ -142,7 +119,6 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
           );
           // Update the database with the regenerated phrase
           await envService.updateEnvironmentalCondition(finalCondition!);
-          debugPrint('  Regenerated tide context phrase: $phrase');
         }
       }
       if (mounted) {
@@ -151,7 +127,6 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
         });
       }
     }
-    debugPrint('=== End _loadEnvironmentalCondition ===');
   }
 
   Future<void> _deleteMedia(int mediaId) async {
@@ -213,12 +188,6 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
           IconButton(
             icon: const Icon(Icons.edit),
             onPressed: () async {
-              // Debug: Log database state before opening Edit Catch
-              if (_catchItem.id != null) {
-                final envService = EnvironmentalConditionsService();
-                await envService.debugEnvironmentalConditionForCatch(_catchItem.id!, 'Before opening Edit Catch');
-              }
-              
               final edited = await Navigator.push(
                 context,
                 MaterialPageRoute(
@@ -249,37 +218,6 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // TEMPORARY DEBUG ROW - Remove after fixing tide display
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.red.shade100,
-                border: Border.all(color: Colors.red),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'DEBUG: Catch Details Environmental Data',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text('Catch ID: ${_catchItem.id}'),
-                  Text('Environmental Condition Loaded: ${_environmentalCondition != null ? "YES" : "NO"}'),
-                  if (_environmentalCondition != null) ...[
-                    Text('Tide Stage: ${_environmentalCondition!.tideStage ?? "null"}'),
-                    Text('Tide Movement: ${_environmentalCondition!.tideMovement ?? "null"}'),
-                    Text('Tide Data Source: ${_environmentalCondition!.tideDataSource ?? "null"}'),
-                    Text('Tide Observed/Estimated: ${_environmentalCondition!.tideObservedOrEstimated ?? "null"}'),
-                  ],
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
             // Photo Section
             if (_mediaItems.isNotEmpty)
               BragmatSectionCard(
@@ -583,14 +521,6 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
   List<Widget> _buildEnvironmentalDetails() {
     final condition = _environmentalCondition!;
     final details = <Widget>[];
-    
-    // Debug: Log database state before building display
-    if (_catchItem.id != null) {
-      final envService = EnvironmentalConditionsService();
-      // Note: This is async, but we can't await in a build method
-      // So we'll call it without await - it will still log
-      envService.debugEnvironmentalConditionForCatch(_catchItem.id!, 'Before building Environmental Conditions section');
-    }
 
     // Moon
     if (condition.moonPhase != null) {
