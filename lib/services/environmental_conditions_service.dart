@@ -6,6 +6,7 @@ import 'sun_times_service.dart';
 import 'weather_service.dart';
 import 'tide_service.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:async';
 
 class EnvironmentalConditionsService {
   static final EnvironmentalConditionsService _instance = EnvironmentalConditionsService._internal();
@@ -62,24 +63,51 @@ class EnvironmentalConditionsService {
 
   /// Update an existing environmental condition record
   /// Recalculates moon phase and sun times if coordinates are provided
+  /// Preserves manual tide data - does not overwrite with API data
   Future<int> updateEnvironmentalCondition(EnvironmentalCondition condition) async {
     final db = await DatabaseHelper.instance.database;
     
+    debugPrint('=== updateEnvironmentalCondition ===');
+    debugPrint('Catch ID: ${condition.catchId}');
+    debugPrint('Manual tideStage: ${condition.tideStage}');
+    debugPrint('Manual tideMovement: ${condition.tideMovement}');
+    debugPrint('Manual tideHeight: ${condition.tideHeight}');
+    
+    // Log stack trace to identify duplicate calls
+    debugPrint('Call stack:');
+    try {
+      throw Exception('Stack trace');
+    } catch (e, stack) {
+      final lines = stack.toString().split('\n');
+      // Print first 5 lines of stack trace to identify caller
+      for (int i = 0; i < 5 && i < lines.length; i++) {
+        debugPrint('  ${lines[i]}');
+      }
+    }
+    
     // Calculate moon phase and sun times if coordinates are available
+    // Do NOT recalculate tide data - preserve manual values
     EnvironmentalCondition calculatedCondition = condition;
     if (condition.latitude != null && condition.longitude != null) {
-      calculatedCondition = await _calculateEnvironmentalData(condition);
+      calculatedCondition = await _calculateEnvironmentalDataWithoutTide(condition);
     }
     
     // Update timestamp
     calculatedCondition = calculatedCondition.copyWith(updatedAt: DateTime.now());
     
-    return await db.update(
+    debugPrint('After calculation - tideStage: ${calculatedCondition.tideStage}');
+    debugPrint('After calculation - tideMovement: ${calculatedCondition.tideMovement}');
+    debugPrint('After calculation - tideDataSource: ${calculatedCondition.tideDataSource}');
+    
+    final result = await db.update(
       'environmental_conditions',
       calculatedCondition.toMap(),
       where: 'id = ?',
       whereArgs: [condition.id],
     );
+    
+    debugPrint('Database update result: $result');
+    return result;
   }
 
   /// Get environmental condition by ID
@@ -106,6 +134,106 @@ class EnvironmentalConditionsService {
     
     if (maps.isEmpty) return null;
     return EnvironmentalCondition.fromMap(maps.first);
+  }
+
+  /// Debug method to log all environmental condition rows for a catch
+  /// Used to diagnose duplicate rows and data consistency issues
+  Future<void> debugEnvironmentalConditionForCatch(int catchId, String context) async {
+    debugPrint('=== DEBUG: Environmental Condition for Catch $catchId ($context) ===');
+    final db = await DatabaseHelper.instance.database;
+    final maps = await db.query(
+      'environmental_conditions',
+      where: 'catch_id = ?',
+      whereArgs: [catchId],
+    );
+    
+    debugPrint('Row count: ${maps.length}');
+    
+    if (maps.isEmpty) {
+      debugPrint('No environmental condition rows found for catch $catchId');
+      return;
+    }
+    
+    if (maps.length > 1) {
+      debugPrint('WARNING: Multiple environmental condition rows found for catch $catchId!');
+    }
+    
+    for (int i = 0; i < maps.length; i++) {
+      final map = maps[i];
+      debugPrint('--- Row $i (id: ${map['id']}) ---');
+      debugPrint('catch_id: ${map['catch_id']}');
+      debugPrint('tide_stage: ${map['tide_stage']}');
+      debugPrint('tide_strength: ${map['tide_strength']}');
+      debugPrint('tide_movement: ${map['tide_movement']}');
+      debugPrint('tide_height: ${map['tide_height']}');
+      debugPrint('derived_tide_stage: ${map['derived_tide_stage']}');
+      debugPrint('tide_data_source: ${map['tide_data_source']}');
+      debugPrint('tide_observed_or_estimated: ${map['tide_observed_or_estimated']}');
+      debugPrint('tide_context_phrase: ${map['tide_context_phrase']}');
+      debugPrint('reference_tide_event_type: ${map['reference_tide_event_type']}');
+      debugPrint('reference_tide_event_relation: ${map['reference_tide_event_relation']}');
+      debugPrint('minutes_from_reference_tide_event: ${map['minutes_from_reference_tide_event']}');
+      debugPrint('tide_station_name: ${map['tide_station_name']}');
+    }
+    
+    debugPrint('=== END DEBUG ===');
+  }
+
+  /// Debug method to log catch details including trip and buddy references
+  /// Used to diagnose missing trip/buddy ID references
+  Future<void> debugCatchDetails(int catchId, String context) async {
+    debugPrint('=== DEBUG: Catch Details for Catch $catchId ($context) ===');
+    final db = await DatabaseHelper.instance.database;
+    
+    // Get catch record
+    final catchMaps = await db.query(
+      'catches',
+      where: 'id = ?',
+      whereArgs: [catchId],
+    );
+    
+    if (catchMaps.isEmpty) {
+      debugPrint('No catch record found for catch $catchId');
+      return;
+    }
+    
+    final catchMap = catchMaps.first;
+    debugPrint('Catch record:');
+    debugPrint('  id: ${catchMap['id']}');
+    debugPrint('  trip_id: ${catchMap['trip_id']}');
+    debugPrint('  fishing_buddy_id: ${catchMap['fishing_buddy_id']}');
+    debugPrint('  fish_type: ${catchMap['fish_type']}');
+    debugPrint('  date_caught: ${catchMap['date_caught']}');
+    
+    // Get all trips
+    final tripMaps = await db.query('fishing_trips');
+    debugPrint('All trips in database (count: ${tripMaps.length}):');
+    for (final trip in tripMaps) {
+      debugPrint('  id: ${trip['id']}, name: ${trip['trip_name']}');
+    }
+    
+    // Get all fishing buddies
+    final buddyMaps = await db.query('fishing_buddies');
+    debugPrint('All fishing buddies in database (count: ${buddyMaps.length}):');
+    for (final buddy in buddyMaps) {
+      debugPrint('  id: ${buddy['id']}, name: ${buddy['name']}');
+    }
+    
+    // Check if referenced trip exists
+    final tripId = catchMap['trip_id'];
+    if (tripId != null) {
+      final tripExists = tripMaps.any((t) => t['id'] == tripId);
+      debugPrint('Trip ID $tripId exists in database: $tripExists');
+    }
+    
+    // Check if referenced buddy exists
+    final buddyId = catchMap['fishing_buddy_id'];
+    if (buddyId != null) {
+      final buddyExists = buddyMaps.any((b) => b['id'] == buddyId);
+      debugPrint('Fishing Buddy ID $buddyId exists in database: $buddyExists');
+    }
+    
+    debugPrint('=== END DEBUG ===');
   }
 
   /// Get environmental condition for a trip
@@ -211,19 +339,12 @@ class EnvironmentalConditionsService {
     final mergedWindDirection = _useManualOrApiText(condition.windDirection, windDirectionCompass);
     final mergedRainfall = _useManualOrApiNumber(condition.rainfall, weatherData?.rainfall);
 
-    // Fetch tide data (non-blocking, continues on failure)
-    TideInfo? tideInfo;
-    try {
-      tideInfo = await TideService.getTideInfo(
-        latitude: condition.latitude!,
-        longitude: condition.longitude!,
-        catchTime: condition.observationDateTime,
-      );
-    } catch (e) {
-      debugPrint('Tide fetch failed, continuing without tide data: $e');
-    }
+    // REFACTOR: Do NOT fetch or use Open-Meteo tide data
+    // Manual tide fields are preserved for user-entered observations only
+    // Future tide integration will use official tide station data (WorldTides)
+    // Open-Meteo tide data is not written to manual fields anymore
 
-    // Merge manual and API tide values - manual takes precedence
+    // Preserve existing manual tide data - do not overwrite with API data
     String? mergedTideStage = condition.tideStage;
     String? mergedTideMovement = condition.tideMovement;
     double? mergedTideHeight = condition.tideHeight;
@@ -233,27 +354,8 @@ class EnvironmentalConditionsService {
     String? mergedTideObservedOrEstimated = condition.tideObservedOrEstimated;
     String? mergedTideDiagnostics = condition.tideDiagnostics;
 
-    // Only use API tide data if manual tide stage is blank/unknown
-    if (_isBlank(condition.tideStage) || condition.tideStage == 'Unknown') {
-      if (tideInfo != null) {
-        // Convert enum to string for storage
-        final tideStageString = _tideStageToString(tideInfo.derivedTideStage);
-        final tideMovementString = _tideMovementToString(tideInfo.tideMovement);
-        final confidenceString = _tideConfidenceToString(tideInfo.confidence);
-
-        mergedTideStage = tideStageString;
-        mergedTideMovement = tideMovementString;
-        // Do NOT save API tide height - it's relative to MSL, not tide chart datum
-        // Only manual tide heights should be displayed
-        mergedTideDataSource = tideInfo.dataSource;
-        mergedTideConfidence = confidenceString;
-        mergedDerivedTideStage = tideStageString;
-        mergedTideObservedOrEstimated = 'Estimated';
-        // Save diagnostics as JSON string
-        mergedTideDiagnostics = tideInfo.diagnostics.toString();
-      }
-    } else {
-      // Manual tide exists, mark as observed
+    // Mark manual tide as observed if present
+    if (!_isBlank(condition.tideStage) && condition.tideStage != 'Unknown') {
       mergedTideObservedOrEstimated = 'Observed';
       mergedTideDataSource = 'Manual';
     }
@@ -278,50 +380,91 @@ class EnvironmentalConditionsService {
       derivedTideStage: mergedDerivedTideStage,
       tideObservedOrEstimated: mergedTideObservedOrEstimated,
       tideDiagnostics: mergedTideDiagnostics,
-      dataSource: weatherData != null || tideInfo != null ? 'Open-Meteo' : (condition.dataSource ?? 'Calculated'),
+      dataSource: weatherData != null ? 'Open-Meteo' : (condition.dataSource ?? 'Calculated'),
     );
   }
 
-  /// Convert TideStage enum to display string
-  String _tideStageToString(TideStage stage) {
-    switch (stage) {
-      case TideStage.runIn:
-        return 'Run-In Tide';
-      case TideStage.runOut:
-        return 'Run-Out Tide';
-      case TideStage.slackHigh:
-        return 'Slack High';
-      case TideStage.slackLow:
-        return 'Slack Low';
-      default:
-        return 'Unknown';
+  /// Calculate environmental data WITHOUT tide (moon, sun, weather only)
+  /// Used when updating existing conditions to preserve manual tide data
+  Future<EnvironmentalCondition> _calculateEnvironmentalDataWithoutTide(EnvironmentalCondition condition) async {
+    if (condition.latitude == null || condition.longitude == null) {
+      return condition;
     }
-  }
 
-  /// Convert TideMovement enum to display string
-  String _tideMovementToString(TideMovement movement) {
-    switch (movement) {
-      case TideMovement.rising:
-        return 'Rising';
-      case TideMovement.falling:
-        return 'Falling';
-      case TideMovement.slack:
-        return 'Slack';
-      default:
-        return 'Unknown';
-    }
-  }
+    // Calculate moon phase
+    final moonInfo = _moonPhaseService.getMoonPhaseInfo(
+      condition.observationDateTime,
+      latitude: condition.latitude,
+      longitude: condition.longitude,
+    );
 
-  /// Convert TideConfidence enum to display string
-  String _tideConfidenceToString(TideConfidence confidence) {
-    switch (confidence) {
-      case TideConfidence.high:
-        return 'High';
-      case TideConfidence.medium:
-        return 'Medium';
-      default:
-        return 'Low';
+    // Calculate sun times (now async)
+    final sunInfo = await _sunTimesService.getSunTimesInfo(
+      condition.observationDateTime,
+      latitude: condition.latitude!,
+      longitude: condition.longitude!,
+    );
+
+    // Fetch weather data (non-blocking, continues on failure)
+    WeatherData? weatherData;
+    try {
+      weatherData = await _weatherService.fetchWeather(
+        condition.latitude!,
+        condition.longitude!,
+        condition.observationDateTime,
+      );
+    } catch (e) {
+      debugPrint('Weather fetch failed, continuing without weather data: $e');
     }
+
+    // Convert wind direction degrees to compass if available
+    String? windDirectionCompass;
+    if (weatherData?.windDirection != null) {
+      windDirectionCompass = _weatherService.windDirectionToCompass(weatherData!.windDirection);
+    }
+
+    // Merge manual and API weather values
+    final mergedWeatherCondition = _useManualOrApiText(condition.weatherCondition, weatherData?.weatherCondition);
+    final mergedTemperature = _useManualOrApiNumber(condition.temperature, weatherData?.temperature);
+    final mergedHumidity = _useManualOrApiNumber(condition.humidity, weatherData?.humidity);
+    final mergedCloudCover = _useManualOrApiNumber(condition.cloudCover, weatherData?.cloudCover);
+    final mergedWindSpeed = _useManualOrApiNumber(condition.windSpeed, weatherData?.windSpeed);
+    final mergedWindDirection = _useManualOrApiText(condition.windDirection, windDirectionCompass);
+    final mergedRainfall = _useManualOrApiNumber(condition.rainfall, weatherData?.rainfall);
+
+    // Preserve existing tide data - do NOT recalculate
+    String? mergedTideDataSource = condition.tideDataSource;
+    String? mergedTideObservedOrEstimated = condition.tideObservedOrEstimated;
+
+    // If manual tide exists, ensure it's marked as Manual
+    if (!_isBlank(condition.tideStage) && condition.tideStage != 'Unknown') {
+      mergedTideObservedOrEstimated = 'Observed';
+      mergedTideDataSource = 'Manual';
+    }
+
+    return condition.copyWith(
+      moonPhase: moonInfo.phaseName,
+      moonIllumination: moonInfo.illumination,
+      sunriseTime: sunInfo?.sunrise,
+      sunsetTime: sunInfo?.sunset,
+      weatherCondition: mergedWeatherCondition,
+      temperature: mergedTemperature,
+      humidity: mergedHumidity,
+      cloudCover: mergedCloudCover,
+      windSpeed: mergedWindSpeed,
+      windDirection: mergedWindDirection,
+      rainfall: mergedRainfall,
+      // Preserve tide data as-is
+      tideStage: condition.tideStage,
+      tideMovement: condition.tideMovement,
+      tideHeight: condition.tideHeight,
+      tideDataSource: mergedTideDataSource,
+      tideConfidence: condition.tideConfidence,
+      derivedTideStage: condition.derivedTideStage,
+      tideObservedOrEstimated: mergedTideObservedOrEstimated,
+      tideDiagnostics: condition.tideDiagnostics,
+      dataSource: weatherData != null ? 'Open-Meteo' : (condition.dataSource ?? 'Calculated'),
+    );
   }
 
   /// Create or update environmental condition for a catch
@@ -359,8 +502,34 @@ class EnvironmentalConditionsService {
     String? waterClarity,
     String? notes,
   }) async {
+    debugPrint('=== saveEnvironmentalConditionForCatch ===');
+    debugPrint('Catch ID: $catchId');
+    debugPrint('Manual tideStage: $tideStage');
+    debugPrint('Manual tideMovement: $tideMovement');
+    debugPrint('Manual tideHeight: $tideHeight');
+    
+    // Debug: Log database state before save
+    await debugEnvironmentalConditionForCatch(catchId, 'Before save in saveEnvironmentalConditionForCatch');
+    
     // Check if environmental condition already exists for this catch
     final existing = await getEnvironmentalConditionForCatch(catchId);
+    debugPrint('Existing condition: ${existing != null}');
+    if (existing != null) {
+      debugPrint('  Existing tideStage: ${existing.tideStage}');
+      debugPrint('  Existing tideMovement: ${existing.tideMovement}');
+      debugPrint('  Existing tideDataSource: ${existing.tideDataSource}');
+      debugPrint('  Existing tideObservedOrEstimated: ${existing.tideObservedOrEstimated}');
+    }
+    
+    // Determine tide data source and observation type
+    String? mergedTideDataSource = existing?.tideDataSource;
+    String? mergedTideObservedOrEstimated = existing?.tideObservedOrEstimated;
+    
+    // If manual tide data is being saved, mark as Manual
+    if (tideStage != null || tideMovement != null || tideHeight != null) {
+      mergedTideDataSource = 'Manual';
+      mergedTideObservedOrEstimated = 'Observed';
+    }
     
     final condition = EnvironmentalCondition(
       id: existing?.id,
@@ -395,15 +564,42 @@ class EnvironmentalConditionsService {
       rainfall: rainfall,
       riverFlow: riverFlow,
       waterClarity: waterClarity,
+      // Preserve existing automated tide data
+      tideDataSource: mergedTideDataSource,
+      tideConfidence: existing?.tideConfidence,
+      derivedTideStage: existing?.derivedTideStage,
+      tideObservedOrEstimated: mergedTideObservedOrEstimated,
+      tideDiagnostics: existing?.tideDiagnostics,
       dataSource: 'Manual',
       createdAt: existing?.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
     );
+    
+    debugPrint('EnvironmentalCondition before save:');
+    debugPrint('  tideStage: ${condition.tideStage}');
+    debugPrint('  tideMovement: ${condition.tideMovement}');
+    debugPrint('  tideHeight: ${condition.tideHeight}');
+    debugPrint('  tideDataSource: ${condition.tideDataSource}');
+    debugPrint('  tideObservedOrEstimated: ${condition.tideObservedOrEstimated}');
 
     if (existing != null) {
-      return await updateEnvironmentalCondition(condition);
+      debugPrint('Updating existing condition');
+      final result = await updateEnvironmentalCondition(condition);
+      debugPrint('Update result: $result');
+      
+      // Debug: Log database state after update
+      await debugEnvironmentalConditionForCatch(catchId, 'After database update in saveEnvironmentalConditionForCatch');
+      
+      return result;
     } else {
-      return await createEnvironmentalCondition(condition);
+      debugPrint('Creating new condition');
+      final result = await createEnvironmentalCondition(condition);
+      debugPrint('Create result: $result');
+      
+      // Debug: Log database state after create
+      await debugEnvironmentalConditionForCatch(catchId, 'After database create in saveEnvironmentalConditionForCatch');
+      
+      return result;
     }
   }
 
@@ -1116,5 +1312,222 @@ class EnvironmentalConditionsService {
     results['averageTemperature'] = await averageCatchTemperatureInsights();
     
     return results;
+  }
+
+  /// Recalculate environmental data for all catches
+  /// Populates missing automatic data while preserving manual observations
+  /// Returns a summary of the operation
+  Future<Map<String, int>> recalculateEnvironmentalDataForAllCatches({
+    Function(int processed, int updated, int skipped)? onProgress,
+  }) async {
+    final db = await DatabaseHelper.instance.database;
+    final catches = await db.query('catches');
+    
+    int processed = 0;
+    int updated = 0;
+    int skipped = 0;
+    int failed = 0;
+    
+    debugPrint('=== Starting Environmental Data Recalculation ===');
+    debugPrint('Total catches to process: ${catches.length}');
+    
+    for (final catchMap in catches) {
+      processed++;
+      
+      try {
+        final catchId = catchMap['id'] as int;
+        final latitude = catchMap['latitude'] as double?;
+        final longitude = catchMap['longitude'] as double?;
+        final dateCaught = catchMap['date_caught'] != null
+            ? DateTime.parse(catchMap['date_caught'] as String)
+            : DateTime.parse(catchMap['created_at'] as String);
+        
+        // Skip if no coordinates
+        if (latitude == null || longitude == null) {
+          debugPrint('Catch $catchId: skipped (no coordinates)');
+          skipped++;
+          if (onProgress != null) {
+            onProgress(processed, updated, skipped);
+          }
+          continue;
+        }
+        
+        // Get existing environmental condition
+        final existing = await getEnvironmentalConditionForCatch(catchId);
+        
+        debugPrint('Catch $catchId: existing condition = ${existing != null}');
+        if (existing != null) {
+          debugPrint('  Existing tideStage: ${existing.tideStage}');
+          debugPrint('  Existing tideMovement: ${existing.tideMovement}');
+          debugPrint('  Existing tideDataSource: ${existing.tideDataSource}');
+          debugPrint('  Existing derivedTideStage: ${existing.derivedTideStage}');
+        }
+        
+        // Build new condition preserving manual data
+        // Treat null/empty/Unknown as missing for backfill purposes
+        final hasManualTideStage = !_isBlank(existing?.tideStage) && existing?.tideStage != 'Unknown';
+        final hasManualTideMovement = !_isBlank(existing?.tideMovement);
+        final hasManualWeather = !_isBlank(existing?.weatherCondition);
+        
+        final condition = EnvironmentalCondition(
+          id: existing?.id,
+          catchId: catchId,
+          tripId: null,
+          observationDateTime: dateCaught,
+          latitude: latitude,
+          longitude: longitude,
+          // Preserve manual tide data only if present and not Unknown
+          tideStage: hasManualTideStage ? existing?.tideStage : null,
+          tideStrength: existing?.tideStrength,
+          tideNotes: existing?.tideNotes,
+          tideHeight: existing?.tideHeight,
+          tideMovement: hasManualTideMovement ? existing?.tideMovement : null,
+          tideStation: existing?.tideStation,
+          // Preserve manual tide context
+          tideStationName: existing?.tideStationName,
+          tideStationDistanceKm: existing?.tideStationDistanceKm,
+          referenceTideEventType: existing?.referenceTideEventType,
+          referenceTideEventTime: existing?.referenceTideEventTime,
+          referenceTideEventHeight: existing?.referenceTideEventHeight,
+          referenceTideEventRelation: existing?.referenceTideEventRelation,
+          minutesFromReferenceTideEvent: existing?.minutesFromReferenceTideEvent,
+          previousTideEventType: existing?.previousTideEventType,
+          previousTideEventTime: existing?.previousTideEventTime,
+          previousTideEventHeight: existing?.previousTideEventHeight,
+          nextTideEventType: existing?.nextTideEventType,
+          nextTideEventTime: existing?.nextTideEventTime,
+          nextTideEventHeight: existing?.nextTideEventHeight,
+          tideContextPhrase: existing?.tideContextPhrase,
+          tideContextDataSource: existing?.tideContextDataSource,
+          tideContextConfidence: existing?.tideContextConfidence,
+          // Preserve manual weather data only if present
+          weatherCondition: hasManualWeather ? existing?.weatherCondition : null,
+          temperature: existing?.temperature,
+          humidity: existing?.humidity,
+          cloudCover: existing?.cloudCover,
+          windSpeed: existing?.windSpeed,
+          windDirection: existing?.windDirection,
+          barometricPressure: existing?.barometricPressure,
+          rainfall: existing?.rainfall,
+          riverFlow: existing?.riverFlow,
+          waterClarity: existing?.waterClarity,
+          // Preserve existing automated data
+          tideDataSource: existing?.tideDataSource,
+          tideConfidence: existing?.tideConfidence,
+          derivedTideStage: existing?.derivedTideStage,
+          tideObservedOrEstimated: existing?.tideObservedOrEstimated,
+          tideDiagnostics: existing?.tideDiagnostics,
+          dataSource: existing?.dataSource ?? 'Calculated',
+          createdAt: existing?.createdAt ?? DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+        
+        // REFACTOR: Calculate automatic data WITHOUT tide (moon, sun, weather only)
+        // Open-Meteo tide data is no longer used for backfill
+        // Manual tide data is preserved, future tide integration will use WorldTides
+        final calculatedCondition = await _calculateEnvironmentalDataWithoutTide(condition);
+        
+        debugPrint('Catch $catchId: calculated moonPhase = ${calculatedCondition.moonPhase}');
+        debugPrint('Catch $catchId: calculated weatherCondition = ${calculatedCondition.weatherCondition}');
+        
+        // Merge: use calculated data only if manual data is missing
+        final mergedCondition = EnvironmentalCondition(
+          id: calculatedCondition.id,
+          catchId: calculatedCondition.catchId,
+          tripId: calculatedCondition.tripId,
+          observationDateTime: calculatedCondition.observationDateTime,
+          latitude: calculatedCondition.latitude,
+          longitude: calculatedCondition.longitude,
+          // Moon/sun: always use calculated (no manual override)
+          moonPhase: calculatedCondition.moonPhase,
+          moonIllumination: calculatedCondition.moonIllumination,
+          sunriseTime: calculatedCondition.sunriseTime,
+          sunsetTime: calculatedCondition.sunsetTime,
+          // Manual tide: preserve if present, otherwise use calculated
+          tideStage: hasManualTideStage ? existing?.tideStage : calculatedCondition.tideStage,
+          tideStrength: existing?.tideStrength ?? calculatedCondition.tideStrength,
+          tideNotes: existing?.tideNotes ?? calculatedCondition.tideNotes,
+          tideHeight: existing?.tideHeight ?? calculatedCondition.tideHeight,
+          tideMovement: hasManualTideMovement ? existing?.tideMovement : calculatedCondition.tideMovement,
+          tideStation: existing?.tideStation ?? calculatedCondition.tideStation,
+          // Tide context: preserve manual only
+          tideStationName: existing?.tideStationName,
+          tideStationDistanceKm: existing?.tideStationDistanceKm,
+          referenceTideEventType: existing?.referenceTideEventType,
+          referenceTideEventTime: existing?.referenceTideEventTime,
+          referenceTideEventHeight: existing?.referenceTideEventHeight,
+          referenceTideEventRelation: existing?.referenceTideEventRelation,
+          minutesFromReferenceTideEvent: existing?.minutesFromReferenceTideEvent,
+          previousTideEventType: existing?.previousTideEventType,
+          previousTideEventTime: existing?.previousTideEventTime,
+          previousTideEventHeight: existing?.previousTideEventHeight,
+          nextTideEventType: existing?.nextTideEventType,
+          nextTideEventTime: existing?.nextTideEventTime,
+          nextTideEventHeight: existing?.nextTideEventHeight,
+          tideContextPhrase: existing?.tideContextPhrase,
+          tideContextDataSource: existing?.tideContextDataSource,
+          tideContextConfidence: existing?.tideContextConfidence,
+          // Weather: use calculated only if manual is missing
+          weatherCondition: hasManualWeather ? existing?.weatherCondition : calculatedCondition.weatherCondition,
+          temperature: existing?.temperature ?? calculatedCondition.temperature,
+          humidity: existing?.humidity ?? calculatedCondition.humidity,
+          cloudCover: existing?.cloudCover ?? calculatedCondition.cloudCover,
+          windSpeed: existing?.windSpeed ?? calculatedCondition.windSpeed,
+          windDirection: existing?.windDirection ?? calculatedCondition.windDirection,
+          barometricPressure: existing?.barometricPressure ?? calculatedCondition.barometricPressure,
+          rainfall: existing?.rainfall ?? calculatedCondition.rainfall,
+          // Water: preserve manual
+          riverFlow: existing?.riverFlow,
+          waterClarity: existing?.waterClarity,
+          // Automated tide data: use calculated
+          tideDataSource: calculatedCondition.tideDataSource,
+          tideConfidence: calculatedCondition.tideConfidence,
+          derivedTideStage: calculatedCondition.derivedTideStage,
+          tideObservedOrEstimated: calculatedCondition.tideObservedOrEstimated,
+          tideDiagnostics: calculatedCondition.tideDiagnostics,
+          dataSource: calculatedCondition.dataSource,
+          createdAt: calculatedCondition.createdAt,
+          updatedAt: DateTime.now(),
+        );
+        
+        debugPrint('Catch $catchId: merged tideStage = ${mergedCondition.tideStage}');
+        debugPrint('Catch $catchId: merged tideMovement = ${mergedCondition.tideMovement}');
+        debugPrint('Catch $catchId: merged derivedTideStage = ${mergedCondition.derivedTideStage}');
+        
+        // Save or update
+        if (existing != null) {
+          await updateEnvironmentalCondition(mergedCondition);
+        } else {
+          await createEnvironmentalCondition(mergedCondition);
+        }
+        
+        updated++;
+        debugPrint('Catch $catchId: updated');
+        
+        // Rate limiting: delay between API calls
+        await Future.delayed(const Duration(milliseconds: 200));
+        
+      } catch (e) {
+        failed++;
+        debugPrint('Error processing catch: $e');
+      }
+      
+      if (onProgress != null) {
+        onProgress(processed, updated, skipped);
+      }
+    }
+    
+    debugPrint('=== Environmental Data Recalculation Complete ===');
+    debugPrint('Processed: $processed');
+    debugPrint('Updated: $updated');
+    debugPrint('Skipped: $skipped');
+    debugPrint('Failed: $failed');
+    
+    return {
+      'processed': processed,
+      'updated': updated,
+      'skipped': skipped,
+      'failed': failed,
+    };
   }
 }

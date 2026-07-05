@@ -10,6 +10,7 @@ import '../models/fishing_buddy.dart';
 import '../models/favourite_spot.dart';
 import '../services/backup_service.dart';
 import '../services/preferences_service.dart';
+import '../services/environmental_conditions_service.dart';
 import '../widgets/bragmat_section_card.dart';
 import 'favourite_spots_screen.dart';
 import 'achievements_screen.dart';
@@ -213,6 +214,133 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ],
       ),
     );
+  }
+
+  Future<void> _showRecalculateEnvironmentalDataDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Recalculate Environmental Data'),
+        content: const Text(
+          'This will update missing automatic environmental data for catches with date/time and GPS coordinates. Manual observations will not be overwritten.\n\nThis may take several minutes depending on the number of catches.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Recalculate'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _recalculateEnvironmentalData();
+    }
+  }
+
+  Future<void> _recalculateEnvironmentalData() async {
+    // Show progress dialog
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('Recalculating Environmental Data'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text('Processed: 0'),
+            const SizedBox(height: 8),
+            Text('Updated: 0'),
+            const SizedBox(height: 8),
+            Text('Skipped: 0'),
+          ],
+        ),
+      ),
+    );
+
+    final envService = EnvironmentalConditionsService();
+    int processed = 0;
+    int updated = 0;
+    int skipped = 0;
+
+    try {
+      final result = await envService.recalculateEnvironmentalDataForAllCatches(
+        onProgress: (proc, upd, skip) {
+          processed = proc;
+          updated = upd;
+          skipped = skip;
+          // Update dialog if still mounted
+          if (mounted) {
+            Navigator.pop(context);
+            showDialog(
+              context: context,
+              barrierDismissible: false,
+              builder: (context) => AlertDialog(
+                title: const Text('Recalculating Environmental Data'),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const CircularProgressIndicator(),
+                    const SizedBox(height: 16),
+                    Text('Processed: $processed'),
+                    const SizedBox(height: 8),
+                    Text('Updated: $updated'),
+                    const SizedBox(height: 8),
+                    Text('Skipped: $skipped'),
+                  ],
+                ),
+              ),
+            );
+          }
+        },
+      );
+
+      // Show results
+      if (mounted) {
+        Navigator.pop(context);
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Environmental Recalculation Complete'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('Processed: ${result['processed']}'),
+                const SizedBox(height: 8),
+                Text('Updated: ${result['updated']}'),
+                const SizedBox(height: 8),
+                Text('Skipped: ${result['skipped']}'),
+                const SizedBox(height: 8),
+                if (result['failed']! > 0)
+                  Text('Failed: ${result['failed']}', style: const TextStyle(color: Colors.red)),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('OK'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
   }
 
   Future<void> _showClearAllDataDialog() async {
@@ -1608,6 +1736,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: const Text('Export CSV'),
                 subtitle: const Text('Export catches to CSV file'),
                 onTap: _exportCatchesToCSV,
+              ),
+              const Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.refresh),
+                title: const Text('Recalculate Environmental Data'),
+                subtitle: const Text('Update missing automatic environmental data for catches with GPS'),
+                onTap: _showRecalculateEnvironmentalDataDialog,
               ),
               const Divider(height: 1),
               _buildComingSoonMenuItem(Icons.file_download, 'Import CSV (Coming Soon)'),

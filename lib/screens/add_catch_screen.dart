@@ -75,23 +75,43 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   // Change tracking
   bool _hasUnsavedChanges = false;
   late Catch? _originalCatch;
+  bool _isLoadingInitialData = false;
 
   @override
   void initState() {
     super.initState();
-    _loadFishTypes();
-    _loadFishingBuddies();
-    _loadFishingTrips();
-    _loadFavouriteSpots();
-    // Only check for lost data when adding a new catch, not when editing
-    // Lost data recovery is for when the app is killed during a new catch creation
-    if (widget.catchToEdit == null) {
-      _retrieveLostData();
-    }
+    
+    // Load all initial data before building the form
+    _loadInitialData();
+  }
+
+  /// Load all required data before building the form
+  /// This prevents dropdown assertion errors from selected values being set before item lists are loaded
+  Future<void> _loadInitialData() async {
     if (widget.catchToEdit != null) {
+      setState(() {
+        _isLoadingInitialData = true;
+      });
+      
+      // Debug: Log catch details to check trip/buddy references
+      final envService = EnvironmentalConditionsService();
+      await envService.debugCatchDetails(widget.catchToEdit!.id!, 'Loading in Edit Catch');
+      
+      // Load all lookup lists and environmental data in parallel where possible
+      await Future.wait([
+        _loadFishTypes(),
+        _loadFishingBuddies(),
+        _loadFishingTrips(),
+        _loadFavouriteSpots(),
+      ]);
+      
+      // Load environmental condition after lists are loaded
+      await _loadEnvironmentalCondition();
+      
+      // Now set the catch-specific values after lists are ready
       _originalCatch = widget.catchToEdit;
-      _loadMediaForCatch();
-      _loadEnvironmentalCondition();
+      await _loadMediaForCatch();
+      
       // Safely set fish type - will add to list if not present
       final fishType = widget.catchToEdit!.fishType;
       _fishTypeController.text = fishType;
@@ -100,20 +120,43 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       _notesController.text = widget.catchToEdit!.notes ?? '';
       _locationController.text = widget.catchToEdit!.location ?? '';
       _dateCaught = widget.catchToEdit!.dateCaught;
-      // Trip and buddy IDs will be validated after lists are loaded
-      _selectedTripId = widget.catchToEdit!.tripId;
-      _selectedFishingBuddyId = widget.catchToEdit!.fishingBuddyId;
+      
+      // Trip and buddy IDs - validate after lists are loaded
+      _selectedTripId = _safeIdValue(widget.catchToEdit!.tripId, _fishingTrips, 'tripId');
+      _selectedFishingBuddyId = _safeIdValue(widget.catchToEdit!.fishingBuddyId, _fishingBuddies, 'fishingBuddyId');
+      
       _latitudeController.text = widget.catchToEdit!.latitude?.toString() ?? '';
       _longitudeController.text = widget.catchToEdit!.longitude?.toString() ?? '';
       _coordinateSource = widget.catchToEdit!.coordinateSource;
+      
+      setState(() {
+        _isLoadingInitialData = false;
+      });
     } else {
+      // For new catches, load lookup lists in parallel
+      await Future.wait([
+        _loadFishTypes(),
+        _loadFishingBuddies(),
+        _loadFishingTrips(),
+        _loadFavouriteSpots(),
+      ]);
+      
+      // Check for lost data when adding a new catch
+      // Lost data recovery is for when the app is killed during a new catch creation
+      _retrieveLostData();
+      
       // For new catches, pre-select the current trip if set
       _loadCurrentTrip();
+      
       // Set date caught to current date and time
       _dateCaught = DateTime.now();
     }
     
-    // Add text change listeners
+    // Add text change listeners after data is loaded
+    _addTextChangeListeners();
+  }
+
+  void _addTextChangeListeners() {
     _fishTypeController.addListener(_onFieldChanged);
     _lengthController.addListener(_onFieldChanged);
     _notesController.addListener(_onFieldChanged);
@@ -362,14 +405,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     if (mounted) {
       setState(() {
         _fishingTrips = trips;
-        // Validate selected trip ID after list is loaded
-        if (widget.catchToEdit != null && widget.catchToEdit!.tripId != null) {
-          final tripExists = trips.any((t) => t.id == widget.catchToEdit!.tripId);
-          if (!tripExists) {
-            debugPrint('Trip ID ${widget.catchToEdit!.tripId} not found in trips list, setting to null');
-            _selectedTripId = null;
-          }
-        }
+        // Trip ID validation is now handled in _loadInitialData after lists are loaded
       });
     }
   }
@@ -379,21 +415,47 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     if (mounted) {
       setState(() {
         _favouriteSpots = spots;
+        // Validate selected favourite spot ID after list is loaded
+        if (widget.catchToEdit != null) {
+          // Note: favouriteSpotId is not in Catch model, so we check from environmental condition
+          // This will be validated when environmental condition is loaded
+          debugPrint('Favourite spots loaded: ${spots.length} spots (catch ID: ${widget.catchToEdit!.id})');
+        }
       });
     }
   }
 
   /// Safely validate a dropdown value against allowed values
-  String? _safeDropdownValue(String? value, List<String> allowedValues, String fieldName) {
-    if (value == null || value.isEmpty) {
-      debugPrint('Dropdown $fieldName: value is null or empty, using null');
+  /// Handles null, empty, and "Unknown" values defensively
+  String? _safeDropdownValue(String? value, List<String> allowedValues, String fieldName, {int? catchId}) {
+    if (value == null || value.isEmpty || value == 'Unknown') {
+      debugPrint('Dropdown $fieldName: value is null/empty/Unknown, using null${catchId != null ? " (catch ID: $catchId)" : ""}');
       return null;
     }
     if (allowedValues.contains(value)) {
-      debugPrint('Dropdown $fieldName: value "$value" is valid');
+      debugPrint('Dropdown $fieldName: value "$value" is valid${catchId != null ? " (catch ID: $catchId)" : ""}');
       return value;
     }
-    debugPrint('Dropdown $fieldName: value "$value" is NOT in allowed list $allowedValues, using null');
+    debugPrint('Dropdown $fieldName: value "$value" is NOT in allowed list $allowedValues, using null${catchId != null ? " (catch ID: $catchId)" : ""}');
+    return null;
+  }
+
+  /// Safely validate a dropdown value against allowed values including null
+  /// For dropdowns that explicitly allow null as a valid option
+  String? _safeDropdownValueWithNull(String? value, List<String?> allowedValues, String fieldName, {int? catchId}) {
+    if (value == null) {
+      debugPrint('Dropdown $fieldName: value is null, using null${catchId != null ? " (catch ID: $catchId)" : ""}');
+      return null;
+    }
+    if (value.isEmpty || value == 'Unknown') {
+      debugPrint('Dropdown $fieldName: value is empty/Unknown, using null${catchId != null ? " (catch ID: $catchId)" : ""}');
+      return null;
+    }
+    if (allowedValues.contains(value)) {
+      debugPrint('Dropdown $fieldName: value "$value" is valid${catchId != null ? " (catch ID: $catchId)" : ""}');
+      return value;
+    }
+    debugPrint('Dropdown $fieldName: value "$value" is NOT in allowed list $allowedValues, using null${catchId != null ? " (catch ID: $catchId)" : ""}');
     return null;
   }
 
@@ -436,17 +498,23 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     debugPrint('=== BUILDING $fieldName DROPDOWN ===');
     debugPrint('Current value: $value');
     debugPrint('Items count: ${items.length}');
-    final matchingItems = items.where((item) {
-      if (item is DropdownMenuItem) {
-        return item.value == value;
+    
+    // Only check for assertion issues if value is non-null
+    if (value != null) {
+      final matchingItems = items.where((item) {
+        if (item is DropdownMenuItem) {
+          return item.value == value;
+        }
+        return false;
+      }).length;
+      debugPrint('Matching items count: $matchingItems');
+      if (matchingItems == 0) {
+        debugPrint('WARNING: Zero matching items - this will cause assertion!');
+      } else if (matchingItems > 1) {
+        debugPrint('WARNING: Multiple matching items - this will cause assertion!');
       }
-      return false;
-    }).length;
-    debugPrint('Matching items count: $matchingItems');
-    if (matchingItems == 0) {
-      debugPrint('WARNING: Zero matching items - this will cause assertion!');
-    } else if (matchingItems > 1) {
-      debugPrint('WARNING: Multiple matching items - this will cause assertion!');
+    } else {
+      debugPrint('Value is null - valid for optional dropdowns');
     }
   }
 
@@ -454,35 +522,42 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     if (widget.catchToEdit == null) return;
     
     final envService = EnvironmentalConditionsService();
-    final condition = await envService.getEnvironmentalConditionForCatch(widget.catchToEdit!.id!);
+    final catchId = widget.catchToEdit!.id!;
+    
+    // Debug: Log database state before loading
+    await envService.debugEnvironmentalConditionForCatch(catchId, 'After loading in Edit Catch');
+    
+    final condition = await envService.getEnvironmentalConditionForCatch(catchId);
     
     if (condition != null) {
       setState(() {
         _existingEnvironmentalCondition = condition;
-        _selectedTideStage = _safeDropdownValue(condition.tideStage, EnvironmentalCondition.tideStages, 'tideStage');
-        _selectedTideStrength = _safeDropdownValue(condition.tideStrength, EnvironmentalCondition.tideStrengths, 'tideStrength');
+        _selectedTideStage = _safeDropdownValue(condition.tideStage, EnvironmentalCondition.tideStages, 'tideStage', catchId: catchId);
+        _selectedTideStrength = _safeDropdownValue(condition.tideStrength, EnvironmentalCondition.tideStrengths, 'tideStrength', catchId: catchId);
         _tideNotesController.text = condition.tideNotes ?? '';
         _tideHeightController.text = condition.tideHeight?.toString() ?? '';
-        _selectedTideMovement = condition.tideMovement; // Tide movement has custom items with null allowed
+        // Tide movement: validate against custom dropdown items
+        _selectedTideMovement = _safeDropdownValueWithNull(condition.tideMovement, [null, 'Run-in', 'Run-out', 'Slack'], 'tideMovement', catchId: catchId);
         _tideStationController.text = condition.tideStation ?? '';
         // Tide context fields
         _tideStationNameController.text = condition.tideStationName ?? '';
-        _selectedReferenceTideEventType = _safeDropdownValue(condition.referenceTideEventType, ['High', 'Low'], 'referenceTideEventType');
+        _selectedReferenceTideEventType = _safeDropdownValue(condition.referenceTideEventType, ['High', 'Low'], 'referenceTideEventType', catchId: catchId);
         _referenceTideEventTime = condition.referenceTideEventTime;
         _referenceTideEventHeightController.text = condition.referenceTideEventHeight?.toString() ?? '';
-        _selectedReferenceTideEventRelation = _safeDropdownValue(condition.referenceTideEventRelation, ['Before', 'After'], 'referenceTideEventRelation');
+        _selectedReferenceTideEventRelation = _safeDropdownValue(condition.referenceTideEventRelation, ['Before', 'After'], 'referenceTideEventRelation', catchId: catchId);
         // Show tide context if data exists
         _showTideContext = condition.tideContextPhrase != null && condition.tideContextPhrase!.isNotEmpty;
-        _selectedWeatherCondition = _safeDropdownValue(condition.weatherCondition, EnvironmentalCondition.weatherConditions, 'weatherCondition');
+        _selectedWeatherCondition = _safeDropdownValue(condition.weatherCondition, EnvironmentalCondition.weatherConditions, 'weatherCondition', catchId: catchId);
         _temperatureController.text = condition.temperature?.toString() ?? '';
         _humidityController.text = condition.humidity?.toString() ?? '';
         _cloudCoverController.text = condition.cloudCover?.toString() ?? '';
         _windSpeedController.text = condition.windSpeed?.toString() ?? '';
-        _selectedWindDirection = _safeDropdownValue(condition.windDirection, EnvironmentalCondition.windDirections, 'windDirection');
+        _selectedWindDirection = _safeDropdownValue(condition.windDirection, EnvironmentalCondition.windDirections, 'windDirection', catchId: catchId);
         _barometricPressureController.text = condition.barometricPressure?.toString() ?? '';
         _rainfallController.text = condition.rainfall?.toString() ?? '';
-        _selectedRiverFlow = condition.riverFlow; // River flow has custom items with null allowed
-        _selectedWaterClarity = _safeDropdownValue(condition.waterClarity, EnvironmentalCondition.waterClarities, 'waterClarity');
+        // River flow: validate against custom dropdown items
+        _selectedRiverFlow = _safeDropdownValueWithNull(condition.riverFlow, [null, 'Low', 'Normal', 'High', 'Flood'], 'riverFlow', catchId: catchId);
+        _selectedWaterClarity = _safeDropdownValue(condition.waterClarity, EnvironmentalCondition.waterClarities, 'waterClarity', catchId: catchId);
         _environmentalNotesController.text = condition.riverFlow ?? '';
       });
     }
@@ -521,21 +596,12 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     final meBuddy = await DatabaseHelper.instance.getMeFishingBuddy();
     setState(() {
       _fishingBuddies = buddies;
-      // Default to "Me" only if "Me" is in the list
-      if (_selectedFishingBuddyId == null && meBuddy != null) {
+      // Default to "Me" only if "Me" is in the list and we're not editing
+      // When editing, the buddy ID is set in _loadInitialData after lists are loaded
+      if (_selectedFishingBuddyId == null && meBuddy != null && widget.catchToEdit == null) {
         final meInList = buddies.any((b) => b.id == meBuddy.id);
         if (meInList) {
           _selectedFishingBuddyId = meBuddy.id;
-        }
-      }
-      // If editing, set the selected fishing buddy only if it's in the list
-      if (widget.catchToEdit != null && widget.catchToEdit!.fishingBuddyId != null) {
-        final buddyExists = buddies.any((b) => b.id == widget.catchToEdit!.fishingBuddyId);
-        if (buddyExists) {
-          _selectedFishingBuddyId = widget.catchToEdit!.fishingBuddyId;
-        } else {
-          debugPrint('Fishing buddy ID ${widget.catchToEdit!.fishingBuddyId} not found in buddies list, setting to null');
-          _selectedFishingBuddyId = null;
         }
       }
     });
@@ -1142,6 +1208,18 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // Show loading indicator while initial data is being loaded
+    if (_isLoadingInitialData) {
+      return Scaffold(
+        appBar: AppBar(
+          title: Text(widget.catchToEdit != null ? 'Edit Catch' : 'Add Catch'),
+        ),
+        body: const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+    }
+    
     return WillPopScope(
       onWillPop: _onWillPop,
       child: Scaffold(
@@ -1170,6 +1248,33 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              // Debug diagnostics
+              if (widget.catchToEdit != null)
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  color: Colors.yellow.shade100,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text('DROPDOWN DIAGNOSTICS', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 4),
+                      Text('Fish Type: $_selectedFishType'),
+                      Text('Favourite Spot ID: $_selectedFavouriteSpotId'),
+                      Text('Trip ID: $_selectedTripId'),
+                      Text('Fishing Buddy ID: $_selectedFishingBuddyId'),
+                      Text('Weather: $_selectedWeatherCondition'),
+                      Text('Wind: $_selectedWindDirection'),
+                      Text('Tide Stage: $_selectedTideStage'),
+                      Text('Tide Strength: $_selectedTideStrength'),
+                      Text('Tide Movement: $_selectedTideMovement'),
+                      Text('Ref Event Type: $_selectedReferenceTideEventType'),
+                      Text('Ref Event Relation: $_selectedReferenceTideEventRelation'),
+                      Text('Water Clarity: $_selectedWaterClarity'),
+                      Text('River Flow: $_selectedRiverFlow'),
+                    ],
+                  ),
+                ),
+              const SizedBox(height: 8),
               // Photo Section
               BragmatSectionCard(
                 icon: Icons.photo_camera,
