@@ -231,11 +231,9 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                 ),
               );
               if (edited is Catch && mounted) {
-                debugPrint('CATCH DETAILS - Received edited catch: lureSize=${edited.lureSize}, lureColour=${edited.lureColour}, lurePhotoPath=${edited.lurePhotoPath}');
                 setState(() {
                   _catchItem = edited;
                 });
-                debugPrint('CATCH DETAILS - After setState: lureSize=${_catchItem.lureSize}, lureColour=${_catchItem.lureColour}, lurePhotoPath=${_catchItem.lurePhotoPath}');
                 // Reload fishing buddy name in case it changed
                 _loadFishingBuddyName();
                 // Reload lure and bait names in case they changed

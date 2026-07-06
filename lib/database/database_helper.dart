@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/catch.dart';
@@ -865,25 +864,12 @@ class DatabaseHelper {
   // UPDATE
   Future<int> updateCatch(Catch catchItem) async {
     final db = await instance.database;
-    final map = catchItem.toMap();
-    debugPrint('DATABASE UPDATE - lure_size: ${map['lure_size']}, lure_colour: ${map['lure_colour']}, lure_photo_path: ${map['lure_photo_path']}');
     final result = await db.update(
       'catches',
-      map,
+      catchItem.toMap(),
       where: 'id = ?',
       whereArgs: [catchItem.id],
     );
-    
-    // Verify the update by reading back
-    final updated = await db.query(
-      'catches',
-      where: 'id = ?',
-      whereArgs: [catchItem.id],
-    );
-    if (updated.isNotEmpty) {
-      final row = updated.first;
-      debugPrint('DATABASE AFTER UPDATE - lure_size: ${row['lure_size']}, lure_colour: ${row['lure_colour']}, lure_photo_path: ${row['lure_photo_path']}');
-    }
     
     // Evaluate achievements
     await AchievementService().evaluateCatchAchievements();

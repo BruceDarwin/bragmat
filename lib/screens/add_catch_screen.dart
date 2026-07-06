@@ -460,7 +460,19 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       return null;
     }
     // Check if the ID exists in the items list
-    final idExists = items.any((item) => item is Map && item['id'] == value);
+    // Handle both Map objects (with 'id' key) and model objects (with .id property)
+    final idExists = items.any((item) {
+      if (item is Map) {
+        return item['id'] == value;
+      } else {
+        // Try to access .id property via dynamic
+        try {
+          return item.id == value;
+        } catch (e) {
+          return false;
+        }
+      }
+    });
     if (idExists) {
       return value;
     }
@@ -1028,7 +1040,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           lureColour: _lureColourController.text.trim().isEmpty ? null : _lureColourController.text.trim(),
           lurePhotoPath: _lurePhotoPath,
         );
-        debugPrint('BEFORE UPDATE - lureSize: ${updatedCatch.lureSize}, lureColour: ${updatedCatch.lureColour}, lurePhotoPath: ${updatedCatch.lurePhotoPath}');
         await DatabaseHelper.instance.updateCatch(updatedCatch);
         savedCatch = updatedCatch;
         
@@ -1064,7 +1075,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           lureColour: _lureColourController.text.trim().isEmpty ? null : _lureColourController.text.trim(),
           lurePhotoPath: _lurePhotoPath,
         );
-        debugPrint('BEFORE INSERT - lureSize: ${newCatch.lureSize}, lureColour: ${newCatch.lureColour}, lurePhotoPath: ${newCatch.lurePhotoPath}');
         final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
         savedCatch = newCatch.copyWith(id: catchId);
         
@@ -1446,63 +1456,49 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                 title: 'Lure and Bait',
                 initiallyExpanded: false,
                 children: [
-                  FutureBuilder<List<Lure>>(
-                    future: DatabaseHelper.instance.getLures(),
-                    builder: (context, snapshot) {
-                      final lures = snapshot.data ?? [];
-                      final items = [
-                        const DropdownMenuItem<int?>(
-                          value: null,
-                          child: Text('None'),
-                        ),
-                        ...lures.map((lure) {
-                          return DropdownMenuItem<int?>(
-                            value: lure.id,
-                            child: Text(lure.name),
-                          );
-                        }).toList(),
-                      ];
-                      return DropdownButtonFormField<int?>(
-                        initialValue: _selectedLureId,
-                        decoration: const InputDecoration(labelText: 'Lure'),
-                        items: items,
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedLureId = value;
-                            _onFieldChanged();
-                          });
-                        },
-                      );
+                  DropdownButtonFormField<int?>(
+                    value: _selectedLureId,
+                    decoration: const InputDecoration(labelText: 'Lure'),
+                    items: [
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('None'),
+                      ),
+                      ..._lures.map((lure) {
+                        return DropdownMenuItem<int?>(
+                          value: lure.id,
+                          child: Text(lure.name),
+                        );
+                      }).toList(),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedLureId = value;
+                        _onFieldChanged();
+                      });
                     },
                   ),
                   const SizedBox(height: 16),
-                  FutureBuilder<List<Bait>>(
-                    future: DatabaseHelper.instance.getBaits(),
-                    builder: (context, snapshot) {
-                      final baits = snapshot.data ?? [];
-                      final items = [
-                        const DropdownMenuItem<int?>(
-                          value: null,
-                          child: Text('None'),
-                        ),
-                        ...baits.map((bait) {
-                          return DropdownMenuItem<int?>(
-                            value: bait.id,
-                            child: Text(bait.name),
-                          );
-                        }).toList(),
-                      ];
-                      return DropdownButtonFormField<int?>(
-                        initialValue: _selectedBaitId,
-                        decoration: const InputDecoration(labelText: 'Bait'),
-                        items: items,
-                        onChanged: (value) {
-                          setState(() {
-                            _selectedBaitId = value;
-                            _onFieldChanged();
-                          });
-                        },
-                      );
+                  DropdownButtonFormField<int?>(
+                    value: _selectedBaitId,
+                    decoration: const InputDecoration(labelText: 'Bait'),
+                    items: [
+                      const DropdownMenuItem<int?>(
+                        value: null,
+                        child: Text('None'),
+                      ),
+                      ..._baits.map((bait) {
+                        return DropdownMenuItem<int?>(
+                          value: bait.id,
+                          child: Text(bait.name),
+                        );
+                      }).toList(),
+                    ],
+                    onChanged: (value) {
+                      setState(() {
+                        _selectedBaitId = value;
+                        _onFieldChanged();
+                      });
                     },
                   ),
                   const SizedBox(height: 16),
