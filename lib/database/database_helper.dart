@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:math';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/catch.dart';
@@ -1909,34 +1910,74 @@ class DatabaseHelper {
 
   // Tide Cache Methods
   
+  /// Calculate distance between two coordinates using Haversine formula
+  /// Returns distance in kilometers
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const double earthRadiusKm = 6371.0;
+    
+    final dLat = _degreesToRadians(lat2 - lat1);
+    final dLon = _degreesToRadians(lon2 - lon1);
+    
+    final a = (sin(dLat / 2) * sin(dLat / 2)) +
+        cos(_degreesToRadians(lat1)) *
+        cos(_degreesToRadians(lat2)) *
+        (sin(dLon / 2) * sin(dLon / 2));
+    
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    
+    return earthRadiusKm * c;
+  }
+  
+  double _degreesToRadians(double degrees) {
+    return degrees * pi / 180;
+  }
+  
   /// Get cached tide data for a location and date
-  Future<Map<String, dynamic>?> getCachedTideData(double latitude, double longitude, String date, {String datum = 'CD'}) async {
+  /// Uses distance-based matching (within 2 km) instead of exact coordinates
+  Future<Map<String, dynamic>?> getCachedTideData(double latitude, double longitude, String date, {String datum = 'CD', double maxDistanceKm = 2.0}) async {
     final db = await instance.database;
     final now = DateTime.now();
     
+    // Query all cache entries for the same date and datum
     final result = await db.query(
       'tide_cache',
-      where: 'latitude = ? AND longitude = ? AND date = ? AND datum = ? AND expires_at > ?',
-      whereArgs: [latitude, longitude, date, datum, now.toIso8601String()],
-      limit: 1,
+      where: 'date = ? AND datum = ? AND expires_at > ?',
+      whereArgs: [date, datum, now.toIso8601String()],
     );
     
     if (result.isEmpty) return null;
     
-    final cached = result.first;
+    // Find the nearest cache entry within maxDistanceKm
+    Map<String, dynamic>? nearestCache;
+    double nearestDistance = double.infinity;
+    
+    for (final cached in result) {
+      final cachedLat = cached['latitude'] as double;
+      final cachedLon = cached['longitude'] as double;
+      final distance = _calculateDistance(latitude, longitude, cachedLat, cachedLon);
+      
+      if (distance <= maxDistanceKm && distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestCache = cached;
+      }
+    }
+    
+    if (nearestCache == null) return null;
+    
     try {
-      final extremesJson = cached['extremes_json'] as String;
+      final extremesJson = nearestCache['extremes_json'] as String;
       return {
         'extremes': jsonDecode(extremesJson),
-        'cached_at': cached['cached_at'] as String,
-        'expires_at': cached['expires_at'] as String,
+        'cached_at': nearestCache['cached_at'] as String,
+        'expires_at': nearestCache['expires_at'] as String,
+        'distance_km': nearestDistance,
       };
     } catch (e) {
       // Invalid JSON, delete the cache entry
       await db.delete(
         'tide_cache',
         where: 'id = ?',
-        whereArgs: [cached['id']],
+        whereArgs: [nearestCache['id']],
       );
       return null;
     }
