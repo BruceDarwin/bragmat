@@ -894,7 +894,9 @@ class DatabaseHelper {
   Future<List<String>> getFishTypes() async {
     final db = await instance.database;
     final result = await db.query('fish_types', orderBy: 'name');
-    return result.map((json) => json['name'] as String).toList();
+    // Deduplicate fish types to prevent dropdown assertion errors
+    final types = result.map((json) => json['name'] as String).toList();
+    return types.toSet().toList();
   }
 
   Future<int> insertFishType(String name) async {

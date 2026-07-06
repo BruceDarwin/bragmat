@@ -32,6 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   List<Bait> _baits = [];
   FishTypeSelectionMode _fishTypeSelectionMode = FishTypeSelectionMode.noDefault;
   String? _defaultFishType;
+  String? _worldTidesApiKey;
 
   @override
   void initState() {
@@ -42,6 +43,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadLures();
     _loadBaits();
     _loadFishTypePreferences();
+    _loadWorldTidesApiKey();
   }
 
   Future<void> _loadStatistics() async {
@@ -51,6 +53,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _catches = catches;
       _fishTypes = fishTypes;
     });
+    // Validate default fish type after fish types are loaded
+    await _validateDefaultFishType();
   }
 
   Future<void> _loadFishTypes() async {
@@ -90,6 +94,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
+  Future<void> _validateDefaultFishType() async {
+    if (_defaultFishType != null) {
+      final safeValue = _safeDropdownValue(_defaultFishType, _fishTypes);
+      if (safeValue == null) {
+        // Default fish type is invalid, clear it
+        await PreferencesService.setDefaultFishType(null);
+        setState(() {
+          _defaultFishType = null;
+        });
+        // If default is cleared, revert to No Default mode
+        if (_fishTypeSelectionMode == FishTypeSelectionMode.defaultFishType) {
+          await PreferencesService.setFishTypeSelectionMode(FishTypeSelectionMode.noDefault);
+          setState(() {
+            _fishTypeSelectionMode = FishTypeSelectionMode.noDefault;
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _loadWorldTidesApiKey() async {
+    final apiKey = await PreferencesService.getWorldTidesApiKey();
+    setState(() {
+      _worldTidesApiKey = apiKey;
+    });
+  }
+
   Future<void> _setFishTypeSelectionMode(FishTypeSelectionMode mode) async {
     await PreferencesService.setFishTypeSelectionMode(mode);
     setState(() {
@@ -102,6 +133,28 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _defaultFishType = fishType;
     });
+  }
+
+  Future<void> _setWorldTidesApiKey(String? apiKey) async {
+    await PreferencesService.setWorldTidesApiKey(apiKey);
+    setState(() {
+      _worldTidesApiKey = apiKey;
+    });
+  }
+
+  /// Safely validate dropdown value exists exactly once in the list
+  /// Returns null if value is missing or duplicated
+  String? _safeDropdownValue(String? value, List<String> items) {
+    if (value == null) {
+      return null;
+    }
+    // Count occurrences of the value
+    final count = items.where((item) => item == value).length;
+    if (count == 1) {
+      return value;
+    }
+    // Value is missing or duplicated, return null
+    return null;
   }
 
   Future<void> _showFishTypesDialog() async {
@@ -2264,7 +2317,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               if (_fishTypeSelectionMode == FishTypeSelectionMode.defaultFishType) ...[
                 const SizedBox(height: 12),
                 DropdownButtonFormField<String>(
-                  initialValue: _defaultFishType,
+                  initialValue: _safeDropdownValue(_defaultFishType, _fishTypes),
                   decoration: const InputDecoration(
                     labelText: 'Default Fish Type',
                     border: OutlineInputBorder(),
@@ -2286,6 +2339,34 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
               ],
+            ],
+          ),
+          const SizedBox(height: 16),
+
+          // API Keys Section
+          BragmatSectionCard(
+            icon: Icons.key,
+            title: 'API Keys',
+            children: [
+              TextField(
+                decoration: const InputDecoration(
+                  labelText: 'WorldTides API Key',
+                  hintText: 'Enter your WorldTides API key',
+                  border: OutlineInputBorder(),
+                  helperText: 'Required for official tide context data',
+                ),
+                controller: TextEditingController(text: _worldTidesApiKey ?? ''),
+                onChanged: (value) {
+                  _setWorldTidesApiKey(value.trim().isEmpty ? null : value.trim());
+                },
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Get your API key from https://www.worldtides.info/',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey[600],
+                ),
+              ),
             ],
           ),
           const SizedBox(height: 16),

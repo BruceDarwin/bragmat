@@ -5,6 +5,7 @@ import 'moon_phase_service.dart';
 import 'sun_times_service.dart';
 import 'weather_service.dart';
 import 'tide_service.dart';
+import 'worldtides_service.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 
@@ -26,6 +27,7 @@ class EnvironmentalConditionsService {
   final MoonPhaseService _moonPhaseService = MoonPhaseService();
   final SunTimesService _sunTimesService = SunTimesService();
   final WeatherService _weatherService = WeatherService();
+  final WorldTidesService _worldTidesService = WorldTidesService();
 
   /// Check if a string value is blank (null, empty, or whitespace only)
   bool _isBlank(String? value) {
@@ -645,7 +647,8 @@ class EnvironmentalConditionsService {
 
   /// Upsert calculated environmental conditions for a catch
   /// This method should be called after every successful catch save/update
-  /// It handles calculated conditions (moon/sun) separately from manual conditions
+  /// It handles calculated conditions (moon/sun/weather) and official tide context
+  /// Preserves manual tide observations (does not overwrite)
   Future<EnvironmentalCondition?> upsertCalculatedConditionsForCatch(Catch catchItem) async {
     if (catchItem.id == null) {
       debugPrint('ERROR: Catch ID is null');
@@ -676,6 +679,24 @@ class EnvironmentalConditionsService {
       }
     }
     
+    // Fetch official tide context from WorldTides if available
+    Map<String, dynamic>? tideContext;
+    if (await _worldTidesService.isAvailable()) {
+      try {
+        tideContext = await _worldTidesService.getTideContextForLocation(
+          catchItem.latitude!,
+          catchItem.longitude!,
+          observationDateTime,
+        );
+        if (tideContext != null && tideContext.isNotEmpty) {
+          debugPrint('WorldTides: Tide context fetched successfully');
+        }
+      } catch (e) {
+        debugPrint('WorldTides: Error fetching tide context: $e');
+        // Continue without tide context - don't fail the catch save
+      }
+    }
+    
     final condition = EnvironmentalCondition(
       id: existing?.id,
       catchId: catchItem.id!,
@@ -690,23 +711,23 @@ class EnvironmentalConditionsService {
       tideHeight: existing?.tideHeight,
       tideMovement: existing?.tideMovement,
       tideStation: existing?.tideStation,
-      // Preserve existing tide context data
-      tideStationName: existing?.tideStationName,
-      tideStationDistanceKm: existing?.tideStationDistanceKm,
-      referenceTideEventType: existing?.referenceTideEventType,
-      referenceTideEventTime: existing?.referenceTideEventTime,
-      referenceTideEventHeight: existing?.referenceTideEventHeight,
-      referenceTideEventRelation: existing?.referenceTideEventRelation,
-      minutesFromReferenceTideEvent: existing?.minutesFromReferenceTideEvent,
-      previousTideEventType: existing?.previousTideEventType,
-      previousTideEventTime: existing?.previousTideEventTime,
-      previousTideEventHeight: existing?.previousTideEventHeight,
-      nextTideEventType: existing?.nextTideEventType,
-      nextTideEventTime: existing?.nextTideEventTime,
-      nextTideEventHeight: existing?.nextTideEventHeight,
-      tideContextPhrase: existing?.tideContextPhrase,
-      tideContextDataSource: existing?.tideContextDataSource,
-      tideContextConfidence: existing?.tideContextConfidence,
+      // Use official tide context if available, otherwise preserve existing
+      tideStationName: tideContext?['tideStationName'] ?? existing?.tideStationName,
+      tideStationDistanceKm: tideContext?['tideStationDistanceKm'] ?? existing?.tideStationDistanceKm,
+      referenceTideEventType: tideContext?['referenceTideEventType'] ?? existing?.referenceTideEventType,
+      referenceTideEventTime: tideContext?['referenceTideEventTime'] ?? existing?.referenceTideEventTime,
+      referenceTideEventHeight: tideContext?['referenceTideEventHeight'] ?? existing?.referenceTideEventHeight,
+      referenceTideEventRelation: tideContext?['referenceTideEventRelation'] ?? existing?.referenceTideEventRelation,
+      minutesFromReferenceTideEvent: tideContext?['minutesFromReferenceTideEvent'] ?? existing?.minutesFromReferenceTideEvent,
+      previousTideEventType: tideContext?['previousTideEventType'] ?? existing?.previousTideEventType,
+      previousTideEventTime: tideContext?['previousTideEventTime'] ?? existing?.previousTideEventTime,
+      previousTideEventHeight: tideContext?['previousTideEventHeight'] ?? existing?.previousTideEventHeight,
+      nextTideEventType: tideContext?['nextTideEventType'] ?? existing?.nextTideEventType,
+      nextTideEventTime: tideContext?['nextTideEventTime'] ?? existing?.nextTideEventTime,
+      nextTideEventHeight: tideContext?['nextTideEventHeight'] ?? existing?.nextTideEventHeight,
+      tideContextPhrase: tideContext?['tideContextPhrase'] ?? existing?.tideContextPhrase,
+      tideContextDataSource: tideContext?['tideContextDataSource'] ?? existing?.tideContextDataSource,
+      tideContextConfidence: tideContext?['tideContextConfidence'] ?? existing?.tideContextConfidence,
       // Preserve existing automated tide data
       tideDataSource: existing?.tideDataSource,
       tideConfidence: existing?.tideConfidence,

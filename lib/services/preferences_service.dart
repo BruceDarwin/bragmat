@@ -10,6 +10,7 @@ class PreferencesService {
   static const String _fishTypeSelectionModeKey = 'fish_type_selection_mode';
   static const String _defaultFishTypeKey = 'default_fish_type';
   static const String _lastUsedFishTypeKey = 'last_used_fish_type';
+  static const String _worldTidesApiKeyKey = 'worldtides_api_key';
 
   static Future<SharedPreferences> get _prefs async {
     return await SharedPreferences.getInstance();
@@ -72,6 +73,21 @@ class PreferencesService {
     if (lastUsedFishType != null && !existingFishTypes.contains(lastUsedFishType)) {
       final prefs = await _prefs;
       await prefs.remove(_lastUsedFishTypeKey);
+    }
+  }
+
+  // WorldTides API Key
+  static Future<String?> getWorldTidesApiKey() async {
+    final prefs = await _prefs;
+    return prefs.getString(_worldTidesApiKeyKey);
+  }
+
+  static Future<void> setWorldTidesApiKey(String? apiKey) async {
+    final prefs = await _prefs;
+    if (apiKey == null || apiKey.isEmpty) {
+      await prefs.remove(_worldTidesApiKeyKey);
+    } else {
+      await prefs.setString(_worldTidesApiKeyKey, apiKey);
     }
   }
 }

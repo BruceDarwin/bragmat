@@ -61,13 +61,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   final _tideHeightController = TextEditingController();
   String? _selectedTideMovement;
   final _tideStationController = TextEditingController();
-  // Tide context fields
-  bool _showTideContext = false;
-  final _tideStationNameController = TextEditingController();
-  String? _selectedReferenceTideEventType; // High / Low
-  DateTime? _referenceTideEventTime;
-  final _referenceTideEventHeightController = TextEditingController();
-  String? _selectedReferenceTideEventRelation; // Before / After
   String? _selectedWeatherCondition;
   final _temperatureController = TextEditingController();
   final _humidityController = TextEditingController();
@@ -210,8 +203,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _longitudeController.dispose();
     _tideHeightController.dispose();
     _tideStationController.dispose();
-    _tideStationNameController.dispose();
-    _referenceTideEventHeightController.dispose();
     _temperatureController.dispose();
     _humidityController.dispose();
     _cloudCoverController.dispose();
@@ -265,33 +256,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     return _mediaItems.length;
   }
 
-  String _generateTideContextPhrase() {
-    if (_tideStationNameController.text.isEmpty ||
-        _selectedReferenceTideEventType == null ||
-        _referenceTideEventTime == null ||
-        _referenceTideEventHeightController.text.isEmpty ||
-        _selectedReferenceTideEventRelation == null) {
-      return '';
-    }
-
-    final stationName = _tideStationNameController.text.trim();
-    final eventType = _selectedReferenceTideEventType!;
-    final eventTime = _referenceTideEventTime!;
-    final eventHeight = double.tryParse(_referenceTideEventHeightController.text) ?? 0.0;
-    final relation = _selectedReferenceTideEventRelation!;
-    final catchTime = _dateCaught ?? DateTime.now();
-
-    final minutesFromEvent = TideContextHelper.calculateMinutesBetween(catchTime, eventTime);
-
-    return TideContextHelper.generatePhrase(
-      stationName: stationName,
-      eventType: eventType,
-      eventTime: eventTime,
-      eventHeight: eventHeight,
-      relation: relation,
-      minutesFromEvent: minutesFromEvent,
-    );
-  }
 
   Future<bool> _onWillPop() async {
     if (!_hasChanges()) {
@@ -497,14 +461,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         // Tide movement: validate against custom dropdown items
         _selectedTideMovement = _safeDropdownValueWithNull(condition.tideMovement, [null, 'Run-in', 'Run-out', 'Slack'], 'tideMovement', catchId: catchId);
         _tideStationController.text = condition.tideStation ?? '';
-        // Tide context fields
-        _tideStationNameController.text = condition.tideStationName ?? '';
-        _selectedReferenceTideEventType = _safeDropdownValue(condition.referenceTideEventType, ['High', 'Low'], 'referenceTideEventType', catchId: catchId);
-        _referenceTideEventTime = condition.referenceTideEventTime;
-        _referenceTideEventHeightController.text = condition.referenceTideEventHeight?.toString() ?? '';
-        _selectedReferenceTideEventRelation = _safeDropdownValue(condition.referenceTideEventRelation, ['Before', 'After'], 'referenceTideEventRelation', catchId: catchId);
-        // Show tide context if data exists
-        _showTideContext = condition.tideContextPhrase != null && condition.tideContextPhrase!.isNotEmpty;
         _selectedWeatherCondition = _safeDropdownValue(condition.weatherCondition, EnvironmentalCondition.weatherConditions, 'weatherCondition', catchId: catchId);
         _temperatureController.text = condition.temperature?.toString() ?? '';
         _humidityController.text = condition.humidity?.toString() ?? '';
@@ -928,11 +884,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         _tideHeightController.text.isNotEmpty ||
         _selectedTideMovement != null ||
         _tideStationController.text.isNotEmpty ||
-        _tideStationNameController.text.isNotEmpty ||
-        _selectedReferenceTideEventType != null ||
-        _referenceTideEventTime != null ||
-        _referenceTideEventHeightController.text.isNotEmpty ||
-        _selectedReferenceTideEventRelation != null ||
         _selectedWeatherCondition != null ||
         _temperatureController.text.isNotEmpty ||
         _humidityController.text.isNotEmpty ||
@@ -956,20 +907,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     final latitude = existing?.latitude ?? double.tryParse(_latitudeController.text);
     final longitude = existing?.longitude ?? double.tryParse(_longitudeController.text);
     
-    // Generate tide context phrase if all fields are present
-    String? tideContextPhrase;
-    int? minutesFromReferenceTideEvent;
-    if (_tideStationNameController.text.isNotEmpty &&
-        _selectedReferenceTideEventType != null &&
-        _referenceTideEventTime != null &&
-        _referenceTideEventHeightController.text.isNotEmpty &&
-        _selectedReferenceTideEventRelation != null) {
-      tideContextPhrase = _generateTideContextPhrase();
-      minutesFromReferenceTideEvent = TideContextHelper.calculateMinutesBetween(
-        observationDateTime,
-        _referenceTideEventTime!,
-      );
-    }
     
     await envService.saveEnvironmentalConditionForCatch(
       catchId,
@@ -982,16 +919,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       tideHeight: double.tryParse(_tideHeightController.text),
       tideMovement: _selectedTideMovement,
       tideStation: _tideStationController.text.trim().isEmpty ? null : _tideStationController.text.trim(),
-      // Tide context fields
-      tideStationName: _tideStationNameController.text.trim().isEmpty ? null : _tideStationNameController.text.trim(),
-      referenceTideEventType: _selectedReferenceTideEventType,
-      referenceTideEventTime: _referenceTideEventTime,
-      referenceTideEventHeight: double.tryParse(_referenceTideEventHeightController.text),
-      referenceTideEventRelation: _selectedReferenceTideEventRelation,
-      minutesFromReferenceTideEvent: minutesFromReferenceTideEvent,
-      tideContextPhrase: tideContextPhrase,
-      tideContextDataSource: 'Manual',
-      tideContextConfidence: 'High',
       weatherCondition: (_selectedWeatherCondition == null || _selectedWeatherCondition == 'Unknown') ? null : _selectedWeatherCondition,
       temperature: double.tryParse(_temperatureController.text),
       humidity: double.tryParse(_humidityController.text),
@@ -1840,208 +1767,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                           ),
                         ],
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  // Manual Tide Context - discoverable button
-                  Container(
-                    decoration: BoxDecoration(
-                      border: Border.all(color: Colors.blue.shade200),
-                      borderRadius: BorderRadius.circular(8),
-                      color: _showTideContext ? Colors.blue.shade50 : Colors.transparent,
-                    ),
-                    child: Column(
-                      children: [
-                        InkWell(
-                          onTap: () {
-                            setState(() {
-                              _showTideContext = !_showTideContext;
-                            });
-                          },
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Row(
-                              children: [
-                                Icon(
-                                  Icons.waves,
-                                  color: Colors.blue.shade700,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        'Record tide timing',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                          color: Colors.blue.shade700,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 2),
-                                      Text(
-                                        'Optional: record how this catch relates to a high or low tide',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          color: Colors.grey[600],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                Icon(
-                                  _showTideContext ? Icons.expand_less : Icons.expand_more,
-                                  color: Colors.blue.shade700,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        if (_showTideContext) ...[
-                          const Divider(height: 1),
-                          Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                TextField(
-                                  controller: _tideStationNameController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Tide Station Name',
-                                    hintText: 'e.g., Darwin',
-                                  ),
-                                  onChanged: (_) => _onFieldChanged(),
-                                ),
-                                const SizedBox(height: 12),
-                                (() {
-                                  const items = [
-                                    DropdownMenuItem(value: 'High', child: Text('High Tide')),
-                                    DropdownMenuItem(value: 'Low', child: Text('Low Tide')),
-                                  ];
-                                  return DropdownButtonFormField<String>(
-                                    value: _selectedReferenceTideEventType,
-                                    decoration: const InputDecoration(labelText: 'Reference Event'),
-                                    items: items,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _selectedReferenceTideEventType = value;
-                                        _onFieldChanged();
-                                      });
-                                    },
-                                  );
-                                })(),
-                                const SizedBox(height: 12),
-                                InkWell(
-                                  onTap: () async {
-                                    final pickedDate = await showDatePicker(
-                                      context: context,
-                                      initialDate: _referenceTideEventTime ?? DateTime.now(),
-                                      firstDate: DateTime(2000),
-                                      lastDate: DateTime(2100),
-                                    );
-                                    if (pickedDate != null && mounted) {
-                                      final pickedTime = await showTimePicker(
-                                        context: context,
-                                        initialTime: TimeOfDay.fromDateTime(
-                                          _referenceTideEventTime ?? DateTime.now(),
-                                        ),
-                                      );
-                                      if (pickedTime != null) {
-                                        setState(() {
-                                          _referenceTideEventTime = DateTime(
-                                            pickedDate.year,
-                                            pickedDate.month,
-                                            pickedDate.day,
-                                            pickedTime.hour,
-                                            pickedTime.minute,
-                                          );
-                                          _onFieldChanged();
-                                        });
-                                      }
-                                    }
-                                  },
-                                  child: InputDecorator(
-                                    decoration: const InputDecoration(
-                                      labelText: 'Reference Event Time',
-                                    ),
-                                    child: Text(
-                                      _referenceTideEventTime != null
-                                          ? '${_referenceTideEventTime!.day}/${_referenceTideEventTime!.month}/${_referenceTideEventTime!.year} ${_referenceTideEventTime!.hour}:${_referenceTideEventTime!.minute.toString().padLeft(2, '0')}'
-                                          : 'Select date and time',
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 12),
-                                TextField(
-                                  controller: _referenceTideEventHeightController,
-                                  decoration: const InputDecoration(
-                                    labelText: 'Reference Event Height (m)',
-                                    hintText: 'e.g., 6.37',
-                                  ),
-                                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                  onChanged: (_) => _onFieldChanged(),
-                                ),
-                                const SizedBox(height: 12),
-                                (() {
-                                  const items = [
-                                    DropdownMenuItem(value: 'Before', child: Text('Before')),
-                                    DropdownMenuItem(value: 'After', child: Text('After')),
-                                  ];
-                                  return DropdownButtonFormField<String>(
-                                    value: _selectedReferenceTideEventRelation,
-                                    decoration: const InputDecoration(labelText: 'Relation'),
-                                    items: items,
-                                    onChanged: (value) {
-                                      setState(() {
-                                        _selectedReferenceTideEventRelation = value;
-                                        _onFieldChanged();
-                                      });
-                                    },
-                                  );
-                                })(),
-                                const SizedBox(height: 16),
-                                // Phrase preview
-                                if (_tideStationNameController.text.isNotEmpty &&
-                                    _selectedReferenceTideEventType != null &&
-                                    _referenceTideEventTime != null &&
-                                    _referenceTideEventHeightController.text.isNotEmpty &&
-                                    _selectedReferenceTideEventRelation != null)
-                                  Container(
-                                    padding: const EdgeInsets.all(12),
-                                    decoration: BoxDecoration(
-                                      color: Colors.blue.shade100,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(color: Colors.blue.shade300),
-                                    ),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        const Text(
-                                          'Preview:',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 12,
-                                            color: Colors.grey,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          _generateTideContextPhrase(),
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w600,
-                                            color: Colors.blue,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ],
                     ),
                   ),
                   const SizedBox(height: 16),
