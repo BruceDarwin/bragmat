@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
@@ -469,6 +470,9 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
             ),
             const SizedBox(height: 16),
 
+            // Tide Context Section
+            ..._buildTideContextWidgets(),
+
             // Date & Time Section
             if (_catchItem.dateCaught != null)
               BragmatSectionCard(
@@ -607,6 +611,215 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
     );
   }
 
+  List<Widget> _buildTideContextWidgets() {
+    final tideContextCard = _buildTideContextCard();
+    if (tideContextCard == null) return [];
+    return [tideContextCard, const SizedBox(height: 16)];
+  }
+
+  Widget? _buildTideContextCard() {
+    if (_environmentalCondition == null) return null;
+    
+    final condition = _environmentalCondition!;
+    final hasOfficialTideContext = condition.tideContextPhrase != null &&
+        condition.tideContextPhrase!.isNotEmpty &&
+        condition.tideContextDataSource == 'WorldTides';
+    
+    final hasManualTideContext = condition.tideContextPhrase != null &&
+        condition.tideContextPhrase!.isNotEmpty &&
+        condition.tideContextDataSource == 'Manual';
+    
+    final hasManualTideData = condition.tideStage != null ||
+        condition.tideStrength != null ||
+        condition.tideMovement != null ||
+        condition.tideHeight != null ||
+        condition.tideNotes != null;
+    
+    // If no tide data at all, return null
+    if (!hasOfficialTideContext && !hasManualTideContext && !hasManualTideData) {
+      return null;
+    }
+    
+    final timeFormatter = DateFormat('h:mm a');
+    final children = <Widget>[];
+    
+    // Show official tide context if available
+    if (hasOfficialTideContext) {
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.waves, size: 18, color: Colors.blue),
+                  const SizedBox(width: 8),
+                  Text(
+                    'WorldTides',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.blue.shade700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                condition.tideContextPhrase!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Show previous tide event if available
+              if (condition.previousTideEventType != null && condition.previousTideEventTime != null)
+                BragmatDataRow(
+                  icon: Icons.arrow_back,
+                  label: 'Previous',
+                  value: '${condition.previousTideEventType} ${condition.previousTideEventHeight != null ? '${condition.previousTideEventHeight!.toStringAsFixed(2)} m' : ''} at ${timeFormatter.format(condition.previousTideEventTime!)}',
+                ),
+              // Show next tide event if available
+              if (condition.nextTideEventType != null && condition.nextTideEventTime != null)
+                BragmatDataRow(
+                  icon: Icons.arrow_forward,
+                  label: 'Next',
+                  value: '${condition.nextTideEventType} ${condition.nextTideEventHeight != null ? '${condition.nextTideEventHeight!.toStringAsFixed(2)} m' : ''} at ${timeFormatter.format(condition.nextTideEventTime!)}',
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // Show manual tide context if entered (separate from WorldTides)
+    if (hasManualTideContext) {
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.edit_note, size: 18, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Manual Tide Observation',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange.shade700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                condition.tideContextPhrase!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Show previous tide event if available
+              if (condition.previousTideEventType != null && condition.previousTideEventTime != null)
+                BragmatDataRow(
+                  icon: Icons.arrow_back,
+                  label: 'Previous',
+                  value: '${condition.previousTideEventType} ${condition.previousTideEventHeight != null ? '${condition.previousTideEventHeight!.toStringAsFixed(2)} m' : ''} at ${timeFormatter.format(condition.previousTideEventTime!)}',
+                ),
+              // Show next tide event if available
+              if (condition.nextTideEventType != null && condition.nextTideEventTime != null)
+                BragmatDataRow(
+                  icon: Icons.arrow_forward,
+                  label: 'Next',
+                  value: '${condition.nextTideEventType} ${condition.nextTideEventHeight != null ? '${condition.nextTideEventHeight!.toStringAsFixed(2)} m' : ''} at ${timeFormatter.format(condition.nextTideEventTime!)}',
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    // Show manual tide observations (legacy fields) if entered
+    if (hasManualTideData) {
+      children.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.edit_note, size: 18, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Manual Tide Observation',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange.shade700,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              
+              // Tide stage
+              if (condition.tideStage != null && condition.tideStage != 'Unknown')
+                BragmatDataRow(
+                  icon: Icons.straighten,
+                  label: 'Stage',
+                  value: condition.tideStage!,
+                ),
+              
+              // Tide strength
+              if (condition.tideStrength != null)
+                BragmatDataRow(
+                  icon: Icons.speed,
+                  label: 'Strength',
+                  value: condition.tideStrength!,
+                ),
+              
+              // Tide movement
+              if (condition.tideMovement != null && condition.tideMovement != 'Unknown')
+                BragmatDataRow(
+                  icon: Icons.swap_horiz,
+                  label: 'Movement',
+                  value: condition.tideMovement!,
+                ),
+              
+              // Tide height
+              if (condition.tideHeight != null)
+                BragmatDataRow(
+                  icon: Icons.height,
+                  label: 'Height',
+                  value: '${condition.tideHeight!.toStringAsFixed(2)} m',
+                ),
+              
+              // Tide notes
+              if (condition.tideNotes != null && condition.tideNotes!.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    condition.tideNotes!,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    return BragmatSectionCard(
+      icon: Icons.waves,
+      title: 'Tide Context',
+      children: children,
+    );
+  }
+
   List<Widget> _buildEnvironmentalDetails() {
     final condition = _environmentalCondition!;
     final details = <Widget>[];
@@ -690,423 +903,6 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
           value: windText,
         ));
       }
-    }
-
-    // Tide - display manual observations and official context separately
-    final hasManualTideData = condition.tideStage != null ||
-        condition.tideStrength != null ||
-        condition.tideMovement != null ||
-        condition.tideHeight != null ||
-        condition.tideNotes != null;
-    
-    final hasOfficialTideContext = condition.tideContextPhrase != null &&
-        condition.tideContextPhrase!.isNotEmpty &&
-        condition.tideContextDataSource == 'WorldTides';
-    
-    // Show official tide context if available
-    if (hasOfficialTideContext) {
-      final timeFormatter = DateFormat('h:mm a');
-      
-      details.add(
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.blue.shade50,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.blue.shade200),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.waves, size: 20, color: Colors.blue),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Official Tide Context',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade900,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    'Source: ${condition.tideContextDataSource ?? 'WorldTides'}',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colors.blue.shade700,
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                condition.tideContextPhrase!,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.blue.shade900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              // Show previous tide event if available
-              if (condition.previousTideEventType != null && condition.previousTideEventTime != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Previous: ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.blue.shade700,
-                        ),
-                      ),
-                      Text(
-                        '${condition.previousTideEventType} ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blue.shade900,
-                        ),
-                      ),
-                      if (condition.previousTideEventHeight != null)
-                        Text(
-                          '${condition.previousTideEventHeight!.toStringAsFixed(2)} m ',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.blue.shade800,
-                          ),
-                        ),
-                      Text(
-                        'at ${timeFormatter.format(condition.previousTideEventTime!)}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.blue.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              // Show next tide event if available
-              if (condition.nextTideEventType != null && condition.nextTideEventTime != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Next: ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.blue.shade700,
-                        ),
-                      ),
-                      Text(
-                        '${condition.nextTideEventType} ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.blue.shade900,
-                        ),
-                      ),
-                      if (condition.nextTideEventHeight != null)
-                        Text(
-                          '${condition.nextTideEventHeight!.toStringAsFixed(2)} m ',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.blue.shade800,
-                          ),
-                        ),
-                      Text(
-                        'at ${timeFormatter.format(condition.nextTideEventTime!)}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.blue.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-      details.add(const SizedBox(height: 12));
-    } else {
-      // Show "Tide context not available" when official context is missing
-      details.add(
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade300),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.info_outline, size: 20, color: Colors.grey),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Tide context not available',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: Colors.grey.shade700,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-      details.add(const SizedBox(height: 12));
-    }
-    
-    // Show manual tide context if entered (separate from WorldTides)
-    final hasManualTideContext = condition.tideContextPhrase != null &&
-        condition.tideContextPhrase!.isNotEmpty &&
-        condition.tideContextDataSource == 'Manual';
-    
-    if (hasManualTideContext) {
-      final timeFormatter = DateFormat('h:mm a');
-      
-      details.add(
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.orange.shade50,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.orange.shade200),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.edit_note, size: 20, color: Colors.orange),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Manual Tide Context',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade900,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    'Source: Manual',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      color: Colors.orange.shade700,
-                      fontSize: 10,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                condition.tideContextPhrase!,
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.orange.shade900,
-                ),
-              ),
-              const SizedBox(height: 8),
-              // Show previous tide event if available
-              if (condition.previousTideEventType != null && condition.previousTideEventTime != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Previous: ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.orange.shade700,
-                        ),
-                      ),
-                      Text(
-                        '${condition.previousTideEventType} ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.orange.shade900,
-                        ),
-                      ),
-                      if (condition.previousTideEventHeight != null)
-                        Text(
-                          '${condition.previousTideEventHeight!.toStringAsFixed(2)} m ',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.orange.shade800,
-                          ),
-                        ),
-                      Text(
-                        'at ${timeFormatter.format(condition.previousTideEventTime!)}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.orange.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              // Show next tide event if available
-              if (condition.nextTideEventType != null && condition.nextTideEventTime != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      Text(
-                        'Next: ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.orange.shade700,
-                        ),
-                      ),
-                      Text(
-                        '${condition.nextTideEventType} ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: Colors.orange.shade900,
-                        ),
-                      ),
-                      if (condition.nextTideEventHeight != null)
-                        Text(
-                          '${condition.nextTideEventHeight!.toStringAsFixed(2)} m ',
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Colors.orange.shade800,
-                          ),
-                        ),
-                      Text(
-                        'at ${timeFormatter.format(condition.nextTideEventTime!)}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: Colors.orange.shade800,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-      details.add(const SizedBox(height: 12));
-    }
-    
-    // Show manual tide observations (legacy fields) if entered
-    if (hasManualTideData) {
-      details.add(
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Colors.orange.shade50,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.orange.shade200),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.edit_note, size: 20, color: Colors.orange),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Manual Tide Observation',
-                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade900,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              
-              // Tide stage
-              if (condition.tideStage != null && condition.tideStage != 'Unknown')
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 28),
-                      Text(
-                        'Stage: ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        condition.tideStage!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              
-              // Tide strength
-              if (condition.tideStrength != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 28),
-                      Text(
-                        'Strength: ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        condition.tideStrength!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              
-              // Tide movement
-              if (condition.tideMovement != null && condition.tideMovement != 'Unknown')
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 28),
-                      Text(
-                        'Movement: ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        condition.tideMovement!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              
-              // Tide height
-              if (condition.tideHeight != null)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 4),
-                  child: Row(
-                    children: [
-                      const SizedBox(width: 28),
-                      Text(
-                        'Height: ',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                      Text(
-                        '${condition.tideHeight!.toStringAsFixed(2)} m',
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                    ],
-                  ),
-                ),
-              
-              // Tide notes
-              if (condition.tideNotes != null && condition.tideNotes!.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 8, left: 28),
-                  child: Text(
-                    condition.tideNotes!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ),
-      );
-      details.add(const SizedBox(height: 12));
     }
 
     // Water conditions

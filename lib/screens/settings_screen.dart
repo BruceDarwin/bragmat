@@ -648,10 +648,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       where: 'latitude IS NOT NULL AND longitude IS NOT NULL',
     );
     
+    final envService = EnvironmentalConditionsService();
     int catchesNeedingWorldTides = 0;
     for (final catchMap in catches) {
       final catchId = catchMap['id'] as int;
-      final existing = await DatabaseHelper.instance.getEnvironmentalConditionForCatch(catchId);
+      final existing = await envService.getEnvironmentalConditionForCatch(catchId);
       // Count if no existing WorldTides context
       if (existing == null || existing.tideContextDataSource != 'WorldTides' || existing.tideContextPhrase == null) {
         catchesNeedingWorldTides++;
