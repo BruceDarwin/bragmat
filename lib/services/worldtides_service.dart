@@ -1,6 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../services/preferences_service.dart';
+import '../services/secure_storage_service.dart';
 import '../models/tide_station.dart';
 import '../models/tide_event.dart';
 import '../helpers/tide_context_helper.dart';
@@ -28,7 +28,7 @@ class WorldTidesService {
   /// 
   /// Returns true if API key is configured
   Future<bool> isAvailable() async {
-    final apiKey = await PreferencesService.getWorldTidesApiKey();
+    final apiKey = await SecureStorageService.getWorldTidesApiKey();
     return apiKey != null && apiKey.isNotEmpty;
   }
 
@@ -44,7 +44,7 @@ class WorldTidesService {
     double longitude,
     DateTime observationTime,
   ) async {
-    final apiKey = await PreferencesService.getWorldTidesApiKey();
+    final apiKey = await SecureStorageService.getWorldTidesApiKey();
     
     if (apiKey == null || apiKey.isEmpty) {
       return null;

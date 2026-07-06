@@ -16,6 +16,7 @@ import '../services/backup_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
 import '../services/worldtides_service.dart';
+import '../services/secure_storage_service.dart';
 import '../widgets/bragmat_section_card.dart';
 import 'favourite_spots_screen.dart';
 import 'achievements_screen.dart';
@@ -36,6 +37,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   FishTypeSelectionMode _fishTypeSelectionMode = FishTypeSelectionMode.noDefault;
   String? _defaultFishType;
   String? _worldTidesApiKey;
+  String? _apiTestStatus;
 
   @override
   void initState() {
@@ -47,6 +49,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadBaits();
     _loadFishTypePreferences();
     _loadWorldTidesApiKey();
+    _migrateApiKey();
   }
 
   Future<void> _loadStatistics() async {
@@ -118,10 +121,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadWorldTidesApiKey() async {
-    final apiKey = await PreferencesService.getWorldTidesApiKey();
+    final apiKey = await SecureStorageService.getWorldTidesApiKey();
     setState(() {
       _worldTidesApiKey = apiKey;
     });
+  }
+
+  Future<void> _migrateApiKey() async {
+    await SecureStorageService.migrateApiKey();
   }
 
   Future<void> _setFishTypeSelectionMode(FishTypeSelectionMode mode) async {
@@ -139,9 +146,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _setWorldTidesApiKey(String? apiKey) async {
-    await PreferencesService.setWorldTidesApiKey(apiKey);
+    await SecureStorageService.setWorldTidesApiKey(apiKey);
     setState(() {
       _worldTidesApiKey = apiKey;
+    });
+  }
+
+  Future<void> _clearWorldTidesApiKey() async {
+    await SecureStorageService.deleteWorldTidesApiKey();
+    setState(() {
+      _worldTidesApiKey = null;
     });
   }
 
@@ -161,7 +175,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _testWorldTidesApi() async {
-    final apiKey = await PreferencesService.getWorldTidesApiKey();
+    final apiKey = await SecureStorageService.getWorldTidesApiKey();
     
     if (apiKey == null || apiKey.isEmpty) {
       _showWorldTidesTestResult(
@@ -467,6 +481,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     required String message,
     String? details,
   }) {
+    setState(() {
+      _apiTestStatus = success ? 'success' : 'failed';
+    });
+    
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -503,6 +521,33 @@ class _SettingsScreenState extends State<SettingsScreen> {
           TextButton(
             onPressed: () => Navigator.pop(context),
             child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showClearApiKeyDialog() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear API Key'),
+        content: const Text('Are you sure you want to remove the WorldTides API key? This will disable official tide context data.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _clearWorldTidesApiKey();
+              setState(() {
+                _apiTestStatus = null;
+              });
+            },
+            child: const Text('Clear'),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
           ),
         ],
       ),
@@ -2769,14 +2814,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.key,
             title: 'API Keys',
             children: [
+              // API Key Status
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: _worldTidesApiKey != null && _worldTidesApiKey!.isNotEmpty
+                      ? Colors.green.shade50
+                      : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(
+                    color: _worldTidesApiKey != null && _worldTidesApiKey!.isNotEmpty
+                        ? Colors.green.shade200
+                        : Colors.grey.shade300,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _worldTidesApiKey != null && _worldTidesApiKey!.isNotEmpty
+                          ? Icons.check_circle
+                          : Icons.info_outline,
+                      size: 20,
+                      color: _worldTidesApiKey != null && _worldTidesApiKey!.isNotEmpty
+                          ? Colors.green.shade700
+                          : Colors.grey.shade600,
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _worldTidesApiKey != null && _worldTidesApiKey!.isNotEmpty
+                            ? 'API key saved'
+                            : 'API key missing',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: _worldTidesApiKey != null && _worldTidesApiKey!.isNotEmpty
+                              ? Colors.green.shade900
+                              : Colors.grey.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              // API Key Input
               TextField(
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'WorldTides API Key',
                   hintText: 'Enter your WorldTides API key',
-                  border: OutlineInputBorder(),
+                  border: const OutlineInputBorder(),
                   helperText: 'Required for official tide context data',
+                  suffixIcon: _worldTidesApiKey != null && _worldTidesApiKey!.isNotEmpty
+                      ? IconButton(
+                          icon: const Icon(Icons.visibility_off),
+                          onPressed: () {
+                            // Clear the text field to show masked version
+                            setState(() {});
+                          },
+                          tooltip: 'Hide API key',
+                        )
+                      : null,
                 ),
-                controller: TextEditingController(text: _worldTidesApiKey ?? ''),
+                controller: TextEditingController(
+                  text: _worldTidesApiKey != null && _worldTidesApiKey!.isNotEmpty
+                      ? SecureStorageService.maskApiKey(_worldTidesApiKey)
+                      : '',
+                ),
                 onChanged: (value) {
                   _setWorldTidesApiKey(value.trim().isEmpty ? null : value.trim());
                 },
@@ -2789,14 +2892,77 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              ElevatedButton.icon(
-                onPressed: _testWorldTidesApi,
-                icon: const Icon(Icons.science),
-                label: const Text('Test WorldTides API'),
-                style: ElevatedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(40),
-                ),
+              // Action Buttons
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: _testWorldTidesApi,
+                      icon: const Icon(Icons.science),
+                      label: const Text('Test API'),
+                      style: ElevatedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(40),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  if (_worldTidesApiKey != null && _worldTidesApiKey!.isNotEmpty)
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () => _showClearApiKeyDialog(),
+                        icon: const Icon(Icons.delete_outline),
+                        label: const Text('Clear Key'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(40),
+                        ),
+                      ),
+                    ),
+                ],
               ),
+              // Test Status
+              if (_apiTestStatus != null) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: _apiTestStatus == 'success'
+                        ? Colors.green.shade50
+                        : Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: _apiTestStatus == 'success'
+                          ? Colors.green.shade200
+                          : Colors.red.shade200,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        _apiTestStatus == 'success'
+                            ? Icons.check_circle
+                            : Icons.error,
+                        size: 16,
+                        color: _apiTestStatus == 'success'
+                            ? Colors.green.shade700
+                            : Colors.red.shade700,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          _apiTestStatus == 'success'
+                              ? 'API test successful'
+                              : 'API test failed',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: _apiTestStatus == 'success'
+                                ? Colors.green.shade900
+                                : Colors.red.shade900,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 16),

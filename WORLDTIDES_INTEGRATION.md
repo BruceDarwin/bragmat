@@ -19,7 +19,7 @@ WorldTides API v3 integration provides official high/low tide event data for cat
 
 ### API Endpoint
 - Base URL: `https://www.worldtides.info/api/v3`
-- Requires API key (stored in SharedPreferences)
+- Requires API key (stored in secure storage using flutter_secure_storage)
 
 ### Request Parameters
 ```
@@ -250,9 +250,13 @@ WorldTides API is called only when:
 5. Save configuration
 
 ### API Key Storage
-- Stored in SharedPreferences
-- Encrypted on supported platforms
+- Stored in secure storage using flutter_secure_storage
+- Uses Android EncryptedSharedPreferences for secure key-value storage
+- Never stored in SQLite database
 - Never logged or displayed in debug output
+- Masked in Settings UI (shows first 4 and last 4 characters only)
+- Automatic migration from SharedPreferences to secure storage on app startup
+- Clear API Key functionality available in Settings
 
 ## Testing
 
