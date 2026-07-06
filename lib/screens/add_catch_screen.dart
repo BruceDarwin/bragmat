@@ -28,7 +28,7 @@ class AddCatchScreen extends StatefulWidget {
   State<AddCatchScreen> createState() => _AddCatchScreenState();
 }
 
-class _AddCatchScreenState extends State<AddCatchScreen> {
+class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObserver {
   final _fishTypeController = TextEditingController();
   final _lengthController = TextEditingController();
   final _notesController = TextEditingController();
@@ -81,6 +81,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   @override
   void initState() {
     super.initState();
+    
+    // Add observer for app lifecycle changes (camera resume handling)
+    WidgetsBinding.instance.addObserver(this);
     
     // Load all initial data before building the form
     _loadInitialData();
@@ -181,6 +184,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
 
   @override
   void dispose() {
+    // Remove observer when widget is disposed
+    WidgetsBinding.instance.removeObserver(this);
+    
     _fishTypeController.removeListener(_onFieldChanged);
     _lengthController.removeListener(_onFieldChanged);
     _notesController.removeListener(_onFieldChanged);
@@ -210,6 +216,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     _barometricPressureController.dispose();
     _rainfallController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // When app resumes from camera, check for lost data
+    if (state == AppLifecycleState.resumed) {
+      _retrieveLostData();
+    }
   }
 
   void _onFieldChanged() {
@@ -306,16 +320,32 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   Future<void> _retrieveLostData() async {
     final picker = ImagePicker();
     final lostData = await picker.retrieveLostData();
-    if (lostData != null) {
-      if (!lostData.isEmpty && lostData.file != null) {
-        final file = File(lostData.file!.path);
+    
+    if (lostData == null || lostData.isEmpty) {
+      return;
+    }
+    
+    bool recovered = false;
+    
+    if (lostData.file != null) {
+      final file = File(lostData.file!.path);
+      await _processPickedFile(file, 'lost_data');
+      recovered = true;
+    } else if (lostData.files != null && lostData.files!.isNotEmpty) {
+      for (final lostFile in lostData.files!) {
+        final file = File(lostFile.path);
         await _processPickedFile(file, 'lost_data');
-      } else if (!lostData.isEmpty && lostData.files != null && lostData.files!.isNotEmpty) {
-        for (final lostFile in lostData.files!) {
-          final file = File(lostFile.path);
-          await _processPickedFile(file, 'lost_data');
-        }
+        recovered = true;
       }
+    }
+    
+    if (recovered && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Recovered photo from previous camera session'),
+          duration: Duration(seconds: 3),
+        ),
+      );
     }
   }
 
@@ -637,8 +667,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: ImageSource.camera,
-        imageQuality: 85, // Compress to reduce memory pressure
-        maxWidth: 1920, // Limit resolution to reduce memory
+        imageQuality: 85,
+        maxWidth: 1920,
         maxHeight: 1080,
       );
       
@@ -646,8 +676,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         final file = File(pickedFile.path);
         await _processPickedFile(file, 'camera');
       }
-    } catch (e, stackTrace) {
-      debugPrint('ERROR in _takePhoto: $e');
+    } catch (e) {
+      debugPrint('Camera: Error taking photo: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error taking photo: $e')),
@@ -686,7 +716,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
   Future<void> _processPickedFile(File file, String source) async {
     final originalPath = file.path;
     
-    // Extract GPS data from file immediately
+    // Extract GPS data from file
     final gpsData = await _extractGpsData(originalPath);
     final latitude = gpsData['latitude'];
     final longitude = gpsData['longitude'];
@@ -717,13 +747,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
               duration: Duration(seconds: 2),
             ),
           );
-        } else {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('No GPS coordinates found in photo'),
-              duration: Duration(seconds: 2),
-            ),
-          );
         }
       });
     }
@@ -750,7 +773,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
         }
       }
     } catch (e) {
-      debugPrint('Error reading EXIF data: $e');
+      debugPrint('EXIF: Error reading GPS data: $e');
     }
     
     return {'latitude': latitude, 'longitude': longitude};
@@ -967,22 +990,35 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           lureColour: _lureColourController.text.trim().isEmpty ? null : _lureColourController.text.trim(),
           lurePhotoPath: _lurePhotoPath,
         );
+        debugPrint('SaveCatch: Updating existing catch with ID: ${widget.catchToEdit!.id}');
         await DatabaseHelper.instance.updateCatch(updatedCatch);
+        debugPrint('SaveCatch: Catch updated successfully');
         savedCatch = updatedCatch;
         
         // Delete existing media and re-add
+        debugPrint('SaveCatch: Deleting existing media for catch ${widget.catchToEdit!.id}');
         await DatabaseHelper.instance.deleteAllMediaForCatch(widget.catchToEdit!.id!);
         for (final media in _mediaItems) {
           final mediaToInsert = media.copyWith(catchId: widget.catchToEdit!.id);
           await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
         }
+        debugPrint('SaveCatch: Media items re-saved');
         
         // Save manual environmental conditions from form
+        debugPrint('SaveCatch: Saving manual environmental conditions');
         await _saveManualEnvironmentalConditions(savedCatch!.id!);
+        debugPrint('SaveCatch: Manual environmental conditions saved');
         
         // Upsert calculated conditions (moon/sun) from catch coordinates
+        // Do NOT await WorldTides - make it non-blocking
+        debugPrint('SaveCatch: Starting upsert of calculated conditions (non-blocking)');
         final envService = EnvironmentalConditionsService();
-        await envService.upsertCalculatedConditionsForCatch(savedCatch!);
+        envService.upsertCalculatedConditionsForCatch(savedCatch!).then((_) {
+          debugPrint('SaveCatch: Calculated conditions upsert complete (async)');
+        }).catchError((e) {
+          debugPrint('SaveCatch: Calculated conditions upsert failed (async): $e');
+        });
+        debugPrint('SaveCatch: Calculated conditions upsert started (non-blocking)');
       } else {
         final newCatch = Catch(
           fishType: fishType,
@@ -1002,21 +1038,34 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
           lureColour: _lureColourController.text.trim().isEmpty ? null : _lureColourController.text.trim(),
           lurePhotoPath: _lurePhotoPath,
         );
+        debugPrint('SaveCatch: Inserting new catch');
         final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
+        debugPrint('SaveCatch: Catch inserted with ID: $catchId');
         savedCatch = newCatch.copyWith(id: catchId);
         
         // Save media items with the new catch ID
+        debugPrint('SaveCatch: Saving ${_mediaItems.length} media items');
         for (final media in _mediaItems) {
           final mediaToInsert = media.copyWith(catchId: catchId);
           await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
         }
+        debugPrint('SaveCatch: Media items saved');
         
         // Save manual environmental conditions from form
+        debugPrint('SaveCatch: Saving manual environmental conditions');
         await _saveManualEnvironmentalConditions(catchId);
+        debugPrint('SaveCatch: Manual environmental conditions saved');
         
         // Upsert calculated conditions (moon/sun) from catch coordinates
+        // Do NOT await WorldTides - make it non-blocking
+        debugPrint('SaveCatch: Starting upsert of calculated conditions (non-blocking)');
         final envService = EnvironmentalConditionsService();
-        await envService.upsertCalculatedConditionsForCatch(savedCatch!);
+        envService.upsertCalculatedConditionsForCatch(savedCatch!).then((_) {
+          debugPrint('SaveCatch: Calculated conditions upsert complete (async)');
+        }).catchError((e) {
+          debugPrint('SaveCatch: Calculated conditions upsert failed (async): $e');
+        });
+        debugPrint('SaveCatch: Calculated conditions upsert started (non-blocking)');
       }
       
       // Remember last used fish type
@@ -1037,7 +1086,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
     if (!mounted) return;
 
     // Pop with the saved catch to refresh the calling screen
+    debugPrint('SaveCatch: Calling Navigator.pop with catch ID: ${savedCatch?.id}');
     Navigator.pop(context, savedCatch);
+    debugPrint('SaveCatch: Navigator.pop completed');
   }
 
   @override
@@ -1759,7 +1810,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Official tide event data integration coming soon',
+                            'Official tide context will be calculated after saving if GPS and catch time are available.',
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey.shade500,

@@ -849,7 +849,8 @@ class _CatchListScreenState extends State<CatchListScreen> {
               builder: (_) => const AddCatchScreen(),
             ),
           );
-          if (result == true) {
+          // Refresh if a catch was saved (result is not null)
+          if (result != null) {
             _loadCatches();
           }
         },

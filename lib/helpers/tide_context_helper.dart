@@ -8,8 +8,9 @@ class TideContextHelper {
   /// Generate a tide context phrase from the given parameters
   /// 
   /// Example output: "1 hr 35 min before the Darwin high tide of 6.37 m at 3:09 pm"
+  /// If stationName is a fallback (like "Nearest WorldTides station"), it will be omitted
   static String generatePhrase({
-    required String stationName,
+    required String? stationName,
     required String eventType, // "High" or "Low"
     required DateTime eventTime,
     required double eventHeight,
@@ -37,7 +38,19 @@ class TideContextHelper {
     final relationLower = relation.toLowerCase();
     final eventTypeLower = eventType.toLowerCase();
     
-    return '$timeRelation $relationLower the $stationName $eventTypeLower tide of ${eventHeight.toStringAsFixed(2)} m at $formattedTime';
+    // Check if stationName is a fallback - if so, omit it from the phrase
+    final isFallbackStation = stationName == null ||
+                              stationName.isEmpty ||
+                              stationName == 'Unknown' ||
+                              stationName == 'Nearest WorldTides station';
+    
+    if (isFallbackStation) {
+      // Omit station name, use "the nearest" instead
+      return '$timeRelation $relationLower the nearest $eventTypeLower tide of ${eventHeight.toStringAsFixed(2)} m at $formattedTime';
+    } else {
+      // Include genuine station name
+      return '$timeRelation $relationLower the $stationName $eventTypeLower tide of ${eventHeight.toStringAsFixed(2)} m at $formattedTime';
+    }
   }
   
   /// Calculate minutes between two times

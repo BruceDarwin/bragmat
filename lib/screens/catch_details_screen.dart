@@ -727,6 +727,14 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                       color: Colors.blue.shade900,
                     ),
                   ),
+                  const Spacer(),
+                  Text(
+                    'Source: ${condition.tideContextDataSource ?? 'WorldTides'}',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.blue.shade700,
+                      fontSize: 10,
+                    ),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),

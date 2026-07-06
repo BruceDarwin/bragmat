@@ -505,6 +505,23 @@ class EnvironmentalConditionsService {
       derivedTideStage: condition.derivedTideStage,
       tideObservedOrEstimated: mergedTideObservedOrEstimated,
       tideDiagnostics: condition.tideDiagnostics,
+      // Preserve WorldTides tide context fields
+      tideStationName: condition.tideStationName,
+      tideStationDistanceKm: condition.tideStationDistanceKm,
+      referenceTideEventType: condition.referenceTideEventType,
+      referenceTideEventTime: condition.referenceTideEventTime,
+      referenceTideEventHeight: condition.referenceTideEventHeight,
+      referenceTideEventRelation: condition.referenceTideEventRelation,
+      minutesFromReferenceTideEvent: condition.minutesFromReferenceTideEvent,
+      previousTideEventType: condition.previousTideEventType,
+      previousTideEventTime: condition.previousTideEventTime,
+      previousTideEventHeight: condition.previousTideEventHeight,
+      nextTideEventType: condition.nextTideEventType,
+      nextTideEventTime: condition.nextTideEventTime,
+      nextTideEventHeight: condition.nextTideEventHeight,
+      tideContextPhrase: condition.tideContextPhrase,
+      tideContextDataSource: condition.tideContextDataSource,
+      tideContextConfidence: condition.tideContextConfidence,
       dataSource: weatherData != null ? 'Open-Meteo' : (condition.dataSource ?? 'Calculated'),
     );
   }
@@ -680,17 +697,21 @@ class EnvironmentalConditionsService {
     }
     
     // Fetch official tide context from WorldTides if available
+    // Only fetch if: no existing context, or date/time changed, or coordinates changed
     Map<String, dynamic>? tideContext;
-    if (await _worldTidesService.isAvailable()) {
+    final shouldFetchWorldTides = await _shouldFetchWorldTidesContext(
+      existing,
+      catchItem,
+      observationDateTime,
+    );
+    
+    if (shouldFetchWorldTides && await _worldTidesService.isAvailable()) {
       try {
         tideContext = await _worldTidesService.getTideContextForLocation(
           catchItem.latitude!,
           catchItem.longitude!,
           observationDateTime,
         );
-        if (tideContext != null && tideContext.isNotEmpty) {
-          debugPrint('WorldTides: Tide context fetched successfully');
-        }
       } catch (e) {
         debugPrint('WorldTides: Error fetching tide context: $e');
         // Continue without tide context - don't fail the catch save
@@ -751,14 +772,72 @@ class EnvironmentalConditionsService {
 
     EnvironmentalCondition savedCondition;
     if (existing != null) {
+      debugPrint('Environmental: Updating existing condition for catch ${catchItem.id}');
       await updateEnvironmentalCondition(condition);
       savedCondition = condition;
     } else {
+      debugPrint('Environmental: Creating new condition for catch ${catchItem.id}');
       final id = await createEnvironmentalCondition(condition);
       savedCondition = condition.copyWith(id: id);
     }
     
     return savedCondition;
+  }
+
+  /// Determine if WorldTides context should be fetched
+  /// 
+  /// Returns true if:
+  /// - No existing WorldTides context exists
+  /// - Date/time has changed significantly
+  /// - GPS coordinates have changed
+  Future<bool> _shouldFetchWorldTidesContext(
+    EnvironmentalCondition? existing,
+    Catch catchItem,
+    DateTime observationDateTime,
+  ) async {
+    // No existing context - fetch
+    if (existing == null) {
+      return true;
+    }
+    
+    // No existing WorldTides context - fetch
+    if (existing.tideContextDataSource != 'WorldTides' ||
+        existing.tideContextPhrase == null ||
+        existing.tideContextPhrase!.isEmpty) {
+      return true;
+    }
+    
+    // Check if date/time changed (more than 1 hour difference)
+    final existingTime = existing.observationDateTime;
+    if (existingTime == null) {
+      return true;
+    }
+    
+    final timeDifference = observationDateTime.difference(existingTime).abs();
+    if (timeDifference.inHours > 1) {
+      return true;
+    }
+    
+    // Check if coordinates changed
+    final existingLat = existing.latitude;
+    final existingLon = existing.longitude;
+    final newLat = catchItem.latitude;
+    final newLon = catchItem.longitude;
+    
+    if (existingLat == null || existingLon == null || newLat == null || newLon == null) {
+      return true;
+    }
+    
+    // If coordinates changed by more than ~100 meters (0.001 degrees)
+    final latDiff = (existingLat - newLat).abs();
+    final lonDiff = (existingLon - newLon).abs();
+    
+    if (latDiff > 0.001 || lonDiff > 0.001) {
+      return true;
+    }
+    
+    // Context is still valid - don't fetch
+    return false;
   }
 
   /// Check if an environmental condition has any manual data (non-calculated fields)
@@ -1448,11 +1527,29 @@ class EnvironmentalConditionsService {
         
         // REFACTOR: Calculate automatic data WITHOUT tide (moon, sun, weather only)
         // Open-Meteo tide data is no longer used for backfill
-        // Manual tide data is preserved, future tide integration will use WorldTides
+        // Manual tide data is preserved, WorldTides integration for official tide context
         final calculatedCondition = await _calculateEnvironmentalDataWithoutTide(condition);
         
         debugPrint('Catch $catchId: calculated moonPhase = ${calculatedCondition.moonPhase}');
         debugPrint('Catch $catchId: calculated weatherCondition = ${calculatedCondition.weatherCondition}');
+        
+        // Fetch WorldTides context if available and no existing context
+        Map<String, dynamic>? tideContext;
+        if (await _worldTidesService.isAvailable() && 
+            (existing?.tideContextDataSource != 'WorldTides' || existing?.tideContextPhrase == null)) {
+          try {
+            tideContext = await _worldTidesService.getTideContextForLocation(
+              latitude,
+              longitude,
+              dateCaught,
+            );
+            if (tideContext != null && tideContext.isNotEmpty) {
+              debugPrint('Catch $catchId: WorldTides context fetched during backfill');
+            }
+          } catch (e) {
+            debugPrint('Catch $catchId: WorldTides fetch failed during backfill: $e');
+          }
+        }
         
         // Merge: use calculated data only if manual data is missing
         final mergedCondition = EnvironmentalCondition(
@@ -1474,23 +1571,23 @@ class EnvironmentalConditionsService {
           tideHeight: existing?.tideHeight ?? calculatedCondition.tideHeight,
           tideMovement: hasManualTideMovement ? existing?.tideMovement : calculatedCondition.tideMovement,
           tideStation: existing?.tideStation ?? calculatedCondition.tideStation,
-          // Tide context: preserve manual only
-          tideStationName: existing?.tideStationName,
-          tideStationDistanceKm: existing?.tideStationDistanceKm,
-          referenceTideEventType: existing?.referenceTideEventType,
-          referenceTideEventTime: existing?.referenceTideEventTime,
-          referenceTideEventHeight: existing?.referenceTideEventHeight,
-          referenceTideEventRelation: existing?.referenceTideEventRelation,
-          minutesFromReferenceTideEvent: existing?.minutesFromReferenceTideEvent,
-          previousTideEventType: existing?.previousTideEventType,
-          previousTideEventTime: existing?.previousTideEventTime,
-          previousTideEventHeight: existing?.previousTideEventHeight,
-          nextTideEventType: existing?.nextTideEventType,
-          nextTideEventTime: existing?.nextTideEventTime,
-          nextTideEventHeight: existing?.nextTideEventHeight,
-          tideContextPhrase: existing?.tideContextPhrase,
-          tideContextDataSource: existing?.tideContextDataSource,
-          tideContextConfidence: existing?.tideContextConfidence,
+          // Tide context: use WorldTides if fetched, otherwise preserve manual
+          tideStationName: tideContext?['tideStationName'] ?? existing?.tideStationName,
+          tideStationDistanceKm: tideContext?['tideStationDistanceKm'] ?? existing?.tideStationDistanceKm,
+          referenceTideEventType: tideContext?['referenceTideEventType'] ?? existing?.referenceTideEventType,
+          referenceTideEventTime: tideContext?['referenceTideEventTime'] ?? existing?.referenceTideEventTime,
+          referenceTideEventHeight: tideContext?['referenceTideEventHeight'] ?? existing?.referenceTideEventHeight,
+          referenceTideEventRelation: tideContext?['referenceTideEventRelation'] ?? existing?.referenceTideEventRelation,
+          minutesFromReferenceTideEvent: tideContext?['minutesFromReferenceTideEvent'] ?? existing?.minutesFromReferenceTideEvent,
+          previousTideEventType: tideContext?['previousTideEventType'] ?? existing?.previousTideEventType,
+          previousTideEventTime: tideContext?['previousTideEventTime'] ?? existing?.previousTideEventTime,
+          previousTideEventHeight: tideContext?['previousTideEventHeight'] ?? existing?.previousTideEventHeight,
+          nextTideEventType: tideContext?['nextTideEventType'] ?? existing?.nextTideEventType,
+          nextTideEventTime: tideContext?['nextTideEventTime'] ?? existing?.nextTideEventTime,
+          nextTideEventHeight: tideContext?['nextTideEventHeight'] ?? existing?.nextTideEventHeight,
+          tideContextPhrase: tideContext?['tideContextPhrase'] ?? existing?.tideContextPhrase,
+          tideContextDataSource: tideContext?['tideContextDataSource'] ?? existing?.tideContextDataSource,
+          tideContextConfidence: tideContext?['tideContextConfidence'] ?? existing?.tideContextConfidence,
           // Weather: use calculated only if manual is missing
           weatherCondition: hasManualWeather ? existing?.weatherCondition : calculatedCondition.weatherCondition,
           temperature: existing?.temperature ?? calculatedCondition.temperature,

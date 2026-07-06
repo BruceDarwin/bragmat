@@ -3,6 +3,8 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import 'dart:io';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
@@ -13,6 +15,7 @@ import '../models/bait.dart';
 import '../services/backup_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
+import '../services/worldtides_service.dart';
 import '../widgets/bragmat_section_card.dart';
 import 'favourite_spots_screen.dart';
 import 'achievements_screen.dart';
@@ -155,6 +158,355 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
     // Value is missing or duplicated, return null
     return null;
+  }
+
+  Future<void> _testWorldTidesApi() async {
+    final apiKey = await PreferencesService.getWorldTidesApiKey();
+    
+    if (apiKey == null || apiKey.isEmpty) {
+      _showWorldTidesTestResult(
+        success: false,
+        message: 'No API key configured. Please enter your WorldTides API key first.',
+        details: null,
+      );
+      return;
+    }
+
+    // Show loading indicator
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const AlertDialog(
+        content: Row(
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(width: 16),
+            Text('Testing WorldTides API variants...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      // Test multiple request variants
+      final results = await _testWorldTidesVariants(apiKey);
+      
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+      
+      _showWorldTidesVariantResults(results);
+    } catch (e) {
+      // Close loading dialog
+      if (mounted) Navigator.pop(context);
+      
+      _showWorldTidesTestResult(
+        success: false,
+        message: 'WorldTides API test failed.',
+        details: 'Error: $e',
+      );
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _testWorldTidesVariants(String apiKey) async {
+    final results = <Map<String, dynamic>>[];
+    
+    // Test coordinates
+    final testCoordinates = [
+      {'name': 'Darwin/Nightcliff', 'lat': -12.376717, 'lon': 130.8508711},
+      {'name': 'Darwin Harbour', 'lat': -12.4634, 'lon': 130.8446},
+      {'name': 'Fort Hill Wharf', 'lat': -12.4650, 'lon': 130.8370},
+    ];
+    
+    final testDate = DateTime.now();
+    final dateStr = '${testDate.year}-${testDate.month.toString().padLeft(2, '0')}-${testDate.day.toString().padLeft(2, '0')}';
+    
+    // Test variants
+    final variants = [
+      {
+        'name': 'extremes only',
+        'params': {
+          'extremes': '',
+          'lat': '',
+          'lon': '',
+          'date': dateStr,
+          'key': apiKey,
+          'stations': '',
+          'localtime': '',
+          'timezone': 'auto',
+          'days': '3',
+        },
+      },
+      {
+        'name': 'heights only',
+        'params': {
+          'heights': '',
+          'lat': '',
+          'lon': '',
+          'date': dateStr,
+          'key': apiKey,
+          'stations': '',
+          'localtime': '',
+          'timezone': 'auto',
+          'days': '3',
+        },
+      },
+      {
+        'name': 'extremes + heights',
+        'params': {
+          'extremes': '',
+          'heights': '',
+          'lat': '',
+          'lon': '',
+          'date': dateStr,
+          'key': apiKey,
+          'stations': '',
+          'localtime': '',
+          'timezone': 'auto',
+          'days': '3',
+        },
+      },
+      {
+        'name': 'extremes (no stations/timezone/localtime)',
+        'params': {
+          'extremes': '',
+          'lat': '',
+          'lon': '',
+          'date': dateStr,
+          'key': apiKey,
+          'days': '3',
+        },
+      },
+      {
+        'name': 'extremes + stationDistance',
+        'params': {
+          'extremes': '',
+          'lat': '',
+          'lon': '',
+          'date': dateStr,
+          'key': apiKey,
+          'stations': '',
+          'localtime': '',
+          'timezone': 'auto',
+          'days': '3',
+          'stationDistance': '50',
+        },
+      },
+    ];
+    
+    for (final coord in testCoordinates) {
+      for (final variant in variants) {
+        final params = Map<String, String>.from(variant['params'] as Map<String, String>);
+        params['lat'] = coord['lat'].toString();
+        params['lon'] = coord['lon'].toString();
+        
+        final url = Uri.parse('https://www.worldtides.info/api/v3').replace(queryParameters: params);
+        final redactedUrl = url.toString().replaceAll(RegExp(r'key=[^&\s]+'), 'key=REDACTED');
+        
+        try {
+          final response = await http.get(url).timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw Exception('Request timed out');
+            },
+          );
+          
+          final responseBody = response.body;
+          final redactedBody = responseBody.replaceAll(RegExp(r'key=[^&\s]+'), 'key=REDACTED');
+          
+          final data = json.decode(responseBody);
+          
+          final stations = data['stations'] as List?;
+          final extremes = data['extremes'];
+          final heights = data['heights'];
+          final error = data['error'] as String?;
+          final message = data['message'] as String?;
+          
+          String? stationName;
+          double? stationDistance;
+          if (stations != null && stations.isNotEmpty) {
+            final station = stations.first;
+            stationName = station['name'] as String?;
+            stationDistance = (station['distance'] as num?)?.toDouble();
+          }
+          
+          results.add({
+            'variant': variant['name'],
+            'location': coord['name'],
+            'url': redactedUrl,
+            'status': response.statusCode,
+            'stationName': stationName,
+            'stationDistance': stationDistance,
+            'extremes': extremes != null ? (extremes is List ? '${(extremes as List).length} events' : 'non-null') : 'null',
+            'heights': heights != null ? (heights is List ? '${(heights as List).length} points' : 'non-null') : 'null',
+            'error': error,
+            'message': message,
+            'success': extremes != null && extremes is List && (extremes as List).isNotEmpty,
+          });
+          
+          debugPrint('WorldTides Test: ${coord['name']} - ${variant['name']} - Status: ${response.statusCode}');
+          debugPrint('WorldTides Test: URL: $redactedUrl');
+          debugPrint('WorldTides Test: Station: $stationName, Distance: $stationDistance');
+          debugPrint('WorldTides Test: Extremes: ${results.last['extremes']}, Heights: ${results.last['heights']}');
+          if (error != null) debugPrint('WorldTides Test: Error: $error');
+          if (message != null) debugPrint('WorldTides Test: Message: $message');
+          
+        } catch (e) {
+          results.add({
+            'variant': variant['name'],
+            'location': coord['name'],
+            'url': redactedUrl,
+            'status': 'ERROR',
+            'stationName': null,
+            'stationDistance': null,
+            'extremes': 'error',
+            'heights': 'error',
+            'error': e.toString(),
+            'message': null,
+            'success': false,
+          });
+          debugPrint('WorldTides Test: ${coord['name']} - ${variant['name']} - Error: $e');
+        }
+      }
+    }
+    
+    return results;
+  }
+
+  void _showWorldTidesVariantResults(List<Map<String, dynamic>> results) {
+    final successfulResults = results.where((r) => r['success'] as bool).toList();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              successfulResults.isNotEmpty ? Icons.check_circle : Icons.error,
+              color: successfulResults.isNotEmpty ? Colors.green : Colors.orange,
+            ),
+            const SizedBox(width: 8),
+            const Expanded(
+              child: Text('WorldTides API Test Results'),
+            ),
+          ],
+        ),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: 500,
+          child: ListView.builder(
+            itemCount: results.length,
+            itemBuilder: (context, index) {
+              final result = results[index];
+              final success = result['success'] as bool;
+              
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                color: success ? Colors.green[50] : Colors.orange[50],
+                child: Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            success ? Icons.check_circle : Icons.info,
+                            size: 16,
+                            color: success ? Colors.green : Colors.orange,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              '${result['location']} - ${result['variant']}',
+                              style: const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Status: ${result['status']}',
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 8),
+                      Text('Station: ${result['stationName'] ?? 'None'}'),
+                      Text('Distance: ${result['stationDistance']?.toStringAsFixed(1) ?? 'N/A'} km'),
+                      Text('Extremes: ${result['extremes']}'),
+                      Text('Heights: ${result['heights']}'),
+                      if (result['error'] != null)
+                        Text('Error: ${result['error']}', style: const TextStyle(color: Colors.red)),
+                      if (result['message'] != null)
+                        Text('Message: ${result['message']}', style: const TextStyle(color: Colors.blue)),
+                      const SizedBox(height: 4),
+                      Text(
+                        result['url'] as String,
+                        style: const TextStyle(fontSize: 10, color: Colors.grey),
+                        maxLines: 3,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showWorldTidesTestResult({
+    required bool success,
+    required String message,
+    String? details,
+  }) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            Icon(
+              success ? Icons.check_circle : Icons.error,
+              color: success ? Colors.green : Colors.red,
+            ),
+            const SizedBox(width: 8),
+            Text(success ? 'API Test Successful' : 'API Test Failed'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(message),
+            if (details != null) ...[
+              const SizedBox(height: 16),
+              const Text(
+                'Details:',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                details,
+                style: const TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showFishTypesDialog() async {
@@ -2365,6 +2717,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 'Get your API key from https://www.worldtides.info/',
                 style: Theme.of(context).textTheme.bodySmall?.copyWith(
                   color: Colors.grey[600],
+                ),
+              ),
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: _testWorldTidesApi,
+                icon: const Icon(Icons.science),
+                label: const Text('Test WorldTides API'),
+                style: ElevatedButton.styleFrom(
+                  minimumSize: const Size.fromHeight(40),
                 ),
               ),
             ],
