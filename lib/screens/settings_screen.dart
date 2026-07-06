@@ -642,12 +642,80 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _showRecalculateEnvironmentalDataDialog() async {
+    // Count catches that would need WorldTides API calls
+    final db = await DatabaseHelper.instance.database;
+    final catches = await db.query('catches', 
+      where: 'latitude IS NOT NULL AND longitude IS NOT NULL',
+    );
+    
+    int catchesNeedingWorldTides = 0;
+    for (final catchMap in catches) {
+      final catchId = catchMap['id'] as int;
+      final existing = await DatabaseHelper.instance.getEnvironmentalConditionForCatch(catchId);
+      // Count if no existing WorldTides context
+      if (existing == null || existing.tideContextDataSource != 'WorldTides' || existing.tideContextPhrase == null) {
+        catchesNeedingWorldTides++;
+      }
+    }
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Recalculate Environmental Data'),
-        content: const Text(
-          'This will update missing automatic environmental data for catches with date/time and GPS coordinates. Manual observations will not be overwritten.\n\nThis may take several minutes depending on the number of catches.',
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'This will update missing automatic environmental data for catches with date/time and GPS coordinates. Manual observations will not be overwritten.',
+            ),
+            const SizedBox(height: 16),
+            if (catchesNeedingWorldTides > 0) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.warning, color: Colors.orange.shade700, size: 20),
+                        const SizedBox(width: 8),
+                        Text(
+                          'WorldTides API Usage',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange.shade900,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Approximately $catchesNeedingWorldTides API calls will be made to fetch official tide data.',
+                      style: TextStyle(color: Colors.orange.shade800),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'This will consume API credits from your WorldTides account.',
+                      style: TextStyle(
+                        color: Colors.orange.shade800,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
+            const Text(
+              'This may take several minutes depending on the number of catches.',
+            ),
+          ],
         ),
         actions: [
           TextButton(

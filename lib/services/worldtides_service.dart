@@ -4,6 +4,7 @@ import '../services/preferences_service.dart';
 import '../models/tide_station.dart';
 import '../models/tide_event.dart';
 import '../helpers/tide_context_helper.dart';
+import '../database/database_helper.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 
@@ -81,7 +82,7 @@ class WorldTidesService {
     }
   }
 
-  /// Fetch tide data from WorldTides API
+  /// Fetch tide data from WorldTides API with caching
   Future<Map<String, dynamic>?> _fetchTideData(
     String apiKey,
     double latitude,
@@ -90,6 +91,13 @@ class WorldTidesService {
   ) async {
     final dateStr = '${observationTime.year}-${observationTime.month.toString().padLeft(2, '0')}-${observationTime.day.toString().padLeft(2, '0')}';
     
+    // Check cache first
+    final cachedData = await DatabaseHelper.instance.getCachedTideData(latitude, longitude, dateStr);
+    if (cachedData != null) {
+      return cachedData;
+    }
+    
+    // Not in cache, fetch from API
     final url = Uri.parse('$_baseUrl').replace(queryParameters: {
       'extremes': '',
       'lat': latitude.toString(),
@@ -109,7 +117,20 @@ class WorldTidesService {
     );
 
     if (response.statusCode == 200) {
-      return json.decode(response.body);
+      final data = json.decode(response.body);
+      
+      // Cache the response for future use
+      final extremes = data['extremes'] as List?;
+      if (extremes != null && extremes.isNotEmpty) {
+        await DatabaseHelper.instance.cacheTideData(
+          latitude,
+          longitude,
+          dateStr,
+          extremes,
+        );
+      }
+      
+      return data;
     } else if (response.statusCode == 401) {
       debugPrint('WorldTides: Invalid API key');
       return null;

@@ -33,7 +33,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 26,
+      version: 27,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -737,6 +737,25 @@ class DatabaseHelper {
       } catch (e) {
         // Column might already exist
       }
+    }
+    if (oldVersion < 27) {
+      // Create tide_cache table for WorldTides API caching
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS tide_cache (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          latitude REAL NOT NULL,
+          longitude REAL NOT NULL,
+          date TEXT NOT NULL,
+          datum TEXT NOT NULL DEFAULT 'CD',
+          extremes_json TEXT NOT NULL,
+          cached_at TEXT NOT NULL,
+          expires_at TEXT NOT NULL,
+          UNIQUE(latitude, longitude, date, datum)
+        )
+      ''');
+      
+      // Create index for faster lookups
+      await db.execute('CREATE INDEX IF NOT EXISTS idx_tide_cache_location_date ON tide_cache(latitude, longitude, date)');
     }
     
     // Safety check: Ensure trip_id column exists in catches table
@@ -1878,12 +1897,90 @@ class DatabaseHelper {
       where: 'trip_id = ?',
       whereArgs: [id],
     );
-    // Then delete the trip
+    
+    // Delete the trip
     return await db.delete(
       'fishing_trips',
       where: 'id = ?',
       whereArgs: [id],
     );
+  }
+
+  // Tide Cache Methods
+  
+  /// Get cached tide data for a location and date
+  Future<Map<String, dynamic>?> getCachedTideData(double latitude, double longitude, String date, {String datum = 'CD'}) async {
+    final db = await instance.database;
+    final now = DateTime.now();
+    
+    final result = await db.query(
+      'tide_cache',
+      where: 'latitude = ? AND longitude = ? AND date = ? AND datum = ? AND expires_at > ?',
+      whereArgs: [latitude, longitude, date, datum, now.toIso8601String()],
+      limit: 1,
+    );
+    
+    if (result.isEmpty) return null;
+    
+    final cached = result.first;
+    try {
+      final extremesJson = cached['extremes_json'] as String;
+      return {
+        'extremes': jsonDecode(extremesJson),
+        'cached_at': cached['cached_at'] as String,
+        'expires_at': cached['expires_at'] as String,
+      };
+    } catch (e) {
+      // Invalid JSON, delete the cache entry
+      await db.delete(
+        'tide_cache',
+        where: 'id = ?',
+        whereArgs: [cached['id']],
+      );
+      return null;
+    }
+  }
+  
+  /// Cache tide data for a location and date
+  Future<void> cacheTideData(double latitude, double longitude, String date, List<dynamic> extremes, {String datum = 'CD', Duration expiry = const Duration(days: 7)}) async {
+    final db = await instance.database;
+    final now = DateTime.now();
+    final expiresAt = now.add(expiry);
+    
+    final cacheData = {
+      'latitude': latitude,
+      'longitude': longitude,
+      'date': date,
+      'datum': datum,
+      'extremes_json': jsonEncode(extremes),
+      'cached_at': now.toIso8601String(),
+      'expires_at': expiresAt.toIso8601String(),
+    };
+    
+    // Insert or replace (UNIQUE constraint handles this)
+    await db.insert(
+      'tide_cache',
+      cacheData,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+  
+  /// Delete expired tide cache entries
+  Future<int> deleteExpiredTideCache() async {
+    final db = await instance.database;
+    final now = DateTime.now();
+    
+    return await db.delete(
+      'tide_cache',
+      where: 'expires_at < ?',
+      whereArgs: [now.toIso8601String()],
+    );
+  }
+  
+  /// Clear all tide cache entries
+  Future<int> clearTideCache() async {
+    final db = await instance.database;
+    return await db.delete('tide_cache');
   }
 
   Future<List<Catch>> getCatchesForTrip(int tripId) async {

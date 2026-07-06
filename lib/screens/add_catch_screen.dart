@@ -61,6 +61,17 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   final _tideHeightController = TextEditingController();
   String? _selectedTideMovement;
   final _tideStationController = TextEditingController();
+  // Manual tide context fields (to emulate WorldTides)
+  String? _selectedReferenceTideEventType;
+  DateTime? _referenceTideEventTime;
+  final _referenceTideEventHeightController = TextEditingController();
+  String? _selectedReferenceTideEventRelation;
+  String? _selectedPreviousTideEventType;
+  DateTime? _previousTideEventTime;
+  final _previousTideEventHeightController = TextEditingController();
+  String? _selectedNextTideEventType;
+  DateTime? _nextTideEventTime;
+  final _nextTideEventHeightController = TextEditingController();
   String? _selectedWeatherCondition;
   final _temperatureController = TextEditingController();
   final _humidityController = TextEditingController();
@@ -174,6 +185,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     _longitudeController.addListener(_onFieldChanged);
     _tideHeightController.addListener(_onFieldChanged);
     _tideStationController.addListener(_onFieldChanged);
+    _referenceTideEventHeightController.addListener(_onFieldChanged);
+    _previousTideEventHeightController.addListener(_onFieldChanged);
+    _nextTideEventHeightController.addListener(_onFieldChanged);
     _temperatureController.addListener(_onFieldChanged);
     _humidityController.addListener(_onFieldChanged);
     _cloudCoverController.addListener(_onFieldChanged);
@@ -195,6 +209,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     _longitudeController.removeListener(_onFieldChanged);
     _tideHeightController.removeListener(_onFieldChanged);
     _tideStationController.removeListener(_onFieldChanged);
+    _referenceTideEventHeightController.removeListener(_onFieldChanged);
+    _previousTideEventHeightController.removeListener(_onFieldChanged);
+    _nextTideEventHeightController.removeListener(_onFieldChanged);
     _temperatureController.removeListener(_onFieldChanged);
     _humidityController.removeListener(_onFieldChanged);
     _cloudCoverController.removeListener(_onFieldChanged);
@@ -209,6 +226,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     _longitudeController.dispose();
     _tideHeightController.dispose();
     _tideStationController.dispose();
+    _referenceTideEventHeightController.dispose();
+    _previousTideEventHeightController.dispose();
+    _nextTideEventHeightController.dispose();
     _temperatureController.dispose();
     _humidityController.dispose();
     _cloudCoverController.dispose();
@@ -491,6 +511,37 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         // Tide movement: validate against custom dropdown items
         _selectedTideMovement = _safeDropdownValueWithNull(condition.tideMovement, [null, 'Run-in', 'Run-out', 'Slack'], 'tideMovement', catchId: catchId);
         _tideStationController.text = condition.tideStation ?? '';
+        // Load manual tide context fields
+        _selectedReferenceTideEventType = _safeDropdownValueWithNull(
+          condition.referenceTideEventType, 
+          [null, 'High', 'Low'], 
+          'referenceTideEventType', 
+          catchId: catchId
+        );
+        _referenceTideEventTime = condition.referenceTideEventTime;
+        _referenceTideEventHeightController.text = condition.referenceTideEventHeight?.toString() ?? '';
+        _selectedReferenceTideEventRelation = _safeDropdownValueWithNull(
+          condition.referenceTideEventRelation, 
+          [null, 'Before', 'After'], 
+          'referenceTideEventRelation', 
+          catchId: catchId
+        );
+        _selectedPreviousTideEventType = _safeDropdownValueWithNull(
+          condition.previousTideEventType, 
+          [null, 'High', 'Low'], 
+          'previousTideEventType', 
+          catchId: catchId
+        );
+        _previousTideEventTime = condition.previousTideEventTime;
+        _previousTideEventHeightController.text = condition.previousTideEventHeight?.toString() ?? '';
+        _selectedNextTideEventType = _safeDropdownValueWithNull(
+          condition.nextTideEventType, 
+          [null, 'High', 'Low'], 
+          'nextTideEventType', 
+          catchId: catchId
+        );
+        _nextTideEventTime = condition.nextTideEventTime;
+        _nextTideEventHeightController.text = condition.nextTideEventHeight?.toString() ?? '';
         _selectedWeatherCondition = _safeDropdownValue(condition.weatherCondition, EnvironmentalCondition.weatherConditions, 'weatherCondition', catchId: catchId);
         _temperatureController.text = condition.temperature?.toString() ?? '';
         _humidityController.text = condition.humidity?.toString() ?? '';
@@ -907,6 +958,16 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         _tideHeightController.text.isNotEmpty ||
         _selectedTideMovement != null ||
         _tideStationController.text.isNotEmpty ||
+        _selectedReferenceTideEventType != null ||
+        _referenceTideEventTime != null ||
+        _referenceTideEventHeightController.text.isNotEmpty ||
+        _selectedReferenceTideEventRelation != null ||
+        _selectedPreviousTideEventType != null ||
+        _previousTideEventTime != null ||
+        _previousTideEventHeightController.text.isNotEmpty ||
+        _selectedNextTideEventType != null ||
+        _nextTideEventTime != null ||
+        _nextTideEventHeightController.text.isNotEmpty ||
         _selectedWeatherCondition != null ||
         _temperatureController.text.isNotEmpty ||
         _humidityController.text.isNotEmpty ||
@@ -930,6 +991,28 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     final latitude = existing?.latitude ?? double.tryParse(_latitudeController.text);
     final longitude = existing?.longitude ?? double.tryParse(_longitudeController.text);
     
+    // Generate manual tide context phrase if manual tide context fields are filled
+    String? manualTideContextPhrase;
+    if (_selectedReferenceTideEventType != null && _referenceTideEventTime != null) {
+      final timeFormatter = DateFormat('h:mm a');
+      final height = double.tryParse(_referenceTideEventHeightController.text);
+      final relation = _selectedReferenceTideEventRelation ?? 
+          (_referenceTideEventTime!.isBefore(observationDateTime) ? 'After' : 'Before');
+      
+      final minutesFromEvent = TideContextHelper.calculateMinutesBetween(
+        observationDateTime,
+        _referenceTideEventTime!,
+      );
+      
+      manualTideContextPhrase = TideContextHelper.generatePhrase(
+        stationName: _tideStationController.text.trim().isEmpty ? null : _tideStationController.text.trim(),
+        eventType: _selectedReferenceTideEventType!,
+        eventTime: _referenceTideEventTime!,
+        eventHeight: height ?? 0.0,
+        relation: relation,
+        minutesFromEvent: minutesFromEvent,
+      );
+    }
     
     await envService.saveEnvironmentalConditionForCatch(
       catchId,
@@ -942,6 +1025,20 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       tideHeight: double.tryParse(_tideHeightController.text),
       tideMovement: _selectedTideMovement,
       tideStation: _tideStationController.text.trim().isEmpty ? null : _tideStationController.text.trim(),
+      // Manual tide context fields
+      referenceTideEventType: _selectedReferenceTideEventType,
+      referenceTideEventTime: _referenceTideEventTime,
+      referenceTideEventHeight: double.tryParse(_referenceTideEventHeightController.text),
+      referenceTideEventRelation: _selectedReferenceTideEventRelation,
+      previousTideEventType: _selectedPreviousTideEventType,
+      previousTideEventTime: _previousTideEventTime,
+      previousTideEventHeight: double.tryParse(_previousTideEventHeightController.text),
+      nextTideEventType: _selectedNextTideEventType,
+      nextTideEventTime: _nextTideEventTime,
+      nextTideEventHeight: double.tryParse(_nextTideEventHeightController.text),
+      tideContextPhrase: manualTideContextPhrase,
+      tideContextDataSource: manualTideContextPhrase != null ? 'Manual' : existing?.tideContextDataSource,
+      tideContextConfidence: manualTideContextPhrase != null ? 'Medium' : existing?.tideContextConfidence,
       weatherCondition: (_selectedWeatherCondition == null || _selectedWeatherCondition == 'Unknown') ? null : _selectedWeatherCondition,
       temperature: double.tryParse(_temperatureController.text),
       humidity: double.tryParse(_humidityController.text),
@@ -1767,7 +1864,284 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                       hintText: 'e.g., Sydney Harbour',
                     ),
                   ),
+                  const SizedBox(height: 16),
+                  
+                  // Manual Tide Context (to emulate WorldTides)
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 8),
+                    child: Text(
+                      'Manual Tide Context (Optional)',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.grey,
+                      ),
+                    ),
+                  ),
+                  const Text(
+                    'Enter tide information from tide charts if WorldTides is unavailable',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
                   const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: (() {
+                          const items = [
+                            DropdownMenuItem<String?>(value: null, child: Text('Select...')),
+                            DropdownMenuItem<String?>(value: 'High', child: Text('High')),
+                            DropdownMenuItem<String?>(value: 'Low', child: Text('Low')),
+                          ];
+                          return DropdownButtonFormField<String?>(
+                            value: _selectedReferenceTideEventType,
+                            decoration: const InputDecoration(labelText: 'Reference Tide Event'),
+                            items: items,
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedReferenceTideEventType = value;
+                                _onFieldChanged();
+                              });
+                            },
+                          );
+                        })(),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _referenceTideEventHeightController,
+                          decoration: const InputDecoration(
+                            labelText: 'Height (m)',
+                            hintText: 'e.g., 6.5',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final pickedDate = await showDatePicker(
+                        context: context,
+                        initialDate: _referenceTideEventTime ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2030),
+                      );
+                      if (pickedDate != null) {
+                        final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(_referenceTideEventTime ?? DateTime.now()),
+                        );
+                        if (pickedTime != null && mounted) {
+                          setState(() {
+                            _referenceTideEventTime = DateTime(
+                              pickedDate.year,
+                              pickedDate.month,
+                              pickedDate.day,
+                              pickedTime.hour,
+                              pickedTime.minute,
+                            );
+                            _onFieldChanged();
+                          });
+                        }
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Reference Tide Time',
+                        hintText: 'Select date and time',
+                      ),
+                      child: Text(
+                        _referenceTideEventTime != null
+                            ? DateFormat('h:mm a, dd MMM yyyy').format(_referenceTideEventTime!)
+                            : 'Select date and time',
+                        style: TextStyle(
+                          color: _referenceTideEventTime != null ? Colors.black : Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  (() {
+                    const items = [
+                      DropdownMenuItem<String?>(value: null, child: Text('Auto-detect')),
+                      DropdownMenuItem<String?>(value: 'Before', child: Text('Before')),
+                      DropdownMenuItem<String?>(value: 'After', child: Text('After')),
+                    ];
+                    return DropdownButtonFormField<String?>(
+                      value: _selectedReferenceTideEventRelation,
+                      decoration: const InputDecoration(labelText: 'Relation to Catch Time'),
+                      items: items,
+                      onChanged: (value) {
+                        setState(() {
+                          _selectedReferenceTideEventRelation = value;
+                          _onFieldChanged();
+                        });
+                      },
+                    );
+                  })(),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: (() {
+                          const items = [
+                            DropdownMenuItem<String?>(value: null, child: Text('Select...')),
+                            DropdownMenuItem<String?>(value: 'High', child: Text('High')),
+                            DropdownMenuItem<String?>(value: 'Low', child: Text('Low')),
+                          ];
+                          return DropdownButtonFormField<String?>(
+                            value: _selectedPreviousTideEventType,
+                            decoration: const InputDecoration(labelText: 'Previous Tide (Optional)'),
+                            items: items,
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedPreviousTideEventType = value;
+                                _onFieldChanged();
+                              });
+                            },
+                          );
+                        })(),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _previousTideEventHeightController,
+                          decoration: const InputDecoration(
+                            labelText: 'Height (m)',
+                            hintText: 'e.g., 1.2',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final pickedDate = await showDatePicker(
+                        context: context,
+                        initialDate: _previousTideEventTime ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2030),
+                      );
+                      if (pickedDate != null) {
+                        final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(_previousTideEventTime ?? DateTime.now()),
+                        );
+                        if (pickedTime != null && mounted) {
+                          setState(() {
+                            _previousTideEventTime = DateTime(
+                              pickedDate.year,
+                              pickedDate.month,
+                              pickedDate.day,
+                              pickedTime.hour,
+                              pickedTime.minute,
+                            );
+                            _onFieldChanged();
+                          });
+                        }
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Previous Tide Time (Optional)',
+                        hintText: 'Select date and time',
+                      ),
+                      child: Text(
+                        _previousTideEventTime != null
+                            ? DateFormat('h:mm a, dd MMM yyyy').format(_previousTideEventTime!)
+                            : 'Select date and time',
+                        style: TextStyle(
+                          color: _previousTideEventTime != null ? Colors.black : Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: (() {
+                          const items = [
+                            DropdownMenuItem<String?>(value: null, child: Text('Select...')),
+                            DropdownMenuItem<String?>(value: 'High', child: Text('High')),
+                            DropdownMenuItem<String?>(value: 'Low', child: Text('Low')),
+                          ];
+                          return DropdownButtonFormField<String?>(
+                            value: _selectedNextTideEventType,
+                            decoration: const InputDecoration(labelText: 'Next Tide (Optional)'),
+                            items: items,
+                            onChanged: (value) {
+                              setState(() {
+                                _selectedNextTideEventType = value;
+                                _onFieldChanged();
+                              });
+                            },
+                          );
+                        })(),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _nextTideEventHeightController,
+                          decoration: const InputDecoration(
+                            labelText: 'Height (m)',
+                            hintText: 'e.g., 7.1',
+                          ),
+                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  InkWell(
+                    onTap: () async {
+                      final pickedDate = await showDatePicker(
+                        context: context,
+                        initialDate: _nextTideEventTime ?? DateTime.now(),
+                        firstDate: DateTime(2020),
+                        lastDate: DateTime(2030),
+                      );
+                      if (pickedDate != null) {
+                        final pickedTime = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.fromDateTime(_nextTideEventTime ?? DateTime.now()),
+                        );
+                        if (pickedTime != null && mounted) {
+                          setState(() {
+                            _nextTideEventTime = DateTime(
+                              pickedDate.year,
+                              pickedDate.month,
+                              pickedDate.day,
+                              pickedTime.hour,
+                              pickedTime.minute,
+                            );
+                            _onFieldChanged();
+                          });
+                        }
+                      }
+                    },
+                    child: InputDecorator(
+                      decoration: const InputDecoration(
+                        labelText: 'Next Tide Time (Optional)',
+                        hintText: 'Select date and time',
+                      ),
+                      child: Text(
+                        _nextTideEventTime != null
+                            ? DateFormat('h:mm a, dd MMM yyyy').format(_nextTideEventTime!)
+                            : 'Select date and time',
+                        style: TextStyle(
+                          color: _nextTideEventTime != null ? Colors.black : Colors.grey,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
                   
                   // Official Tide Context Placeholder
                   Container(

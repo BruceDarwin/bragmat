@@ -705,6 +705,8 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
     
     // Show official tide context if available
     if (hasOfficialTideContext) {
+      final timeFormatter = DateFormat('h:mm a');
+      
       details.add(
         Container(
           padding: const EdgeInsets.all(12),
@@ -745,6 +747,77 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                   color: Colors.blue.shade900,
                 ),
               ),
+              const SizedBox(height: 8),
+              // Show previous tide event if available
+              if (condition.previousTideEventType != null && condition.previousTideEventTime != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Previous: ',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                      Text(
+                        '${condition.previousTideEventType} ',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                      if (condition.previousTideEventHeight != null)
+                        Text(
+                          '${condition.previousTideEventHeight!.toStringAsFixed(2)} m ',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.blue.shade800,
+                          ),
+                        ),
+                      Text(
+                        'at ${timeFormatter.format(condition.previousTideEventTime!)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              // Show next tide event if available
+              if (condition.nextTideEventType != null && condition.nextTideEventTime != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Next: ',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.blue.shade700,
+                        ),
+                      ),
+                      Text(
+                        '${condition.nextTideEventType} ',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.blue.shade900,
+                        ),
+                      ),
+                      if (condition.nextTideEventHeight != null)
+                        Text(
+                          '${condition.nextTideEventHeight!.toStringAsFixed(2)} m ',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.blue.shade800,
+                          ),
+                        ),
+                      Text(
+                        'at ${timeFormatter.format(condition.nextTideEventTime!)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
@@ -780,7 +853,133 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
       details.add(const SizedBox(height: 12));
     }
     
-    // Show manual tide observations if entered
+    // Show manual tide context if entered (separate from WorldTides)
+    final hasManualTideContext = condition.tideContextPhrase != null &&
+        condition.tideContextPhrase!.isNotEmpty &&
+        condition.tideContextDataSource == 'Manual';
+    
+    if (hasManualTideContext) {
+      final timeFormatter = DateFormat('h:mm a');
+      
+      details.add(
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: Colors.orange.shade50,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.orange.shade200),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.edit_note, size: 20, color: Colors.orange),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Manual Tide Context',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: Colors.orange.shade900,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    'Source: Manual',
+                    style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                      color: Colors.orange.shade700,
+                      fontSize: 10,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                condition.tideContextPhrase!,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  color: Colors.orange.shade900,
+                ),
+              ),
+              const SizedBox(height: 8),
+              // Show previous tide event if available
+              if (condition.previousTideEventType != null && condition.previousTideEventTime != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Previous: ',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                      Text(
+                        '${condition.previousTideEventType} ',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange.shade900,
+                        ),
+                      ),
+                      if (condition.previousTideEventHeight != null)
+                        Text(
+                          '${condition.previousTideEventHeight!.toStringAsFixed(2)} m ',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      Text(
+                        'at ${timeFormatter.format(condition.previousTideEventTime!)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              // Show next tide event if available
+              if (condition.nextTideEventType != null && condition.nextTideEventTime != null)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Row(
+                    children: [
+                      Text(
+                        'Next: ',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.orange.shade700,
+                        ),
+                      ),
+                      Text(
+                        '${condition.nextTideEventType} ',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          fontWeight: FontWeight.w600,
+                          color: Colors.orange.shade900,
+                        ),
+                      ),
+                      if (condition.nextTideEventHeight != null)
+                        Text(
+                          '${condition.nextTideEventHeight!.toStringAsFixed(2)} m ',
+                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      Text(
+                        'at ${timeFormatter.format(condition.nextTideEventTime!)}',
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.orange.shade800,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+      details.add(const SizedBox(height: 12));
+    }
+    
+    // Show manual tide observations (legacy fields) if entered
     if (hasManualTideData) {
       details.add(
         Container(
