@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import '../database/database_helper.dart';
@@ -651,6 +652,36 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
         tideReferenceDisplay = 'Catch location';
       } else if (condition.tideReferenceName != null) {
         tideReferenceDisplay = condition.tideReferenceName!;
+        
+        // Add distance for fixed references
+        if (condition.tideRequestLat != null && 
+            condition.tideRequestLon != null &&
+            _catchItem.latitude != null && 
+            _catchItem.longitude != null) {
+          final distanceKm = _calculateDistance(
+            _catchItem.latitude!,
+            _catchItem.longitude!,
+            condition.tideRequestLat!,
+            condition.tideRequestLon!,
+          );
+          
+          // Format distance according to rules
+          String distanceText;
+          if (distanceKm < 0.5) {
+            // Very close to reference - omit distance
+            distanceText = '';
+          } else if (distanceKm < 10) {
+            // Under 10 km: one decimal place
+            distanceText = ' — ${distanceKm.toStringAsFixed(1)} km from catch';
+          } else {
+            // 10 km or more: nearest whole kilometre
+            distanceText = ' — ${distanceKm.round()} km from catch';
+          }
+          
+          if (distanceText.isNotEmpty) {
+            tideReferenceDisplay += distanceText;
+          }
+        }
       }
       
       // Determine WorldTides source display
@@ -987,5 +1018,27 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
       }
     }
     return 'Manual';
+  }
+
+  /// Calculate distance between two coordinates using Haversine formula
+  /// Returns distance in kilometers
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const double earthRadiusKm = 6371.0;
+    
+    final dLat = _degreesToRadians(lat2 - lat1);
+    final dLon = _degreesToRadians(lon2 - lon1);
+    
+    final a = (sin(dLat / 2) * sin(dLat / 2)) +
+        cos(_degreesToRadians(lat1)) *
+        cos(_degreesToRadians(lat2)) *
+        (sin(dLon / 2) * sin(dLon / 2));
+    
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    
+    return earthRadiusKm * c;
+  }
+  
+  double _degreesToRadians(double degrees) {
+    return degrees * pi / 180;
   }
 }

@@ -1,11 +1,13 @@
 import '../database/database_helper.dart';
 import '../models/environmental_condition.dart';
 import '../models/catch.dart';
+import '../models/tide_reference.dart';
 import 'moon_phase_service.dart';
 import 'sun_times_service.dart';
 import 'weather_service.dart';
 import 'tide_service.dart';
 import 'worldtides_service.dart';
+import 'tide_reference_service.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 
@@ -717,16 +719,62 @@ class EnvironmentalConditionsService {
       observationDateTime,
     );
     
+    // Get tide reference - preserve recorded reference for existing catches
+    TideReference tideReference;
+    bool isAutomatic;
+    
+    if (existing != null && existing.tideReferenceMode != null && existing.tideReferenceMode!.isNotEmpty) {
+      // Use recorded reference for existing catches
+      if (existing.tideReferenceMode == 'automatic') {
+        tideReference = TideReference(
+          id: 'automatic',
+          displayName: 'Automatic',
+          latitude: 0.0,
+          longitude: 0.0,
+        );
+      } else if (existing.tideReferenceName != null) {
+        // Look up reference by name
+        final ref = TideReferenceService.getReferenceById(
+          existing.tideReferenceName!.toLowerCase(),
+        );
+        tideReference = ref ?? TideReference(
+          id: 'automatic',
+          displayName: 'Automatic',
+          latitude: 0.0,
+          longitude: 0.0,
+        );
+      } else {
+        // Fallback to automatic
+        tideReference = TideReference(
+          id: 'automatic',
+          displayName: 'Automatic',
+          latitude: 0.0,
+          longitude: 0.0,
+        );
+      }
+    } else {
+      // Use current global default for new catches or when no recorded reference
+      tideReference = await TideReferenceService.getCurrentReference();
+    }
+    
+    isAutomatic = TideReferenceService.isAutomatic(tideReference);
+    
+    // Determine tide-request coordinates based on reference mode
+    final requestLat = isAutomatic ? catchItem.latitude : tideReference.latitude;
+    final requestLon = isAutomatic ? catchItem.longitude : tideReference.longitude;
+    
     if (shouldFetchWorldTides && await _worldTidesService.isAvailable()) {
       try {
         tideContext = await _worldTidesService.getTideContextForLocation(
-          catchItem.latitude!,
-          catchItem.longitude!,
+          requestLat!,
+          requestLon!,
           observationDateTime,
         );
       } catch (e) {
         debugPrint('WorldTides: Error fetching tide context: $e');
         // Continue without tide context - don't fail the catch save
+        // Per Stage 2: Always record selected tide reference even if tide data unavailable
+        // WorldTides source will display as "Not recorded" in UI
       }
     }
     
@@ -745,11 +793,10 @@ class EnvironmentalConditionsService {
       tideMovement: existing?.tideMovement,
       tideStation: existing?.tideStation,
       // Tide Reference and WorldTides Source fields
-      // For Stage 1, always use automatic mode with catch coordinates
-      tideReferenceMode: 'automatic',
-      tideReferenceName: null, // NULL for automatic mode, derived from mode
-      tideRequestLat: catchItem.latitude,
-      tideRequestLon: catchItem.longitude,
+      tideReferenceMode: isAutomatic ? 'automatic' : 'fixed',
+      tideReferenceName: isAutomatic ? null : tideReference.displayName,
+      tideRequestLat: requestLat,
+      tideRequestLon: requestLon,
       worldtidesStation: tideContext?['tideStationName'] ?? existing?.worldtidesStation,
       worldtidesAtlas: tideContext?['worldtidesAtlas'] ?? existing?.worldtidesAtlas,
       worldtidesResponseLat: tideContext?['worldtidesResponseLat'] ?? existing?.worldtidesResponseLat,
@@ -810,8 +857,10 @@ class EnvironmentalConditionsService {
   /// 
   /// Returns true if:
   /// - No existing WorldTides context exists
-  /// - Date/time has changed significantly
-  /// - GPS coordinates have changed
+  /// - No existing environmental condition exists
+  /// 
+  /// Note: Location and date/time changes are now handled via user prompts
+  /// in the Add Catch screen, so automatic recalculation is not performed here.
   Future<bool> _shouldFetchWorldTidesContext(
     EnvironmentalCondition? existing,
     Catch catchItem,
@@ -829,36 +878,8 @@ class EnvironmentalConditionsService {
       return true;
     }
     
-    // Check if date/time changed (more than 1 hour difference)
-    final existingTime = existing.observationDateTime;
-    if (existingTime == null) {
-      return true;
-    }
-    
-    final timeDifference = observationDateTime.difference(existingTime).abs();
-    if (timeDifference.inHours > 1) {
-      return true;
-    }
-    
-    // Check if coordinates changed
-    final existingLat = existing.latitude;
-    final existingLon = existing.longitude;
-    final newLat = catchItem.latitude;
-    final newLon = catchItem.longitude;
-    
-    if (existingLat == null || existingLon == null || newLat == null || newLon == null) {
-      return true;
-    }
-    
-    // If coordinates changed by more than ~100 meters (0.001 degrees)
-    final latDiff = (existingLat - newLat).abs();
-    final lonDiff = (existingLon - newLon).abs();
-    
-    if (latDiff > 0.001 || lonDiff > 0.001) {
-      return true;
-    }
-    
-    // Context is still valid - don't fetch
+    // Context exists - don't automatically fetch
+    // Changes are handled via user prompts in the UI
     return false;
   }
 
@@ -887,6 +908,160 @@ class EnvironmentalConditionsService {
         condition.riverFlow != null ||
         condition.waterClarity != null ||
         condition.tideObservedOrEstimated == 'Observed';
+  }
+
+  /// Recalculate environmental conditions for a catch with explicit reference choice
+  /// 
+  /// Parameters:
+  /// - catchItem: The catch to recalculate
+  /// - useRecordedReference: If true, use the catch's recorded reference mode
+  /// - If false, use the current global default reference
+  Future<EnvironmentalCondition?> recalculateEnvironmentalConditionForCatch(
+    Catch catchItem, {
+    bool useRecordedReference = true,
+  }) async {
+    if (catchItem.id == null) {
+      debugPrint('ERROR: Catch ID is null');
+      return null;
+    }
+
+    final hasCoordinates = catchItem.latitude != null && catchItem.longitude != null;
+
+    // Get existing environmental condition
+    final existing = await getEnvironmentalConditionForCatch(catchItem.id!);
+
+    final observationDateTime = catchItem.dateCaught ?? catchItem.createdAt;
+
+    // If no coordinates, preserve existing data
+    if (!hasCoordinates) {
+      return existing;
+    }
+    
+    // Determine which reference to use
+    TideReference tideReference;
+    if (useRecordedReference && existing != null && existing.tideReferenceMode != null) {
+      // Use recorded reference
+      if (existing.tideReferenceMode == 'automatic') {
+        tideReference = TideReference(
+          id: 'automatic',
+          displayName: 'Automatic',
+          latitude: 0.0,
+          longitude: 0.0,
+        );
+      } else if (existing.tideReferenceName != null) {
+        // Look up reference by name
+        final ref = TideReferenceService.getReferenceById(
+          existing.tideReferenceName!.toLowerCase(),
+        );
+        tideReference = ref ?? TideReference(
+          id: 'automatic',
+          displayName: 'Automatic',
+          latitude: 0.0,
+          longitude: 0.0,
+        );
+      } else {
+        // Fallback to automatic
+        tideReference = TideReference(
+          id: 'automatic',
+          displayName: 'Automatic',
+          latitude: 0.0,
+          longitude: 0.0,
+        );
+      }
+    } else {
+      // Use current global default
+      tideReference = await TideReferenceService.getCurrentReference();
+    }
+    
+    final isAutomatic = TideReferenceService.isAutomatic(tideReference);
+    
+    // Determine tide-request coordinates based on reference mode
+    final requestLat = isAutomatic ? catchItem.latitude : tideReference.latitude;
+    final requestLon = isAutomatic ? catchItem.longitude : tideReference.longitude;
+    
+    // Fetch official tide context from WorldTides
+    Map<String, dynamic>? tideContext;
+    if (await _worldTidesService.isAvailable()) {
+      try {
+        tideContext = await _worldTidesService.getTideContextForLocation(
+          requestLat!,
+          requestLon!,
+          observationDateTime,
+        );
+      } catch (e) {
+        debugPrint('WorldTides: Error fetching tide context: $e');
+        // Continue without tide context
+      }
+    }
+    
+    final condition = EnvironmentalCondition(
+      id: existing?.id,
+      catchId: catchItem.id!,
+      tripId: null,
+      observationDateTime: observationDateTime,
+      latitude: catchItem.latitude,
+      longitude: catchItem.longitude,
+      // Preserve existing manual data
+      tideStage: existing?.tideStage,
+      tideStrength: existing?.tideStrength,
+      tideNotes: existing?.tideNotes,
+      tideHeight: existing?.tideHeight,
+      tideMovement: existing?.tideMovement,
+      tideStation: existing?.tideStation,
+      // Tide Reference and WorldTides Source fields - update with new reference
+      tideReferenceMode: isAutomatic ? 'automatic' : 'fixed',
+      tideReferenceName: isAutomatic ? null : tideReference.displayName,
+      tideRequestLat: requestLat,
+      tideRequestLon: requestLon,
+      worldtidesStation: tideContext?['tideStationName'],
+      worldtidesAtlas: tideContext?['worldtidesAtlas'],
+      worldtidesResponseLat: tideContext?['worldtidesResponseLat'],
+      worldtidesResponseLon: tideContext?['worldtidesResponseLon'],
+      // Deprecated fields (kept for backward compatibility)
+      tideStationName: tideContext?['tideStationName'],
+      tideStationDistanceKm: tideContext?['tideStationDistanceKm'],
+      referenceTideEventType: tideContext?['referenceTideEventType'],
+      referenceTideEventTime: tideContext?['referenceTideEventTime'],
+      referenceTideEventHeight: tideContext?['referenceTideEventHeight'],
+      referenceTideEventRelation: tideContext?['referenceTideEventRelation'],
+      minutesFromReferenceTideEvent: tideContext?['minutesFromReferenceTideEvent'],
+      previousTideEventType: tideContext?['previousTideEventType'],
+      previousTideEventTime: tideContext?['previousTideEventTime'],
+      previousTideEventHeight: tideContext?['previousTideEventHeight'],
+      nextTideEventType: tideContext?['nextTideEventType'],
+      nextTideEventTime: tideContext?['nextTideEventTime'],
+      nextTideEventHeight: tideContext?['nextTideEventHeight'],
+      tideContextPhrase: tideContext?['tideContextPhrase'],
+      tideContextDataSource: tideContext?['tideContextDataSource'],
+      tideContextConfidence: tideContext?['tideContextConfidence'],
+      // Preserve existing automated tide data
+      tideDataSource: existing?.tideDataSource,
+      tideConfidence: existing?.tideConfidence,
+      derivedTideStage: existing?.derivedTideStage,
+      tideObservedOrEstimated: existing?.tideObservedOrEstimated,
+      tideDiagnostics: existing?.tideDiagnostics,
+      weatherCondition: existing?.weatherCondition,
+      temperature: existing?.temperature,
+      humidity: existing?.humidity,
+      cloudCover: existing?.cloudCover,
+      windSpeed: existing?.windSpeed,
+      windDirection: existing?.windDirection,
+      barometricPressure: existing?.barometricPressure,
+      rainfall: existing?.rainfall,
+      riverFlow: existing?.riverFlow,
+      waterClarity: existing?.waterClarity,
+      dataSource: 'Manual',
+      createdAt: existing?.createdAt ?? DateTime.now(),
+      updatedAt: DateTime.now(),
+    );
+    
+    if (existing != null) {
+      await updateEnvironmentalCondition(condition);
+      return condition;
+    } else {
+      await createEnvironmentalCondition(condition);
+      return condition;
+    }
   }
 
   /// Get catch counts grouped by tide stage for a trip

@@ -12,11 +12,13 @@ import '../models/fishing_buddy.dart';
 import '../models/favourite_spot.dart';
 import '../models/lure.dart';
 import '../models/bait.dart';
+import '../models/tide_reference.dart';
 import '../services/backup_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
 import '../services/worldtides_service.dart';
 import '../services/secure_storage_service.dart';
+import '../services/tide_reference_service.dart';
 import '../widgets/bragmat_section_card.dart';
 import 'favourite_spots_screen.dart';
 import 'achievements_screen.dart';
@@ -38,6 +40,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _defaultFishType;
   String? _worldTidesApiKey;
   String? _apiTestStatus;
+  TideReference? _currentTideReference;
 
   @override
   void initState() {
@@ -49,6 +52,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadBaits();
     _loadFishTypePreferences();
     _loadWorldTidesApiKey();
+    _loadTideReference();
     _migrateApiKey();
   }
 
@@ -157,6 +161,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _worldTidesApiKey = null;
     });
+  }
+
+  Future<void> _loadTideReference() async {
+    final reference = await TideReferenceService.getCurrentReference();
+    setState(() {
+      _currentTideReference = reference;
+    });
+  }
+
+  Future<void> _setTideReferenceMode(String mode) async {
+    if (mode == 'automatic') {
+      await TideReferenceService.setAutomaticMode();
+    } else {
+      await TideReferenceService.setFixedReference('darwin');
+    }
+    await _loadTideReference();
   }
 
   /// Safely validate dropdown value exists exactly once in the list
@@ -2805,6 +2825,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   },
                 ),
               ],
+            ],
+          ),
+
+          // Tide Reference Location Section
+          BragmatSectionCard(
+            icon: Icons.waves,
+            title: 'Tide Reference Location',
+            children: [
+              const Text(
+                'Choose the default tide reference for new catches',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              RadioListTile<String>(
+                title: const Text('Automatic (catch location)'),
+                subtitle: const Text('Use the catch location coordinates'),
+                value: 'automatic',
+                groupValue: _currentTideReference?.id,
+                onChanged: (value) {
+                  if (value != null) {
+                    _setTideReferenceMode(value);
+                  }
+                },
+              ),
+              RadioListTile<String>(
+                title: const Text('Darwin'),
+                subtitle: const Text('Always use Darwin tide station'),
+                value: 'darwin',
+                groupValue: _currentTideReference?.id,
+                onChanged: (value) {
+                  if (value != null) {
+                    _setTideReferenceMode(value);
+                  }
+                },
+              ),
             ],
           ),
           const SizedBox(height: 16),

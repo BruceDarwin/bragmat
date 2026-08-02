@@ -16,6 +16,7 @@ import '../models/bait.dart';
 import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
+import '../services/tide_reference_service.dart';
 import '../helpers/tide_context_helper.dart';
 import '../widgets/bragmat_section_card.dart';
 import '../widgets/location_action_buttons.dart';
@@ -1069,6 +1070,59 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
 
     try {
       if (widget.catchToEdit != null) {
+        // Check for location/date/time changes before saving
+        final envService = EnvironmentalConditionsService();
+        final existing = await envService.getEnvironmentalConditionForCatch(widget.catchToEdit!.id!);
+        
+        // Check if location changed (for automatic mode or historical catches)
+        bool locationChanged = false;
+        if (existing != null) {
+          // Check for automatic mode OR historical catches (no tideReferenceMode)
+          final isAutomaticOrHistorical = existing.tideReferenceMode == 'automatic' || 
+              existing.tideReferenceMode == null || 
+              existing.tideReferenceMode!.isEmpty;
+          
+          if (isAutomaticOrHistorical) {
+            final existingLat = existing.latitude;
+            final existingLon = existing.longitude;
+            final newLat = latitude;
+            final newLon = longitude;
+            
+            if (existingLat != null && existingLon != null && newLat != null && newLon != null) {
+              // Use only floating-point comparison tolerance (1e-9), not a behavioral threshold
+              locationChanged = (existingLat - newLat).abs() > 1e-9 || (existingLon - newLon).abs() > 1e-9;
+            }
+          }
+        }
+        
+        // Check if date/time changed (any change matters for tide context)
+        bool dateTimeChanged = false;
+        if (existing != null && existing.observationDateTime != null) {
+          final existingTime = existing.observationDateTime;
+          final newTime = _dateCaught ?? widget.catchToEdit!.createdAt;
+          dateTimeChanged = existingTime != newTime;
+        }
+        
+        // Show prompt if changes detected
+        bool? result;
+        if (locationChanged || dateTimeChanged) {
+          result = await _showEnvironmentalRecalculationPrompt(
+            locationChanged: locationChanged,
+            dateTimeChanged: dateTimeChanged,
+            isAutomatic: existing?.tideReferenceMode == 'automatic',
+          );
+          
+          if (result == null) {
+            // User cancelled
+            return;
+          }
+          
+          if (!result) {
+            // User chose to keep existing - skip environmental upsert
+            debugPrint('SaveCatch: User chose to keep existing environmental data');
+          }
+        }
+        
         final updatedCatch = Catch(
           id: widget.catchToEdit!.id,
           fishType: fishType,
@@ -1108,15 +1162,33 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         debugPrint('SaveCatch: Manual environmental conditions saved');
         
         // Upsert calculated conditions (moon/sun) from catch coordinates
-        // Do NOT await WorldTides - make it non-blocking
-        debugPrint('SaveCatch: Starting upsert of calculated conditions (non-blocking)');
-        final envService = EnvironmentalConditionsService();
-        envService.upsertCalculatedConditionsForCatch(savedCatch!).then((_) {
-          debugPrint('SaveCatch: Calculated conditions upsert complete (async)');
-        }).catchError((e) {
-          debugPrint('SaveCatch: Calculated conditions upsert failed (async): $e');
-        });
-        debugPrint('SaveCatch: Calculated conditions upsert started (non-blocking)');
+        // Only upsert if user chose to recalculate or no changes were detected
+        if (locationChanged || dateTimeChanged) {
+          if (result == true) {
+            // User chose to recalculate
+            debugPrint('SaveCatch: Starting upsert of calculated conditions (non-blocking)');
+            final envService = EnvironmentalConditionsService();
+            envService.upsertCalculatedConditionsForCatch(savedCatch!).then((_) {
+              debugPrint('SaveCatch: Calculated conditions upsert complete (async)');
+            }).catchError((e) {
+              debugPrint('SaveCatch: Calculated conditions upsert failed (async): $e');
+            });
+            debugPrint('SaveCatch: Calculated conditions upsert started (non-blocking)');
+          } else {
+            // User chose to keep existing - skip upsert
+            debugPrint('SaveCatch: Skipping environmental upsert per user choice');
+          }
+        } else {
+          // No changes detected - normal upsert
+          debugPrint('SaveCatch: Starting upsert of calculated conditions (non-blocking)');
+          final envService = EnvironmentalConditionsService();
+          envService.upsertCalculatedConditionsForCatch(savedCatch!).then((_) {
+            debugPrint('SaveCatch: Calculated conditions upsert complete (async)');
+          }).catchError((e) {
+            debugPrint('SaveCatch: Calculated conditions upsert failed (async): $e');
+          });
+          debugPrint('SaveCatch: Calculated conditions upsert started (non-blocking)');
+        }
       } else {
         final newCatch = Catch(
           fishType: fishType,
@@ -1189,6 +1261,184 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     debugPrint('SaveCatch: Navigator.pop completed');
   }
 
+  Future<void> _showRecalculateEnvironmentalDataDialog() async {
+    if (widget.catchToEdit == null) return;
+    
+    final envService = EnvironmentalConditionsService();
+    final existing = await envService.getEnvironmentalConditionForCatch(widget.catchToEdit!.id!);
+    final currentDefault = await TideReferenceService.getCurrentReference();
+    
+    // Determine reference options
+    final hasRecordedReference = existing != null && 
+        existing.tideReferenceMode != null && 
+        existing.tideReferenceMode!.isNotEmpty;
+    
+    // Build recorded reference display
+    String recordedReferenceDisplay = 'No reference recorded';
+    if (hasRecordedReference) {
+      if (existing!.tideReferenceMode == 'automatic') {
+        recordedReferenceDisplay = 'Automatic (catch location)';
+      } else {
+        recordedReferenceDisplay = existing.tideReferenceName ?? 'Unknown';
+      }
+    }
+    
+    // Build current default reference display
+    String currentDefaultDisplay = 'Unknown';
+    final isCurrentAutomatic = TideReferenceService.isAutomatic(currentDefault);
+    currentDefaultDisplay = isCurrentAutomatic ? 'Automatic (catch location)' : currentDefault.displayName;
+    
+    // Check if both options are the same
+    final optionsAreSame = hasRecordedReference && 
+        recordedReferenceDisplay == currentDefaultDisplay;
+    
+    // If no recorded reference, default to current
+    bool useRecordedReference = hasRecordedReference;
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setState) => AlertDialog(
+          title: const Text('Recalculate Environmental Data'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'This will update the tide context for this catch using the selected tide reference.',
+              ),
+              const SizedBox(height: 16),
+              if (optionsAreSame) ...[
+                const Text(
+                  'Both reference options are the same:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text('Reference: $currentDefaultDisplay'),
+                const SizedBox(height: 16),
+              ] else ...[
+                const Text(
+                  'Choose tide reference:',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                if (hasRecordedReference)
+                  RadioListTile<bool>(
+                    title: const Text('Use catch\'s recorded reference'),
+                    subtitle: Text('Recorded: $recordedReferenceDisplay'),
+                    value: true,
+                    groupValue: useRecordedReference,
+                    onChanged: (value) {
+                      setState(() {
+                        useRecordedReference = value ?? true;
+                      });
+                    },
+                  ),
+                RadioListTile<bool>(
+                  title: const Text('Use current default reference'),
+                  subtitle: Text('Current default: $currentDefaultDisplay'),
+                  value: false,
+                  groupValue: useRecordedReference,
+                  onChanged: (value) {
+                    setState(() {
+                      useRecordedReference = value ?? false;
+                    });
+                  },
+                ),
+              ],
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('Recalculate'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (confirmed == true && mounted) {
+      await _recalculateEnvironmentalData(useRecordedReference: useRecordedReference);
+    }
+  }
+
+  Future<bool?> _showEnvironmentalRecalculationPrompt({
+    required bool locationChanged,
+    required bool dateTimeChanged,
+    required bool isAutomatic,
+  }) async {
+    String message;
+    if (locationChanged && dateTimeChanged) {
+      message = 'The catch location and date/time have changed. The existing environmental information relates to the previous catch details. Would you like to recalculate it?';
+    } else if (locationChanged) {
+      if (isAutomatic) {
+        message = 'The catch location has changed. The existing tide information relates to the previous location. Would you like to recalculate it for the new location?';
+      } else {
+        message = 'The catch location has changed. The displayed distance to the tide reference will be updated. Would you like to recalculate the environmental information?';
+      }
+    } else {
+      message = 'The catch date or time has changed. Would you like to recalculate the environmental information?';
+    }
+
+    return await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Recalculate Environmental Information'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, null),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Keep existing information'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Recalculate'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _recalculateEnvironmentalData({bool useRecordedReference = true}) async {
+    if (widget.catchToEdit == null) return;
+    
+    final envService = EnvironmentalConditionsService();
+    
+    try {
+      await envService.recalculateEnvironmentalConditionForCatch(
+        widget.catchToEdit!,
+        useRecordedReference: useRecordedReference,
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Environmental data recalculated successfully'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error recalculating environmental data: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Show loading indicator while initial data is being loaded
@@ -1224,6 +1474,12 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
               onPressed: _loadFishTypes,
               tooltip: 'Refresh Fish Types',
             ),
+            if (widget.catchToEdit != null)
+              IconButton(
+                icon: const Icon(Icons.autorenew),
+                onPressed: _showRecalculateEnvironmentalDataDialog,
+                tooltip: 'Recalculate Environmental Data',
+              ),
           ],
         ),
         body: SingleChildScrollView(
@@ -1658,6 +1914,35 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                 title: 'Environmental Conditions',
                 initiallyExpanded: false,
                 children: [
+                  // Tide Reference Display
+                  FutureBuilder(
+                    future: TideReferenceService.getCurrentReference(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const SizedBox.shrink();
+                      }
+                      final reference = snapshot.data;
+                      if (reference == null) {
+                        return const SizedBox.shrink();
+                      }
+                      final isAutomatic = TideReferenceService.isAutomatic(reference);
+                      final displayText = isAutomatic 
+                        ? 'Tide reference: Automatic (catch location)'
+                        : 'Tide reference: ${reference.displayName}';
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Text(
+                          displayText,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const Divider(height: 1),
                   // Weather
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 8),

@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../models/tide_event.dart';
 import '../services/secure_storage_service.dart';
+import '../database/database_helper.dart';
+import '../helpers/tide_context_helper.dart';
 import 'package:flutter/foundation.dart';
 
 /// WorldTides API Service

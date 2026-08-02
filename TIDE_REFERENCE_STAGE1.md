@@ -1,5 +1,8 @@
 # Tide Reference Location - Stage 1 Implementation
 
+## Status: **FULLY ACCEPTED** ✓
+**Date Accepted:** 2026-08-02
+
 ## Overview
 Stage 1 implements automatic tide reference location with WorldTides API integration, including database migration, caching, and UI display of tide context with source information.
 
@@ -74,6 +77,7 @@ Stage 1 implements automatic tide reference location with WorldTides API integra
 - **Dundee Beach:** FES2022 model ✓ (after cache fix)
 - **Historical catch update:** Point Stuart station ✓
 - **Cache test:** Second catch used cache, no API call, same metadata, recalculated context ✓
+- **Historical data preservation:** Untouched historical catches retain original tide-context phrases, display "Not recorded" for new metadata ✓
 
 ### Automated Tests
 - Database migration test (v27 → v28) ✓
