@@ -2003,13 +2003,16 @@ class DatabaseHelper {
     
     try {
       final extremesJson = nearestCache['extremes_json'] as String;
+      final station = nearestCache['worldtides_station'] as String?;
+      final atlas = nearestCache['worldtides_atlas'] as String?;
+      
       return {
         'extremes': jsonDecode(extremesJson),
         'cached_at': nearestCache['cached_at'] as String,
         'expires_at': nearestCache['expires_at'] as String,
         'distance_km': nearestDistance,
-        'worldtides_station': nearestCache['worldtides_station'] as String?,
-        'worldtides_atlas': nearestCache['worldtides_atlas'] as String?,
+        'worldtides_station': station,
+        'worldtides_atlas': atlas,
         'worldtides_response_lat': nearestCache['worldtides_response_lat'] as double?,
         'worldtides_response_lon': nearestCache['worldtides_response_lon'] as double?,
       };

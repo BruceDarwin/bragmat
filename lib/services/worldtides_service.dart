@@ -1,12 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
-import '../services/secure_storage_service.dart';
-import '../models/tide_station.dart';
 import '../models/tide_event.dart';
-import '../helpers/tide_context_helper.dart';
-import '../database/database_helper.dart';
+import '../services/secure_storage_service.dart';
 import 'package:flutter/foundation.dart';
-import 'package:intl/intl.dart';
 
 /// WorldTides API Service
 /// 
@@ -96,7 +92,16 @@ class WorldTidesService {
     // Check cache first
     final cachedData = await DatabaseHelper.instance.getCachedTideData(latitude, longitude, dateStr);
     if (cachedData != null) {
-      return cachedData;
+      // Reconstruct expected API response format from cached data
+      // Cache stores metadata in worldtides_* fields, but _parseStationInfo expects station/atlas/responseLat/responseLon
+      final reconstructedData = {
+        'extremes': cachedData['extremes'],
+        'station': cachedData['worldtides_station'],
+        'atlas': cachedData['worldtides_atlas'],
+        'responseLat': cachedData['worldtides_response_lat'],
+        'responseLon': cachedData['worldtides_response_lon'],
+      };
+      return reconstructedData;
     }
     
     // Not in cache, fetch from API
