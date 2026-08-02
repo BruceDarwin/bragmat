@@ -20,9 +20,18 @@ class EnvironmentalCondition {
   final String? derivedTideStage;
   final String? tideObservedOrEstimated;
   final String? tideDiagnostics;
-  // Tide Context fields
+  // Tide Context fields (deprecated - kept for backward compatibility)
   final String? tideStationName;
   final double? tideStationDistanceKm;
+  // Tide Reference and WorldTides Source fields
+  final String? tideReferenceMode; // 'automatic' or 'fixed'
+  final String? tideReferenceName; // 'Catch location' or 'Darwin' etc.
+  final double? tideRequestLat; // Coordinates sent to API
+  final double? tideRequestLon;
+  final String? worldtidesStation; // Station name from API response
+  final String? worldtidesAtlas; // Atlas/model from API response
+  final double? worldtidesResponseLat; // Response coordinates from API
+  final double? worldtidesResponseLon;
   final String? referenceTideEventType; // High / Low
   final DateTime? referenceTideEventTime;
   final double? referenceTideEventHeight;
@@ -73,9 +82,18 @@ class EnvironmentalCondition {
     this.derivedTideStage,
     this.tideObservedOrEstimated,
     this.tideDiagnostics,
-    // Tide Context fields
+    // Tide Context fields (deprecated - kept for backward compatibility)
     this.tideStationName,
     this.tideStationDistanceKm,
+    // Tide Reference and WorldTides Source fields
+    this.tideReferenceMode,
+    this.tideReferenceName,
+    this.tideRequestLat,
+    this.tideRequestLon,
+    this.worldtidesStation,
+    this.worldtidesAtlas,
+    this.worldtidesResponseLat,
+    this.worldtidesResponseLon,
     this.referenceTideEventType,
     this.referenceTideEventTime,
     this.referenceTideEventHeight,
@@ -129,9 +147,18 @@ class EnvironmentalCondition {
       'derived_tide_stage': derivedTideStage,
       'tide_observed_or_estimated': tideObservedOrEstimated,
       'tide_diagnostics': tideDiagnostics,
-      // Tide Context fields
+      // Tide Context fields (deprecated - kept for backward compatibility)
       'tide_station_name': tideStationName,
       'tide_station_distance_km': tideStationDistanceKm,
+      // Tide Reference and WorldTides Source fields
+      'tide_reference_mode': tideReferenceMode,
+      'tide_reference_name': tideReferenceName,
+      'tide_request_lat': tideRequestLat,
+      'tide_request_lon': tideRequestLon,
+      'worldtides_station': worldtidesStation,
+      'worldtides_atlas': worldtidesAtlas,
+      'worldtides_response_lat': worldtidesResponseLat,
+      'worldtides_response_lon': worldtidesResponseLon,
       'reference_tide_event_type': referenceTideEventType,
       'reference_tide_event_time': referenceTideEventTime?.toIso8601String(),
       'reference_tide_event_height': referenceTideEventHeight,
@@ -190,9 +217,18 @@ class EnvironmentalCondition {
       derivedTideStage: map['derived_tide_stage'] as String?,
       tideObservedOrEstimated: map['tide_observed_or_estimated'] as String?,
       tideDiagnostics: map['tide_diagnostics'] as String?,
-      // Tide Context fields
+      // Tide Context fields (deprecated - kept for backward compatibility)
       tideStationName: map['tide_station_name'] as String?,
       tideStationDistanceKm: map['tide_station_distance_km'] as double?,
+      // Tide Reference and WorldTides Source fields
+      tideReferenceMode: map['tide_reference_mode'] as String?,
+      tideReferenceName: map['tide_reference_name'] as String?,
+      tideRequestLat: map['tide_request_lat'] as double?,
+      tideRequestLon: map['tide_request_lon'] as double?,
+      worldtidesStation: map['worldtides_station'] as String?,
+      worldtidesAtlas: map['worldtides_atlas'] as String?,
+      worldtidesResponseLat: map['worldtides_response_lat'] as double?,
+      worldtidesResponseLon: map['worldtides_response_lon'] as double?,
       referenceTideEventType: map['reference_tide_event_type'] as String?,
       referenceTideEventTime: map['reference_tide_event_time'] != null
           ? DateTime.parse(map['reference_tide_event_time'] as String)
@@ -252,9 +288,18 @@ class EnvironmentalCondition {
     String? derivedTideStage,
     String? tideObservedOrEstimated,
     String? tideDiagnostics,
-    // Tide Context fields
+    // Tide Context fields (deprecated - kept for backward compatibility)
     String? tideStationName,
     double? tideStationDistanceKm,
+    // Tide Reference and WorldTides Source fields
+    String? tideReferenceMode,
+    String? tideReferenceName,
+    double? tideRequestLat,
+    double? tideRequestLon,
+    String? worldtidesStation,
+    String? worldtidesAtlas,
+    double? worldtidesResponseLat,
+    double? worldtidesResponseLon,
     String? referenceTideEventType,
     DateTime? referenceTideEventTime,
     double? referenceTideEventHeight,
@@ -305,9 +350,18 @@ class EnvironmentalCondition {
       derivedTideStage: derivedTideStage ?? this.derivedTideStage,
       tideObservedOrEstimated: tideObservedOrEstimated ?? this.tideObservedOrEstimated,
       tideDiagnostics: tideDiagnostics ?? this.tideDiagnostics,
-      // Tide Context fields
+      // Tide Context fields (deprecated - kept for backward compatibility)
       tideStationName: tideStationName ?? this.tideStationName,
       tideStationDistanceKm: tideStationDistanceKm ?? this.tideStationDistanceKm,
+      // Tide Reference and WorldTides Source fields
+      tideReferenceMode: tideReferenceMode ?? this.tideReferenceMode,
+      tideReferenceName: tideReferenceName ?? this.tideReferenceName,
+      tideRequestLat: tideRequestLat ?? this.tideRequestLat,
+      tideRequestLon: tideRequestLon ?? this.tideRequestLon,
+      worldtidesStation: worldtidesStation ?? this.worldtidesStation,
+      worldtidesAtlas: worldtidesAtlas ?? this.worldtidesAtlas,
+      worldtidesResponseLat: worldtidesResponseLat ?? this.worldtidesResponseLat,
+      worldtidesResponseLon: worldtidesResponseLon ?? this.worldtidesResponseLon,
       referenceTideEventType: referenceTideEventType ?? this.referenceTideEventType,
       referenceTideEventTime: referenceTideEventTime ?? this.referenceTideEventTime,
       referenceTideEventHeight: referenceTideEventHeight ?? this.referenceTideEventHeight,

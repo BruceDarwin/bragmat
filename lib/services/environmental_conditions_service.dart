@@ -744,7 +744,17 @@ class EnvironmentalConditionsService {
       tideHeight: existing?.tideHeight,
       tideMovement: existing?.tideMovement,
       tideStation: existing?.tideStation,
-      // Use official tide context if available, otherwise preserve existing
+      // Tide Reference and WorldTides Source fields
+      // For Stage 1, always use automatic mode with catch coordinates
+      tideReferenceMode: 'automatic',
+      tideReferenceName: null, // NULL for automatic mode, derived from mode
+      tideRequestLat: catchItem.latitude,
+      tideRequestLon: catchItem.longitude,
+      worldtidesStation: tideContext?['tideStationName'] ?? existing?.worldtidesStation,
+      worldtidesAtlas: tideContext?['worldtidesAtlas'] ?? existing?.worldtidesAtlas,
+      worldtidesResponseLat: tideContext?['worldtidesResponseLat'] ?? existing?.worldtidesResponseLat,
+      worldtidesResponseLon: tideContext?['worldtidesResponseLon'] ?? existing?.worldtidesResponseLon,
+      // Deprecated fields (kept for backward compatibility)
       tideStationName: tideContext?['tideStationName'] ?? existing?.tideStationName,
       tideStationDistanceKm: tideContext?['tideStationDistanceKm'] ?? existing?.tideStationDistanceKm,
       referenceTideEventType: tideContext?['referenceTideEventType'] ?? existing?.referenceTideEventType,

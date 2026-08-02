@@ -74,7 +74,9 @@ class WorldTidesService {
         localTideEvents,
         localObservationTime,
         stationInfo['name'],
-        stationInfo['distance'],
+        stationInfo['atlas'],
+        stationInfo['responseLat'],
+        stationInfo['responseLon'],
       );
     } catch (e) {
       debugPrint('WorldTides: Error fetching tide data: $e');
@@ -122,11 +124,16 @@ class WorldTidesService {
       // Cache the response for future use
       final extremes = data['extremes'] as List?;
       if (extremes != null && extremes.isNotEmpty) {
+        final stationInfo = _parseStationInfo(data);
         await DatabaseHelper.instance.cacheTideData(
           latitude,
           longitude,
           dateStr,
           extremes,
+          worldtidesStation: stationInfo['name'] as String?,
+          worldtidesAtlas: stationInfo['atlas'] as String?,
+          worldtidesResponseLat: stationInfo['responseLat'] as double?,
+          worldtidesResponseLon: stationInfo['responseLon'] as double?,
         );
       }
       
@@ -145,23 +152,23 @@ class WorldTidesService {
 
   /// Parse station information from API response
   /// 
-  /// Note: The WorldTides API does not return station information when using
-  /// the 'extremes' parameter with 'datum=CD'. Including the 'stations' parameter
-  /// causes 'extremes: null'. Therefore, station names are not available with
-  /// the current request pattern. The TideContextHelper handles this by using
-  /// "the nearest" wording when stationName is null.
+  /// The WorldTides API returns a 'station' field with the station name when
+  /// a named station is used. When using the global model (FES2022), the 'station'
+  /// field is absent and 'atlas' indicates the model used.
+  /// 
+  /// Also parses 'atlas', 'responseLat', and 'responseLon' for metadata.
   Map<String, dynamic?> _parseStationInfo(Map<String, dynamic> data) {
-    final stations = data['stations'] as List?;
+    final station = data['station'] as String?;
+    final atlas = data['atlas'] as String?;
+    final responseLat = (data['responseLat'] as num?)?.toDouble();
+    final responseLon = (data['responseLon'] as num?)?.toDouble();
     
-    if (stations != null && stations.isNotEmpty) {
-      final station = stations.first;
-      return {
-        'name': station['name'] as String?,
-        'distance': (station['distance'] as num?)?.toDouble(),
-      };
-    }
-    
-    return {'name': null, 'distance': null};
+    return {
+      'name': station,
+      'atlas': atlas,
+      'responseLat': responseLat,
+      'responseLon': responseLon,
+    };
   }
 
   /// Parse tide events from API response
@@ -225,7 +232,9 @@ class WorldTidesService {
     List<TideEvent> tideEvents,
     DateTime observationTime,
     String? stationName,
-    double? stationDistance,
+    String? atlas,
+    double? responseLat,
+    double? responseLon,
   ) {
     final referenceEvent = _findReferenceEvent(tideEvents, observationTime);
     if (referenceEvent == null) {
@@ -252,7 +261,9 @@ class WorldTidesService {
 
     return {
       'tideStationName': stationName,
-      'tideStationDistanceKm': stationDistance,
+      'worldtidesAtlas': atlas,
+      'worldtidesResponseLat': responseLat,
+      'worldtidesResponseLon': responseLon,
       'referenceTideEventType': referenceEvent.eventType,
       'referenceTideEventTime': referenceEvent.eventTime,
       'referenceTideEventHeight': referenceEvent.height,

@@ -35,7 +35,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 27,
+      version: 28,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -758,6 +758,43 @@ class DatabaseHelper {
       
       // Create index for faster lookups
       await db.execute('CREATE INDEX IF NOT EXISTS idx_tide_cache_location_date ON tide_cache(latitude, longitude, date)');
+    }
+    if (oldVersion < 28) {
+      // Add tide reference and WorldTides source metadata to environmental_conditions
+      final tideReferenceColumns = [
+        'tide_reference_mode TEXT',
+        'tide_reference_name TEXT',
+        'tide_request_lat REAL',
+        'tide_request_lon REAL',
+        'worldtides_station TEXT',
+        'worldtides_atlas TEXT',
+        'worldtides_response_lat REAL',
+        'worldtides_response_lon REAL',
+      ];
+      
+      for (final column in tideReferenceColumns) {
+        try {
+          await db.execute('ALTER TABLE environmental_conditions ADD COLUMN $column');
+        } catch (e) {
+          // Column might already exist
+        }
+      }
+      
+      // Add WorldTides metadata to tide_cache
+      final tideCacheColumns = [
+        'worldtides_station TEXT',
+        'worldtides_atlas TEXT',
+        'worldtides_response_lat REAL',
+        'worldtides_response_lon REAL',
+      ];
+      
+      for (final column in tideCacheColumns) {
+        try {
+          await db.execute('ALTER TABLE tide_cache ADD COLUMN $column');
+        } catch (e) {
+          // Column might already exist
+        }
+      }
     }
     
     // Safety check: Ensure trip_id column exists in catches table
@@ -1971,6 +2008,10 @@ class DatabaseHelper {
         'cached_at': nearestCache['cached_at'] as String,
         'expires_at': nearestCache['expires_at'] as String,
         'distance_km': nearestDistance,
+        'worldtides_station': nearestCache['worldtides_station'] as String?,
+        'worldtides_atlas': nearestCache['worldtides_atlas'] as String?,
+        'worldtides_response_lat': nearestCache['worldtides_response_lat'] as double?,
+        'worldtides_response_lon': nearestCache['worldtides_response_lon'] as double?,
       };
     } catch (e) {
       // Invalid JSON, delete the cache entry
@@ -1984,7 +2025,18 @@ class DatabaseHelper {
   }
   
   /// Cache tide data for a location and date
-  Future<void> cacheTideData(double latitude, double longitude, String date, List<dynamic> extremes, {String datum = 'CD', Duration expiry = const Duration(days: 7)}) async {
+  Future<void> cacheTideData(
+    double latitude,
+    double longitude,
+    String date,
+    List<dynamic> extremes, {
+    String datum = 'CD',
+    Duration expiry = const Duration(days: 7),
+    String? worldtidesStation,
+    String? worldtidesAtlas,
+    double? worldtidesResponseLat,
+    double? worldtidesResponseLon,
+  }) async {
     final db = await instance.database;
     final now = DateTime.now();
     final expiresAt = now.add(expiry);
@@ -1997,6 +2049,10 @@ class DatabaseHelper {
       'extremes_json': jsonEncode(extremes),
       'cached_at': now.toIso8601String(),
       'expires_at': expiresAt.toIso8601String(),
+      'worldtides_station': worldtidesStation,
+      'worldtides_atlas': worldtidesAtlas,
+      'worldtides_response_lat': worldtidesResponseLat,
+      'worldtides_response_lon': worldtidesResponseLon,
     };
     
     // Insert or replace (UNIQUE constraint handles this)

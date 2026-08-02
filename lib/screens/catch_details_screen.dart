@@ -645,6 +645,22 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
     
     // Show official tide context if available
     if (hasOfficialTideContext) {
+      // Determine tide reference display
+      String tideReferenceDisplay = 'Not recorded';
+      if (condition.tideReferenceMode == 'automatic') {
+        tideReferenceDisplay = 'Catch location';
+      } else if (condition.tideReferenceName != null) {
+        tideReferenceDisplay = condition.tideReferenceName!;
+      }
+      
+      // Determine WorldTides source display
+      String worldtidesSourceDisplay = 'Not recorded';
+      if (condition.worldtidesStation != null && condition.worldtidesStation!.isNotEmpty) {
+        worldtidesSourceDisplay = '${condition.worldtidesStation} station';
+      } else if (condition.worldtidesAtlas != null && condition.worldtidesAtlas!.isNotEmpty) {
+        worldtidesSourceDisplay = '${condition.worldtidesAtlas} model';
+      }
+      
       children.add(
         Padding(
           padding: const EdgeInsets.only(bottom: 12),
@@ -663,6 +679,18 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                     ),
                   ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              // Tide reference and WorldTides source
+              BragmatDataRow(
+                icon: Icons.location_on,
+                label: 'Tide reference',
+                value: tideReferenceDisplay,
+              ),
+              BragmatDataRow(
+                icon: Icons.info_outline,
+                label: 'WorldTides source',
+                value: worldtidesSourceDisplay,
               ),
               const SizedBox(height: 8),
               Text(
