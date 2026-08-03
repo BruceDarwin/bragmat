@@ -22,6 +22,7 @@ import '../services/tide_reference_service.dart';
 import '../widgets/bragmat_section_card.dart';
 import 'favourite_spots_screen.dart';
 import 'achievements_screen.dart';
+import 'photo_metadata_diagnostic_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -3134,6 +3135,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.info,
             title: 'App',
             children: [
+              ListTile(
+                leading: const Icon(Icons.science, color: Colors.orange),
+                title: const Text('Photo Metadata Diagnostic', style: TextStyle(color: Colors.orange)),
+                subtitle: const Text('Development tool for Stage 4A investigation', style: TextStyle(color: Colors.orange, fontSize: 12)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  await Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const PhotoMetadataDiagnosticScreen(),
+                    ),
+                  );
+                },
+              ),
+              const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.emoji_events),
                 title: const Text('Achievements'),
