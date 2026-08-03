@@ -5,6 +5,7 @@ import 'package:bragmat/helpers/tide_context_helper.dart';
 import 'package:bragmat/models/environmental_condition.dart';
 import 'package:bragmat/models/tide_reference.dart';
 import 'package:bragmat/services/tide_reference_service.dart';
+import 'package:bragmat/services/environmental_conditions_service.dart';
 
 void main() {
   group('TideReferenceService', () {
@@ -439,6 +440,154 @@ void main() {
 
       expect(phrase, contains('nearest'));
       expect(phrase, isNot(contains('Darwin')));
+    });
+  });
+
+  group('Stage 3: Failed Recalculation Workflow', () {
+    test('clearTideResults clears WorldTides metadata', () {
+      final condition = EnvironmentalCondition(
+        id: 1,
+        catchId: 1,
+        observationDateTime: DateTime(2026, 8, 2),
+        latitude: -12.4667,
+        longitude: 130.8500,
+        worldtidesStation: 'Darwin',
+        worldtidesAtlas: 'FES2022',
+        worldtidesResponseLat: -12.4667,
+        worldtidesResponseLon: 130.8500,
+        referenceTideEventType: 'High',
+        referenceTideEventTime: DateTime(2026, 8, 2, 10, 57),
+        referenceTideEventHeight: 6.595,
+        referenceTideEventRelation: 'Before',
+        previousTideEventType: 'Low',
+        previousTideEventTime: DateTime(2026, 8, 2, 4, 30),
+        previousTideEventHeight: 1.2,
+        nextTideEventType: 'High',
+        nextTideEventTime: DateTime(2026, 8, 2, 17, 15),
+        nextTideEventHeight: 7.1,
+        tideContextPhrase: 'Darwin high tide 6.59 m',
+        tideContextDataSource: 'WorldTides',
+        tideContextConfidence: 'High',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final cleared = condition.clearTideResults();
+
+      expect(cleared.worldtidesStation, isNull);
+      expect(cleared.worldtidesAtlas, isNull);
+      expect(cleared.worldtidesResponseLat, isNull);
+      expect(cleared.worldtidesResponseLon, isNull);
+      expect(cleared.referenceTideEventType, isNull);
+      expect(cleared.referenceTideEventTime, isNull);
+      expect(cleared.referenceTideEventHeight, isNull);
+      expect(cleared.referenceTideEventRelation, isNull);
+      expect(cleared.previousTideEventType, isNull);
+      expect(cleared.previousTideEventTime, isNull);
+      expect(cleared.previousTideEventHeight, isNull);
+      expect(cleared.nextTideEventType, isNull);
+      expect(cleared.nextTideEventTime, isNull);
+      expect(cleared.nextTideEventHeight, isNull);
+      expect(cleared.tideContextPhrase, isNull);
+      expect(cleared.tideContextDataSource, isNull);
+      expect(cleared.tideContextConfidence, isNull);
+    });
+
+    test('clearTideResults preserves manual tide observations', () {
+      final condition = EnvironmentalCondition(
+        id: 1,
+        catchId: 1,
+        observationDateTime: DateTime(2026, 8, 2),
+        latitude: -12.4667,
+        longitude: 130.8500,
+        tideStage: 'High Tide',
+        tideStrength: 'Strong',
+        tideNotes: 'Observed manually',
+        tideHeight: 6.5,
+        tideMovement: 'Run-In',
+        tideStation: 'Manual observation',
+        worldtidesStation: 'Darwin',
+        worldtidesAtlas: 'FES2022',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final cleared = condition.clearTideResults();
+
+      expect(cleared.tideStage, 'High Tide');
+      expect(cleared.tideStrength, 'Strong');
+      expect(cleared.tideNotes, 'Observed manually');
+      expect(cleared.tideHeight, 6.5);
+      expect(cleared.tideMovement, 'Run-In');
+      expect(cleared.tideStation, 'Manual observation');
+    });
+
+    test('clearTideResults preserves tide reference information', () {
+      final condition = EnvironmentalCondition(
+        id: 1,
+        catchId: 1,
+        observationDateTime: DateTime(2026, 8, 2),
+        latitude: -12.4667,
+        longitude: 130.8500,
+        tideReferenceMode: 'fixed',
+        tideReferenceName: 'Darwin',
+        tideRequestLat: -12.4667,
+        tideRequestLon: 130.8500,
+        worldtidesStation: 'Darwin',
+        worldtidesAtlas: 'FES2022',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final cleared = condition.clearTideResults();
+
+      expect(cleared.tideReferenceMode, 'fixed');
+      expect(cleared.tideReferenceName, 'Darwin');
+      expect(cleared.tideRequestLat, -12.4667);
+      expect(cleared.tideRequestLon, 130.8500);
+    });
+
+    test('clearTideResults preserves weather and environmental data', () {
+      final condition = EnvironmentalCondition(
+        id: 1,
+        catchId: 1,
+        observationDateTime: DateTime(2026, 8, 2),
+        latitude: -12.4667,
+        longitude: 130.8500,
+        weatherCondition: 'Sunny',
+        temperature: 32.0,
+        humidity: 65.0,
+        cloudCover: 10.0,
+        windSpeed: 15.0,
+        windDirection: 'NE',
+        barometricPressure: 1013.0,
+        rainfall: 0.0,
+        waterClarity: 'Clear',
+        worldtidesStation: 'Darwin',
+        worldtidesAtlas: 'FES2022',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final cleared = condition.clearTideResults();
+
+      expect(cleared.weatherCondition, 'Sunny');
+      expect(cleared.temperature, 32.0);
+      expect(cleared.humidity, 65.0);
+      expect(cleared.cloudCover, 10.0);
+      expect(cleared.windSpeed, 15.0);
+      expect(cleared.windDirection, 'NE');
+      expect(cleared.barometricPressure, 1013.0);
+      expect(cleared.rainfall, 0.0);
+      expect(cleared.waterClarity, 'Clear');
+    });
+
+    test('TideRecalculationResult enum values exist', () {
+      expect(TideRecalculationResult.success, isNotNull);
+      expect(TideRecalculationResult.unavailable, isNotNull);
+      expect(TideRecalculationResult.invalidCoordinates, isNotNull);
+      expect(TideRecalculationResult.invalidApiKey, isNotNull);
+      expect(TideRecalculationResult.unexpectedFailure, isNotNull);
     });
   });
 }

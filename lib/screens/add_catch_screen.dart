@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
@@ -13,6 +14,7 @@ import '../models/favourite_spot.dart';
 import '../models/environmental_condition.dart';
 import '../models/lure.dart';
 import '../models/bait.dart';
+import '../models/tide_reference.dart';
 import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
@@ -63,6 +65,19 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   final _tideHeightController = TextEditingController();
   String? _selectedTideMovement;
   final _tideStationController = TextEditingController();
+  
+  // Stage 3: Per-catch tide reference selection
+  TideReference? _selectedTideReference;       // Currently selected in dropdown
+  TideReference? _recordedTideReference;       // Original reference for edit
+  TideReference? _settingsDefaultReference;    // Current Settings default
+  DateTime? _originalDateCaught;               // Original catch date/time
+  double? _originalLatitude;                   // Original catch latitude
+  double? _originalLongitude;                  // Original catch longitude
+  bool _hasValidTideData = false;               // Whether valid existing tide information is present
+  bool _recalculationSucceeded = false;         // Whether recalculation succeeded
+  bool _referenceChanged = false;               // Track if user changed reference
+  bool _isSaving = false;                       // Guard to prevent duplicate save operations
+  
   // Manual tide context fields (to emulate WorldTides)
   String? _selectedReferenceTideEventType;
   DateTime? _referenceTideEventTime;
@@ -170,6 +185,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       // For new catches, pre-select the current trip if set
       _loadCurrentTrip();
       
+      // Stage 3: Load Settings default for new catches
+      _settingsDefaultReference = await TideReferenceService.getCurrentReference();
+      _selectedTideReference = _settingsDefaultReference;
+      
       // Set date caught to current date and time
       _dateCaught = DateTime.now();
     }
@@ -184,7 +203,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     _notesController.addListener(_onFieldChanged);
     _locationController.addListener(_onFieldChanged);
     _latitudeController.addListener(_onFieldChanged);
+    _latitudeController.addListener(_onLocationChanged); // Stage 3: Real-time distance update
     _longitudeController.addListener(_onFieldChanged);
+    _longitudeController.addListener(_onLocationChanged); // Stage 3: Real-time distance update
     _tideHeightController.addListener(_onFieldChanged);
     _tideStationController.addListener(_onFieldChanged);
     _referenceTideEventHeightController.addListener(_onFieldChanged);
@@ -208,7 +229,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     _notesController.removeListener(_onFieldChanged);
     _locationController.removeListener(_onFieldChanged);
     _latitudeController.removeListener(_onFieldChanged);
+    _latitudeController.removeListener(_onLocationChanged); // Stage 3
     _longitudeController.removeListener(_onFieldChanged);
+    _longitudeController.removeListener(_onLocationChanged); // Stage 3
     _tideHeightController.removeListener(_onFieldChanged);
     _tideStationController.removeListener(_onFieldChanged);
     _referenceTideEventHeightController.removeListener(_onFieldChanged);
@@ -253,6 +276,49 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       setState(() {
         _hasUnsavedChanges = true;
       });
+    }
+  }
+  
+  // Stage 3: Trigger real-time distance update when location changes
+  void _onLocationChanged() {
+    setState(() {
+      // Force rebuild to update distance display
+    });
+  }
+  
+  // Stage 3: Calculate distance between two coordinates using Haversine formula
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const double earthRadiusKm = 6371.0;
+    
+    final dLat = _degreesToRadians(lat2 - lat1);
+    final dLon = _degreesToRadians(lon2 - lon1);
+    
+    final a = (sin(dLat / 2) * sin(dLat / 2)) +
+        cos(_degreesToRadians(lat1)) *
+        cos(_degreesToRadians(lat2)) *
+        (sin(dLon / 2) * sin(dLon / 2));
+    
+    final c = 2 * atan2(sqrt(a), sqrt(1 - a));
+    
+    return earthRadiusKm * c;
+  }
+  
+  // Stage 3: Convert degrees to radians
+  double _degreesToRadians(double degrees) {
+    return degrees * pi / 180;
+  }
+  
+  // Stage 3: Format distance according to rules
+  String _formatDistance(double distanceKm) {
+    if (distanceKm < 0.5) {
+      // Very close to reference - omit distance
+      return '';
+    } else if (distanceKm < 10) {
+      // Under 10 km: one decimal place
+      return '${distanceKm.toStringAsFixed(1)} km';
+    } else {
+      // 10 km or more: nearest whole kilometre
+      return '${distanceKm.round()} km';
     }
   }
 
@@ -503,9 +569,40 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     
     final condition = await envService.getEnvironmentalConditionForCatch(catchId);
     
+    // Stage 3: Load recorded tide reference
+    TideReference? recordedReference;
+    if (condition != null && 
+        condition.tideReferenceMode != null && 
+        condition.tideReferenceMode!.isNotEmpty) {
+      if (condition.tideReferenceMode == 'automatic') {
+        recordedReference = TideReference(
+          id: 'automatic',
+          displayName: 'Automatic (catch location)',
+          latitude: 0.0,
+          longitude: 0.0,
+        );
+      } else if (condition.tideReferenceName != null) {
+        final ref = TideReferenceService.getReferenceById(
+          condition.tideReferenceName!.toLowerCase(),
+        );
+        recordedReference = ref;
+      }
+    }
+    
+    // Store original values for change detection
+    _originalDateCaught = widget.catchToEdit!.dateCaught;
+    _originalLatitude = widget.catchToEdit!.latitude;
+    _originalLongitude = widget.catchToEdit!.longitude;
+    _hasValidTideData = condition != null && 
+                       condition.tideContextDataSource == 'WorldTides' &&
+                       condition.tideContextPhrase != null &&
+                       condition.tideContextPhrase!.isNotEmpty;
+    
     if (condition != null) {
       setState(() {
         _existingEnvironmentalCondition = condition;
+        _recordedTideReference = recordedReference;
+        _selectedTideReference = recordedReference; // Initially match recorded reference
         _selectedTideStage = _safeDropdownValue(condition.tideStage, EnvironmentalCondition.tideStages, 'tideStage', catchId: catchId);
         _selectedTideStrength = _safeDropdownValue(condition.tideStrength, EnvironmentalCondition.tideStrengths, 'tideStrength', catchId: catchId);
         _tideNotesController.text = condition.tideNotes ?? '';
@@ -1055,6 +1152,16 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   }
 
   void _saveCatch() async {
+    // Guard to prevent duplicate save operations
+    if (_isSaving) {
+      debugPrint('SaveCatch: Already saving, ignoring duplicate request');
+      return;
+    }
+    
+    setState(() {
+      _isSaving = true;
+    });
+    
     final fishType = _selectedFishType ?? _fishTypeController.text;
     final length = int.tryParse(_lengthController.text) ?? 0;
     final notes = _notesController.text;
@@ -1063,6 +1170,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     final longitude = double.tryParse(_longitudeController.text);
 
     if (fishType.isEmpty) {
+      setState(() {
+        _isSaving = false;
+      });
       return;
     }
 
@@ -1070,9 +1180,49 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
 
     try {
       if (widget.catchToEdit != null) {
-        // Check for location/date/time changes before saving
+        // Check for location/date/time/reference changes before saving
         final envService = EnvironmentalConditionsService();
         final existing = await envService.getEnvironmentalConditionForCatch(widget.catchToEdit!.id!);
+        
+        // Stage 3: Check if reference changed
+        bool referenceChanged = false;
+        bool isHistoricalCatch = _recordedTideReference == null;
+        
+        if (_recordedTideReference != null && _selectedTideReference != null) {
+          referenceChanged = _recordedTideReference!.id != _selectedTideReference!.id;
+        } else if (isHistoricalCatch && _selectedTideReference != null) {
+          // Historical catch with no recorded reference, user selected one
+          referenceChanged = true;
+        }
+        
+        // Stage 3: For historical catch, prompt if user selected a reference
+        if (isHistoricalCatch && _selectedTideReference != null) {
+          final result = await _showHistoricalReferencePrompt();
+          if (result == null || result == false) {
+            // User cancelled - revert to "Not recorded"
+            setState(() {
+              _selectedTideReference = null;
+            });
+            return;
+          }
+          // User confirmed - continue with save and recalculation
+        }
+        
+        // Reference change takes precedence - mandatory recalculation
+        if (referenceChanged && !isHistoricalCatch) {
+          final result = await _showReferenceChangePrompt();
+          if (result == null) {
+            // User cancelled
+            return;
+          }
+          if (result == 'revert') {
+            // Revert to recorded reference
+            setState(() {
+              _selectedTideReference = _recordedTideReference;
+            });
+          }
+          // If result == 'recalculate', continue with save and recalculation
+        }
         
         // Check if location changed (for automatic mode or historical catches)
         bool locationChanged = false;
@@ -1103,21 +1253,17 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           dateTimeChanged = existingTime != newTime;
         }
         
-        // Show prompt if changes detected
+        // Show prompt if changes detected (only if reference didn't change)
         bool? result;
-        if (locationChanged || dateTimeChanged) {
+        if (!referenceChanged && (locationChanged || dateTimeChanged)) {
+          debugPrint('SaveCatch: Showing environmental recalculation prompt (locationChanged: $locationChanged, dateTimeChanged: $dateTimeChanged)');
           result = await _showEnvironmentalRecalculationPrompt(
             locationChanged: locationChanged,
             dateTimeChanged: dateTimeChanged,
             isAutomatic: existing?.tideReferenceMode == 'automatic',
           );
-          
-          if (result == null) {
-            // User cancelled
-            return;
-          }
-          
-          if (!result) {
+          debugPrint('SaveCatch: Environmental recalculation prompt result: $result');
+          if (result == false) {
             // User chose to keep existing - skip environmental upsert
             debugPrint('SaveCatch: User chose to keep existing environmental data');
           }
@@ -1162,32 +1308,115 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         debugPrint('SaveCatch: Manual environmental conditions saved');
         
         // Upsert calculated conditions (moon/sun) from catch coordinates
-        // Only upsert if user chose to recalculate or no changes were detected
-        if (locationChanged || dateTimeChanged) {
+        // Stage 3: Always upsert if reference changed, otherwise check user choice
+        if (referenceChanged) {
+          // Reference changed - mandatory recalculation (blocking)
+          debugPrint('SaveCatch: Reference changed - mandatory recalculation');
+          final envService = EnvironmentalConditionsService();
+          final recalcResult = await envService.upsertCalculatedConditionsForCatch(
+            savedCatch!,
+            tideReference: _selectedTideReference,
+          );
+          
+          // Handle recalculation result
+          if (recalcResult == TideRecalculationResult.unavailable && _hasValidTideData) {
+            // Recalculation failed for existing catch with valid data - show decision dialog
+            final decision = await _showFailedRecalculationPrompt();
+            if (decision == null) {
+              // User cancelled - return to edit screen
+              debugPrint('SaveCatch: User cancelled failed recalculation');
+              return;
+            } else if (decision == 'revert') {
+              // Revert to recorded reference
+              debugPrint('SaveCatch: Reverting to recorded reference');
+              setState(() {
+                _selectedTideReference = _recordedTideReference;
+              });
+              // Re-save with original reference
+              final revertResult = await envService.upsertCalculatedConditionsForCatch(
+                savedCatch!,
+                tideReference: _recordedTideReference,
+              );
+              if (revertResult == TideRecalculationResult.unavailable) {
+                // Even revert failed - show notification
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Catch saved. Tide information unavailable.'),
+                      duration: Duration(seconds: 5),
+                    ),
+                  );
+                }
+              }
+            } else if (decision == 'save') {
+              // Save without tide information - clear stale metadata
+              debugPrint('SaveCatch: Saving without tide information - clearing stale metadata');
+              await _clearStaleTideMetadata(savedCatch!.id!);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Catch saved without tide information.'),
+                    duration: Duration(seconds: 5),
+                  ),
+                );
+              }
+            }
+          } else if (recalcResult == TideRecalculationResult.unavailable) {
+            // New catch or no existing valid data - show notification
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Catch saved without tide data. Tide information unavailable.'),
+                  duration: Duration(seconds: 5),
+                ),
+              );
+            }
+          }
+        } else if (locationChanged || dateTimeChanged) {
           if (result == true) {
             // User chose to recalculate
-            debugPrint('SaveCatch: Starting upsert of calculated conditions (non-blocking)');
+            debugPrint('SaveCatch: Starting upsert of calculated conditions');
             final envService = EnvironmentalConditionsService();
-            envService.upsertCalculatedConditionsForCatch(savedCatch!).then((_) {
-              debugPrint('SaveCatch: Calculated conditions upsert complete (async)');
-            }).catchError((e) {
-              debugPrint('SaveCatch: Calculated conditions upsert failed (async): $e');
-            });
-            debugPrint('SaveCatch: Calculated conditions upsert started (non-blocking)');
+            final recalcResult = await envService.upsertCalculatedConditionsForCatch(
+              savedCatch!,
+              tideReference: _selectedTideReference,
+            );
+            
+            if (recalcResult == TideRecalculationResult.unavailable) {
+              // Recalculation failed - show notification
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Catch saved without tide data. Tide information unavailable.'),
+                    duration: Duration(seconds: 5),
+                  ),
+                );
+              }
+            }
           } else {
             // User chose to keep existing - skip upsert
             debugPrint('SaveCatch: Skipping environmental upsert per user choice');
           }
         } else {
           // No changes detected - normal upsert
-          debugPrint('SaveCatch: Starting upsert of calculated conditions (non-blocking)');
+          debugPrint('SaveCatch: Starting upsert of calculated conditions');
           final envService = EnvironmentalConditionsService();
-          envService.upsertCalculatedConditionsForCatch(savedCatch!).then((_) {
-            debugPrint('SaveCatch: Calculated conditions upsert complete (async)');
-          }).catchError((e) {
-            debugPrint('SaveCatch: Calculated conditions upsert failed (async): $e');
-          });
-          debugPrint('SaveCatch: Calculated conditions upsert started (non-blocking)');
+          final recalcResult = await envService.upsertCalculatedConditionsForCatch(
+            savedCatch!,
+            tideReference: _selectedTideReference,
+          );
+          
+          if (recalcResult == TideRecalculationResult.unavailable) {
+            // Recalculation failed - show notification
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text('Catch saved without tide data. Tide information unavailable.'),
+                  duration: Duration(seconds: 5),
+                ),
+              );
+            }
+          }
         }
       } else {
         final newCatch = Catch(
@@ -1227,21 +1456,34 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         debugPrint('SaveCatch: Manual environmental conditions saved');
         
         // Upsert calculated conditions (moon/sun) from catch coordinates
-        // Do NOT await WorldTides - make it non-blocking
-        debugPrint('SaveCatch: Starting upsert of calculated conditions (non-blocking)');
+        // Stage 3: For new catches, handle recalculation result
+        debugPrint('SaveCatch: Starting upsert of calculated conditions');
         final envService = EnvironmentalConditionsService();
-        envService.upsertCalculatedConditionsForCatch(savedCatch!).then((_) {
-          debugPrint('SaveCatch: Calculated conditions upsert complete (async)');
-        }).catchError((e) {
-          debugPrint('SaveCatch: Calculated conditions upsert failed (async): $e');
-        });
-        debugPrint('SaveCatch: Calculated conditions upsert started (non-blocking)');
+        final recalcResult = await envService.upsertCalculatedConditionsForCatch(
+          savedCatch!,
+          tideReference: _selectedTideReference,
+        );
+        
+        if (recalcResult == TideRecalculationResult.unavailable) {
+          // New catch with API failure - show notification
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Catch saved without tide data. Tide information unavailable.'),
+                duration: Duration(seconds: 5),
+              ),
+            );
+          }
+        }
       }
       
       // Remember last used fish type
       await PreferencesService.setLastUsedFishType(fishType);
     } catch (e, stackTrace) {
       debugPrint('ERROR saving catch: $e');
+      setState(() {
+        _isSaving = false;
+      });
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -1252,6 +1494,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       }
       return;
     }
+
+    setState(() {
+      _isSaving = false;
+    });
 
     if (!mounted) return;
 
@@ -1372,6 +1618,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     required bool dateTimeChanged,
     required bool isAutomatic,
   }) async {
+    debugPrint('Dialog: Environmental recalculation prompt opened');
     String message;
     if (locationChanged && dateTimeChanged) {
       message = 'The catch location and date/time have changed. The existing environmental information relates to the previous catch details. Would you like to recalculate it?';
@@ -1385,27 +1632,171 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       message = 'The catch date or time has changed. Would you like to recalculate the environmental information?';
     }
 
-    return await showDialog<bool>(
+    final result = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('Recalculate Environmental Information'),
         content: Text(message),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context, null),
+            onPressed: () {
+              debugPrint('Dialog: Environmental recalculation - Cancel selected');
+              Navigator.pop(dialogContext, null);
+              debugPrint('Dialog: Environmental recalculation - dismissed with null');
+            },
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () {
+              debugPrint('Dialog: Environmental recalculation - Keep existing selected');
+              Navigator.pop(dialogContext, false);
+              debugPrint('Dialog: Environmental recalculation - dismissed with false');
+            },
             child: const Text('Keep existing information'),
           ),
           TextButton(
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () {
+              debugPrint('Dialog: Environmental recalculation - Recalculate selected');
+              Navigator.pop(dialogContext, true);
+              debugPrint('Dialog: Environmental recalculation - dismissed with true');
+            },
             child: const Text('Recalculate'),
           ),
         ],
       ),
     );
+    
+    debugPrint('Dialog: Environmental recalculation - result received: $result');
+    return result;
+  }
+  
+  // Stage 3: Prompt for reference change (mandatory recalculation)
+  Future<String?> _showReferenceChangePrompt() async {
+    debugPrint('Dialog: Reference change prompt opened');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Tide Reference Changed'),
+        content: const Text(
+          'The tide reference has changed. Tide information must be recalculated using the new reference.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              debugPrint('Dialog: Reference change - Cancel selected');
+              Navigator.pop(dialogContext, null);
+              debugPrint('Dialog: Reference change - dismissed with null');
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              debugPrint('Dialog: Reference change - Revert selected');
+              Navigator.pop(dialogContext, 'revert');
+              debugPrint('Dialog: Reference change - dismissed with revert');
+            },
+            child: const Text('Revert to recorded reference'),
+          ),
+          TextButton(
+            onPressed: () {
+              debugPrint('Dialog: Reference change - Recalculate selected');
+              Navigator.pop(dialogContext, 'recalculate');
+              debugPrint('Dialog: Reference change - dismissed with recalculate');
+            },
+            child: const Text('Recalculate and save'),
+          ),
+        ],
+      ),
+    );
+    debugPrint('Dialog: Reference change - result received: $result');
+    return result;
+  }
+  
+  // Stage 3: Prompt for failed recalculation on existing catch with valid data
+  Future<String?> _showFailedRecalculationPrompt() async {
+    debugPrint('Dialog: Failed recalculation prompt opened');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Tide Information Unavailable'),
+        content: const Text(
+          'Tide information could not be retrieved for the new reference.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              debugPrint('Dialog: Failed recalculation - Cancel selected');
+              Navigator.pop(dialogContext, null);
+              debugPrint('Dialog: Failed recalculation - dismissed with null');
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              debugPrint('Dialog: Failed recalculation - Revert selected');
+              Navigator.pop(dialogContext, 'revert');
+              debugPrint('Dialog: Failed recalculation - dismissed with revert');
+            },
+            child: const Text('Revert to recorded reference'),
+          ),
+          TextButton(
+            onPressed: () {
+              debugPrint('Dialog: Failed recalculation - Save without tide selected');
+              Navigator.pop(dialogContext, 'save');
+              debugPrint('Dialog: Failed recalculation - dismissed with save');
+            },
+            child: const Text('Save without tide information'),
+          ),
+        ],
+      ),
+    );
+    debugPrint('Dialog: Failed recalculation - result received: $result');
+    return result;
+  }
+  
+  // Stage 3: Clear stale tide metadata from environmental condition
+  Future<void> _clearStaleTideMetadata(int catchId) async {
+    final envService = EnvironmentalConditionsService();
+    final existing = await envService.getEnvironmentalConditionForCatch(catchId);
+    if (existing != null) {
+      final cleared = existing.clearTideResults();
+      await envService.updateEnvironmentalCondition(cleared);
+      debugPrint('SaveCatch: Cleared stale tide metadata for catch $catchId');
+    }
+  }
+  
+  // Stage 3: Prompt for historical catch reference selection
+  Future<bool?> _showHistoricalReferencePrompt() async {
+    debugPrint('Dialog: Historical reference prompt opened');
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Set Tide Reference'),
+        content: const Text(
+          'No tide reference was recorded for this catch. Would you like to set a reference and recalculate the environmental information?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              debugPrint('Dialog: Historical reference - Cancel selected');
+              Navigator.pop(dialogContext, false);
+              debugPrint('Dialog: Historical reference - dismissed with false');
+            },
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              debugPrint('Dialog: Historical reference - Set reference selected');
+              Navigator.pop(dialogContext, true);
+              debugPrint('Dialog: Historical reference - dismissed with true');
+            },
+            child: const Text('Set reference and recalculate'),
+          ),
+        ],
+      ),
+    );
+    debugPrint('Dialog: Historical reference - result received: $result');
+    return result;
   }
 
   Future<void> _recalculateEnvironmentalData({bool useRecordedReference = true}) async {
@@ -1914,33 +2305,126 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                 title: 'Environmental Conditions',
                 initiallyExpanded: false,
                 children: [
-                  // Tide Reference Display
-                  FutureBuilder(
-                    future: TideReferenceService.getCurrentReference(),
-                    builder: (context, snapshot) {
-                      if (snapshot.connectionState == ConnectionState.waiting) {
-                        return const SizedBox.shrink();
-                      }
-                      final reference = snapshot.data;
-                      if (reference == null) {
-                        return const SizedBox.shrink();
-                      }
-                      final isAutomatic = TideReferenceService.isAutomatic(reference);
-                      final displayText = isAutomatic 
-                        ? 'Tide reference: Automatic (catch location)'
-                        : 'Tide reference: ${reference.displayName}';
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        child: Text(
-                          displayText,
-                          style: const TextStyle(
-                            fontSize: 12,
+                  // Stage 3: Tide Reference Dropdown
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Tide Reference',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
                             color: Colors.grey,
-                            fontStyle: FontStyle.italic,
                           ),
                         ),
-                      );
-                    },
+                        const SizedBox(height: 8),
+                        FutureBuilder<List<TideReference>>(
+                          future: Future.value(TideReferenceService.getAllReferences()),
+                          builder: (context, snapshot) {
+                            if (snapshot.connectionState == ConnectionState.waiting) {
+                              return const CircularProgressIndicator();
+                            }
+                            final references = snapshot.data ?? [];
+                            if (references.isEmpty) {
+                              return const Text('No references available');
+                            }
+                            
+                            // Stage 3: For historical catches, add "Not recorded" option
+                            final isHistorical = widget.catchToEdit != null && 
+                                _recordedTideReference == null;
+                            
+                            final dropdownItems = <TideReference?>[];
+                            if (isHistorical) {
+                              dropdownItems.add(null); // Represents "Not recorded"
+                            }
+                            dropdownItems.addAll(references);
+                            
+                            return DropdownButtonFormField<TideReference?>(
+                              value: _selectedTideReference,
+                              decoration: const InputDecoration(
+                                border: OutlineInputBorder(),
+                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              ),
+                              items: dropdownItems.map((reference) {
+                                if (reference == null) {
+                                  return const DropdownMenuItem<TideReference?>(
+                                    value: null,
+                                    child: Text('Not recorded'),
+                                  );
+                                }
+                                return DropdownMenuItem<TideReference?>(
+                                  value: reference,
+                                  child: Text(reference.displayName),
+                                );
+                              }).toList(),
+                              onChanged: (TideReference? newValue) {
+                                setState(() {
+                                  _selectedTideReference = newValue;
+                                  _referenceChanged = true;
+                                  _onFieldChanged();
+                                });
+                              },
+                            );
+                          },
+                        ),
+                        // Automatic mode validation message
+                        if (_selectedTideReference != null && 
+                            TideReferenceService.isAutomatic(_selectedTideReference!))
+                          Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: Builder(
+                              builder: (context) {
+                                final hasCoordinates = _latitudeController.text.isNotEmpty && 
+                                                    _longitudeController.text.isNotEmpty;
+                                if (!hasCoordinates) {
+                                  return Text(
+                                    'Automatic mode requires valid catch coordinates. Tide information cannot be retrieved until a location is provided.',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: Colors.orange[700],
+                                      fontStyle: FontStyle.italic,
+                                    ),
+                                  );
+                                }
+                                return const SizedBox.shrink();
+                              },
+                            ),
+                          ),
+                        // Real-time distance display for fixed references
+                        if (_selectedTideReference != null && 
+                            !TideReferenceService.isAutomatic(_selectedTideReference!))
+                          Builder(
+                            builder: (context) {
+                              final lat = double.tryParse(_latitudeController.text);
+                              final lon = double.tryParse(_longitudeController.text);
+                              if (lat != null && lon != null) {
+                                final distance = _calculateDistance(
+                                  lat, 
+                                  lon, 
+                                  _selectedTideReference!.latitude, 
+                                  _selectedTideReference!.longitude
+                                );
+                                final distanceText = _formatDistance(distance);
+                                if (distanceText.isNotEmpty) {
+                                  return Padding(
+                                    padding: const EdgeInsets.only(top: 4),
+                                    child: Text(
+                                      '${_selectedTideReference!.displayName} — $distanceText from catch',
+                                      style: const TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
+                                        fontStyle: FontStyle.italic,
+                                      ),
+                                    ),
+                                  );
+                                }
+                              }
+                              return const SizedBox.shrink();
+                            },
+                          ),
+                      ],
+                    ),
                   ),
                   const Divider(height: 1),
                   // Weather

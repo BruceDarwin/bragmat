@@ -91,6 +91,25 @@ class TideReferenceService {
     return Map.from(_predefinedReferences);
   }
   
+  /// Get all available references for dropdown selection
+  /// Includes Automatic mode and all predefined fixed references
+  static List<TideReference> getAllReferences() {
+    final references = <TideReference>[];
+    
+    // Add Automatic option first
+    references.add(TideReference(
+      id: 'automatic',
+      displayName: 'Automatic (catch location)',
+      latitude: 0.0,
+      longitude: 0.0,
+    ));
+    
+    // Add all predefined references
+    references.addAll(_predefinedReferences.values);
+    
+    return references;
+  }
+  
   /// Check if a reference is automatic mode
   static bool isAutomatic(TideReference reference) {
     return reference.id == 'automatic';

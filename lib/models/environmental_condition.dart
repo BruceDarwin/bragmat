@@ -392,6 +392,79 @@ class EnvironmentalCondition {
     );
   }
 
+  /// Create a copy with tide-result fields cleared
+  /// Used when reference changes and recalculation fails or is skipped
+  /// Preserves manual tide observations and unrelated environmental data
+  EnvironmentalCondition clearTideResults() {
+    return EnvironmentalCondition(
+      id: id,
+      catchId: catchId,
+      tripId: tripId,
+      observationDateTime: observationDateTime,
+      latitude: latitude,
+      longitude: longitude,
+      moonPhase: moonPhase,
+      moonIllumination: moonIllumination,
+      sunriseTime: sunriseTime,
+      sunsetTime: sunsetTime,
+      // Preserve manual tide observations
+      tideStage: tideStage,
+      tideStrength: tideStrength,
+      tideNotes: tideNotes,
+      tideHeight: tideHeight,
+      tideMovement: tideMovement,
+      tideStation: tideStation,
+      tideDataSource: tideDataSource,
+      tideConfidence: tideConfidence,
+      derivedTideStage: derivedTideStage,
+      tideObservedOrEstimated: tideObservedOrEstimated,
+      tideDiagnostics: tideDiagnostics,
+      // Tide Context fields (deprecated - kept for backward compatibility)
+      tideStationName: tideStationName,
+      tideStationDistanceKm: tideStationDistanceKm,
+      // Tide Reference and WorldTides Source fields - preserve reference info
+      tideReferenceMode: tideReferenceMode,
+      tideReferenceName: tideReferenceName,
+      tideRequestLat: tideRequestLat,
+      tideRequestLon: tideRequestLon,
+      // CLEAR WorldTides metadata
+      worldtidesStation: null,
+      worldtidesAtlas: null,
+      worldtidesResponseLat: null,
+      worldtidesResponseLon: null,
+      // CLEAR tide event values derived from previous reference
+      referenceTideEventType: null,
+      referenceTideEventTime: null,
+      referenceTideEventHeight: null,
+      referenceTideEventRelation: null,
+      minutesFromReferenceTideEvent: null,
+      previousTideEventType: null,
+      previousTideEventTime: null,
+      previousTideEventHeight: null,
+      nextTideEventType: null,
+      nextTideEventTime: null,
+      nextTideEventHeight: null,
+      // CLEAR tide context phrase
+      tideContextPhrase: null,
+      tideContextDataSource: null,
+      tideContextConfidence: null,
+      // Preserve weather and other environmental data
+      weatherCondition: weatherCondition,
+      temperature: temperature,
+      humidity: humidity,
+      cloudCover: cloudCover,
+      windSpeed: windSpeed,
+      windDirection: windDirection,
+      barometricPressure: barometricPressure,
+      rainfall: rainfall,
+      riverFlow: riverFlow,
+      waterClarity: waterClarity,
+      dataSource: dataSource,
+      createdAt: createdAt,
+      updatedAt: DateTime.now(),
+    );
+  }
+
   // Tide stage options
   static const List<String> tideStages = [
     'High Tide',
