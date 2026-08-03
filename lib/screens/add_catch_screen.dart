@@ -1154,7 +1154,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   void _saveCatch() async {
     // Guard to prevent duplicate save operations
     if (_isSaving) {
-      debugPrint('SaveCatch: Already saving, ignoring duplicate request');
       return;
     }
     
@@ -1256,16 +1255,13 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         // Show prompt if changes detected (only if reference didn't change)
         bool? result;
         if (!referenceChanged && (locationChanged || dateTimeChanged)) {
-          debugPrint('SaveCatch: Showing environmental recalculation prompt (locationChanged: $locationChanged, dateTimeChanged: $dateTimeChanged)');
           result = await _showEnvironmentalRecalculationPrompt(
             locationChanged: locationChanged,
             dateTimeChanged: dateTimeChanged,
             isAutomatic: existing?.tideReferenceMode == 'automatic',
           );
-          debugPrint('SaveCatch: Environmental recalculation prompt result: $result');
           if (result == false) {
             // User chose to keep existing - skip environmental upsert
-            debugPrint('SaveCatch: User chose to keep existing environmental data');
           }
         }
         
@@ -1288,30 +1284,23 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           lureColour: _lureColourController.text.trim().isEmpty ? null : _lureColourController.text.trim(),
           lurePhotoPath: _lurePhotoPath,
         );
-        debugPrint('SaveCatch: Updating existing catch with ID: ${widget.catchToEdit!.id}');
         await DatabaseHelper.instance.updateCatch(updatedCatch);
-        debugPrint('SaveCatch: Catch updated successfully');
         savedCatch = updatedCatch;
         
         // Delete existing media and re-add
-        debugPrint('SaveCatch: Deleting existing media for catch ${widget.catchToEdit!.id}');
         await DatabaseHelper.instance.deleteAllMediaForCatch(widget.catchToEdit!.id!);
         for (final media in _mediaItems) {
           final mediaToInsert = media.copyWith(catchId: widget.catchToEdit!.id);
           await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
         }
-        debugPrint('SaveCatch: Media items re-saved');
         
         // Save manual environmental conditions from form
-        debugPrint('SaveCatch: Saving manual environmental conditions');
         await _saveManualEnvironmentalConditions(savedCatch!.id!);
-        debugPrint('SaveCatch: Manual environmental conditions saved');
         
         // Upsert calculated conditions (moon/sun) from catch coordinates
         // Stage 3: Always upsert if reference changed, otherwise check user choice
         if (referenceChanged) {
           // Reference changed - mandatory recalculation (blocking)
-          debugPrint('SaveCatch: Reference changed - mandatory recalculation');
           final envService = EnvironmentalConditionsService();
           final recalcResult = await envService.upsertCalculatedConditionsForCatch(
             savedCatch!,
@@ -1324,11 +1313,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
             final decision = await _showFailedRecalculationPrompt();
             if (decision == null) {
               // User cancelled - return to edit screen
-              debugPrint('SaveCatch: User cancelled failed recalculation');
               return;
             } else if (decision == 'revert') {
               // Revert to recorded reference
-              debugPrint('SaveCatch: Reverting to recorded reference');
               setState(() {
                 _selectedTideReference = _recordedTideReference;
               });
@@ -1350,7 +1337,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
               }
             } else if (decision == 'save') {
               // Save without tide information - clear stale metadata
-              debugPrint('SaveCatch: Saving without tide information - clearing stale metadata');
               await _clearStaleTideMetadata(savedCatch!.id!);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
@@ -1375,7 +1361,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         } else if (locationChanged || dateTimeChanged) {
           if (result == true) {
             // User chose to recalculate
-            debugPrint('SaveCatch: Starting upsert of calculated conditions');
             final envService = EnvironmentalConditionsService();
             final recalcResult = await envService.upsertCalculatedConditionsForCatch(
               savedCatch!,
@@ -1395,11 +1380,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
             }
           } else {
             // User chose to keep existing - skip upsert
-            debugPrint('SaveCatch: Skipping environmental upsert per user choice');
           }
         } else {
           // No changes detected - normal upsert
-          debugPrint('SaveCatch: Starting upsert of calculated conditions');
           final envService = EnvironmentalConditionsService();
           final recalcResult = await envService.upsertCalculatedConditionsForCatch(
             savedCatch!,
@@ -1437,27 +1420,20 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           lureColour: _lureColourController.text.trim().isEmpty ? null : _lureColourController.text.trim(),
           lurePhotoPath: _lurePhotoPath,
         );
-        debugPrint('SaveCatch: Inserting new catch');
         final catchId = await DatabaseHelper.instance.insertCatch(newCatch);
-        debugPrint('SaveCatch: Catch inserted with ID: $catchId');
         savedCatch = newCatch.copyWith(id: catchId);
         
         // Save media items with the new catch ID
-        debugPrint('SaveCatch: Saving ${_mediaItems.length} media items');
         for (final media in _mediaItems) {
           final mediaToInsert = media.copyWith(catchId: catchId);
           await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
         }
-        debugPrint('SaveCatch: Media items saved');
         
         // Save manual environmental conditions from form
-        debugPrint('SaveCatch: Saving manual environmental conditions');
         await _saveManualEnvironmentalConditions(catchId);
-        debugPrint('SaveCatch: Manual environmental conditions saved');
         
         // Upsert calculated conditions (moon/sun) from catch coordinates
         // Stage 3: For new catches, handle recalculation result
-        debugPrint('SaveCatch: Starting upsert of calculated conditions');
         final envService = EnvironmentalConditionsService();
         final recalcResult = await envService.upsertCalculatedConditionsForCatch(
           savedCatch!,
@@ -1502,9 +1478,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     if (!mounted) return;
 
     // Pop with the saved catch to refresh the calling screen
-    debugPrint('SaveCatch: Calling Navigator.pop with catch ID: ${savedCatch?.id}');
     Navigator.pop(context, savedCatch);
-    debugPrint('SaveCatch: Navigator.pop completed');
   }
 
   Future<void> _showRecalculateEnvironmentalDataDialog() async {
@@ -1618,7 +1592,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     required bool dateTimeChanged,
     required bool isAutomatic,
   }) async {
-    debugPrint('Dialog: Environmental recalculation prompt opened');
     String message;
     if (locationChanged && dateTimeChanged) {
       message = 'The catch location and date/time have changed. The existing environmental information relates to the previous catch details. Would you like to recalculate it?';
@@ -1639,41 +1612,26 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         content: Text(message),
         actions: [
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Environmental recalculation - Cancel selected');
-              Navigator.pop(dialogContext, null);
-              debugPrint('Dialog: Environmental recalculation - dismissed with null');
-            },
+            onPressed: () => Navigator.pop(dialogContext, null),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Environmental recalculation - Keep existing selected');
-              Navigator.pop(dialogContext, false);
-              debugPrint('Dialog: Environmental recalculation - dismissed with false');
-            },
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Keep existing information'),
           ),
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Environmental recalculation - Recalculate selected');
-              Navigator.pop(dialogContext, true);
-              debugPrint('Dialog: Environmental recalculation - dismissed with true');
-            },
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Recalculate'),
           ),
         ],
       ),
     );
-    
-    debugPrint('Dialog: Environmental recalculation - result received: $result');
     return result;
   }
   
   // Stage 3: Prompt for reference change (mandatory recalculation)
   Future<String?> _showReferenceChangePrompt() async {
-    debugPrint('Dialog: Reference change prompt opened');
-    final result = await showDialog<String>(
+    return await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Tide Reference Changed'),
@@ -1682,40 +1640,25 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Reference change - Cancel selected');
-              Navigator.pop(dialogContext, null);
-              debugPrint('Dialog: Reference change - dismissed with null');
-            },
+            onPressed: () => Navigator.pop(dialogContext, null),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Reference change - Revert selected');
-              Navigator.pop(dialogContext, 'revert');
-              debugPrint('Dialog: Reference change - dismissed with revert');
-            },
+            onPressed: () => Navigator.pop(dialogContext, 'revert'),
             child: const Text('Revert to recorded reference'),
           ),
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Reference change - Recalculate selected');
-              Navigator.pop(dialogContext, 'recalculate');
-              debugPrint('Dialog: Reference change - dismissed with recalculate');
-            },
+            onPressed: () => Navigator.pop(dialogContext, 'recalculate'),
             child: const Text('Recalculate and save'),
           ),
         ],
       ),
     );
-    debugPrint('Dialog: Reference change - result received: $result');
-    return result;
   }
   
   // Stage 3: Prompt for failed recalculation on existing catch with valid data
   Future<String?> _showFailedRecalculationPrompt() async {
-    debugPrint('Dialog: Failed recalculation prompt opened');
-    final result = await showDialog<String>(
+    return await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Tide Information Unavailable'),
@@ -1724,34 +1667,20 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Failed recalculation - Cancel selected');
-              Navigator.pop(dialogContext, null);
-              debugPrint('Dialog: Failed recalculation - dismissed with null');
-            },
+            onPressed: () => Navigator.pop(dialogContext, null),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Failed recalculation - Revert selected');
-              Navigator.pop(dialogContext, 'revert');
-              debugPrint('Dialog: Failed recalculation - dismissed with revert');
-            },
+            onPressed: () => Navigator.pop(dialogContext, 'revert'),
             child: const Text('Revert to recorded reference'),
           ),
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Failed recalculation - Save without tide selected');
-              Navigator.pop(dialogContext, 'save');
-              debugPrint('Dialog: Failed recalculation - dismissed with save');
-            },
+            onPressed: () => Navigator.pop(dialogContext, 'save'),
             child: const Text('Save without tide information'),
           ),
         ],
       ),
     );
-    debugPrint('Dialog: Failed recalculation - result received: $result');
-    return result;
   }
   
   // Stage 3: Clear stale tide metadata from environmental condition
@@ -1761,14 +1690,12 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     if (existing != null) {
       final cleared = existing.clearTideResults();
       await envService.updateEnvironmentalCondition(cleared);
-      debugPrint('SaveCatch: Cleared stale tide metadata for catch $catchId');
     }
   }
   
   // Stage 3: Prompt for historical catch reference selection
   Future<bool?> _showHistoricalReferencePrompt() async {
-    debugPrint('Dialog: Historical reference prompt opened');
-    final result = await showDialog<bool>(
+    return await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Set Tide Reference'),
@@ -1777,26 +1704,16 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         ),
         actions: [
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Historical reference - Cancel selected');
-              Navigator.pop(dialogContext, false);
-              debugPrint('Dialog: Historical reference - dismissed with false');
-            },
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Cancel'),
           ),
           TextButton(
-            onPressed: () {
-              debugPrint('Dialog: Historical reference - Set reference selected');
-              Navigator.pop(dialogContext, true);
-              debugPrint('Dialog: Historical reference - dismissed with true');
-            },
+            onPressed: () => Navigator.pop(dialogContext, true),
             child: const Text('Set reference and recalculate'),
           ),
         ],
       ),
     );
-    debugPrint('Dialog: Historical reference - result received: $result');
-    return result;
   }
 
   Future<void> _recalculateEnvironmentalData({bool useRecordedReference = true}) async {
