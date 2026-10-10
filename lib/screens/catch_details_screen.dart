@@ -244,7 +244,9 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                 // Reload environmental condition to get updated tide data
                 _loadEnvironmentalCondition();
                 // Return true to parent to trigger refresh
-                Navigator.pop(context, true);
+                if (context.mounted) {
+                  Navigator.pop(context, true);
+                }
               }
             },
           ),

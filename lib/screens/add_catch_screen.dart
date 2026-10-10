@@ -1515,6 +1515,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     // If no recorded reference, default to current
     bool useRecordedReference = hasRecordedReference;
     
+    if (!mounted) return;
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => StatefulBuilder(
@@ -1770,7 +1772,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
             icon: const Icon(Icons.arrow_back),
             onPressed: () async {
               if (await _onWillPop()) {
-                if (mounted) {
+                if (context.mounted) {
                   Navigator.pop(context);
                 }
               }
@@ -2617,12 +2619,12 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                         firstDate: DateTime(2020),
                         lastDate: DateTime(2030),
                       );
-                      if (pickedDate != null) {
+                      if (pickedDate != null && context.mounted) {
                         final pickedTime = await showTimePicker(
                           context: context,
                           initialTime: TimeOfDay.fromDateTime(_referenceTideEventTime ?? DateTime.now()),
                         );
-                        if (pickedTime != null && mounted) {
+                        if (pickedTime != null && context.mounted) {
                           setState(() {
                             _referenceTideEventTime = DateTime(
                               pickedDate.year,
@@ -2715,12 +2717,12 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                         firstDate: DateTime(2020),
                         lastDate: DateTime(2030),
                       );
-                      if (pickedDate != null) {
+                      if (pickedDate != null && context.mounted) {
                         final pickedTime = await showTimePicker(
                           context: context,
                           initialTime: TimeOfDay.fromDateTime(_previousTideEventTime ?? DateTime.now()),
                         );
-                        if (pickedTime != null && mounted) {
+                        if (pickedTime != null && context.mounted) {
                           setState(() {
                             _previousTideEventTime = DateTime(
                               pickedDate.year,
@@ -2794,12 +2796,12 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                         firstDate: DateTime(2020),
                         lastDate: DateTime(2030),
                       );
-                      if (pickedDate != null) {
+                      if (pickedDate != null && context.mounted) {
                         final pickedTime = await showTimePicker(
                           context: context,
                           initialTime: TimeOfDay.fromDateTime(_nextTideEventTime ?? DateTime.now()),
                         );
-                        if (pickedTime != null && mounted) {
+                        if (pickedTime != null && context.mounted) {
                           setState(() {
                             _nextTideEventTime = DateTime(
                               pickedDate.year,

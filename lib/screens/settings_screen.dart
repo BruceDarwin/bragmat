@@ -725,6 +725,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     }
     
+    if (!mounted) return;
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1495,6 +1497,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _showDeleteLureDialog(Lure lure) async {
     final isUsed = await DatabaseHelper.instance.isLureUsed(lure.id!);
+    
+    if (!mounted) return;
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1690,6 +1695,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _showDeleteBaitDialog(Bait bait) async {
     final isUsed = await DatabaseHelper.instance.isBaitUsed(bait.id!);
+    
+    if (!mounted) return;
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1786,6 +1794,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    if (!mounted) return;
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -1945,6 +1955,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       return;
     }
 
+    if (!mounted) return;
+    
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -2704,6 +2716,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final existingCatches = await DatabaseHelper.instance.getCatches();
       final hasExistingData = existingCatches.isNotEmpty;
 
+      if (!mounted) return;
+      
       // Show confirmation with file name
       final restoreConfirmed = await showDialog<bool>(
         context: context,
