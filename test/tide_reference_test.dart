@@ -321,7 +321,7 @@ void main() {
     test('Fixed mode displays reference name', () {
       final mode = 'fixed';
       final referenceName = 'Darwin';
-      final display = mode == 'automatic' ? 'Catch location' : (referenceName ?? 'Not recorded');
+      final display = mode == 'automatic' ? 'Catch location' : referenceName;
       expect(display, 'Darwin');
     });
 
@@ -333,25 +333,25 @@ void main() {
 
     test('WorldTides station displays as "station"', () {
       final station = 'Darwin';
-      final display = (station != null && station.isNotEmpty) ? '$station station' : 'Not recorded';
+      final display = station.isNotEmpty ? '$station station' : 'Not recorded';
       expect(display, 'Darwin station');
     });
 
     test('WorldTides atlas displays as "model"', () {
-      final station = null;
+      final station = '';
       final atlas = 'FES2022';
-      final display = (station != null && station.isNotEmpty) 
+      final display = station.isNotEmpty 
           ? '$station station' 
-          : ((atlas != null && atlas.isNotEmpty) ? '$atlas model' : 'Not recorded');
+          : (atlas.isNotEmpty ? '$atlas model' : 'Not recorded');
       expect(display, 'FES2022 model');
     });
 
     test('NULL WorldTides source displays "Not recorded"', () {
-      final station = null;
-      final atlas = null;
-      final display = (station != null && station.isNotEmpty) 
+      final station = '';
+      final atlas = '';
+      final display = station.isNotEmpty 
           ? '$station station' 
-          : ((atlas != null && atlas.isNotEmpty) ? '$atlas model' : 'Not recorded');
+          : (atlas.isNotEmpty ? '$atlas model' : 'Not recorded');
       expect(display, 'Not recorded');
     });
   });

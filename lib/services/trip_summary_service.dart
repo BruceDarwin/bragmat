@@ -234,7 +234,7 @@ class TripSummaryService {
         }
         
         // If no activity, treat as single-day trip
-        effectiveEndDate = latestActivityDate ?? trip.startDate!;
+        effectiveEndDate = latestActivityDate ?? trip.startDate;
       }
       
       // Debug logging

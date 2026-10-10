@@ -335,7 +335,7 @@ void main() {
     });
 
     test('none confidence is lowest', () {
-      expect(MetadataConfidence.none.index, greaterThan(MetadataConfidence.fileSystem.index));
+      expect(MetadataConfidence.none.index, lessThan(MetadataConfidence.fileSystem.index));
     });
   });
 

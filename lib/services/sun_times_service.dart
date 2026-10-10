@@ -7,12 +7,8 @@ class SunTimesService {
   SunTimesService._internal();
 
   /// Calculate sunrise and sunset times for a given date and location
-  /// Returns null if location is not provided or API fails
+  /// Returns null if API fails
   Future<SunTimesInfo?> calculateSunTimes(DateTime date, {required double latitude, required double longitude}) async {
-    if (latitude == null || longitude == null) {
-      return null;
-    }
-
     // Format date for API (YYYY-MM-DD)
     final dateStr = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
     
