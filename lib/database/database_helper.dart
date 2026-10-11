@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
@@ -2116,5 +2117,68 @@ class DatabaseHelper {
   Future<int> deleteAllFishingTrips() async {
     final db = await instance.database;
     return await db.delete('fishing_trips');
+  }
+
+  /// Create a consistent snapshot of the database using VACUUM INTO.
+  /// 
+  /// This creates a new database file at the specified path containing
+  /// a consistent snapshot of the current database state. The snapshot
+  /// includes all committed data and is safe to use for backup purposes.
+  /// 
+  /// The destination file must not exist and will be created by this operation.
+  /// The live database connection remains open and usable after this operation.
+  /// 
+  /// Parameters:
+  /// - destinationPath: The path where the snapshot database should be created
+  /// 
+  /// Returns: The path to the created snapshot database
+  /// 
+  /// Throws: Exception if the VACUUM INTO operation fails
+  Future<String> createSnapshot(String destinationPath) async {
+    final db = await instance.database;
+    
+    // Ensure destination directory exists
+    final destinationFile = File(destinationPath);
+    final destinationDir = destinationFile.parent;
+    if (!await destinationDir.exists()) {
+      await destinationDir.create(recursive: true);
+    }
+    
+    // Ensure destination file doesn't exist (VACUUM INTO requires this)
+    if (await destinationFile.exists()) {
+      await destinationFile.delete();
+    }
+    
+    try {
+      // Execute VACUUM INTO to create consistent snapshot
+      await db.rawQuery('VACUUM INTO ?', [destinationPath]);
+      
+      // Verify the snapshot was created
+      if (!await destinationFile.exists()) {
+        throw Exception('Snapshot file was not created');
+      }
+      
+      // Verify the snapshot is a valid SQLite database
+      final snapshotDb = await openDatabase(
+        destinationPath,
+        readOnly: true,
+      );
+      
+      // Run integrity check
+      final integrityResult = await snapshotDb.rawQuery('PRAGMA integrity_check');
+      await snapshotDb.close();
+      
+      if (integrityResult.isEmpty || integrityResult.first['integrity_check'] != 'ok') {
+        throw Exception('Snapshot database integrity check failed');
+      }
+      
+      return destinationPath;
+    } catch (e) {
+      // Clean up failed snapshot attempt
+      if (await destinationFile.exists()) {
+        await destinationFile.delete();
+      }
+      throw Exception('Failed to create database snapshot: $e');
+    }
   }
 }
