@@ -1,6 +1,4 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import '../database/database_helper.dart';
@@ -8,10 +6,11 @@ import '../models/fishing_trip.dart';
 import '../models/catch.dart';
 import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
-import '../models/journal_media.dart';
 import '../models/trip_summary.dart';
 import '../services/current_trip_service.dart';
 import '../services/trip_summary_service.dart';
+import '../services/media_storage_service.dart';
+import '../widgets/resolved_image.dart';
 import 'catch_details_screen.dart';
 import 'add_trip_screen.dart';
 import 'photo_viewer_screen.dart';
@@ -124,7 +123,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     if (_catches.isEmpty && _journalEntries.isEmpty) return 'No catches or journal entries';
     
     final totalFish = _catches.length;
-    final species = _catches.map((c) => c.fishType).toSet().length;
+    final species = _catches.map((c) => c.fishType).where((t) => t != null && t!.isNotEmpty).toSet().length;
     final buddies = _catches
         .where((c) => c.fishingBuddyId != null)
         .map((c) => c.fishingBuddyId)
@@ -161,11 +160,34 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
     if (image == null) return;
 
+    // Copy photo to persistent storage
+    final role = _tripMedia.isEmpty ? 'primary' : 'other';
+    final persistentPath = await MediaStorageService.copyPhotoToStorage(
+      image.path,
+      'trip',
+      _trip.id!,
+      role,
+    );
+
+    if (persistentPath == null) {
+      // Copy failed, show error and do not save photo
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error: Could not save trip photo to persistent storage. Please try again.'),
+            duration: Duration(seconds: 4),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     final tripMedia = TripMedia(
       tripId: _trip.id!,
-      filePath: image.path,
+      filePath: persistentPath,
       mediaType: 'photo',
-      role: _tripMedia.isEmpty ? 'primary' : 'other',
+      role: role,
     );
 
     await DatabaseHelper.instance.insertTripMedia(tripMedia);
@@ -424,7 +446,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                           if (_getLargestFish() != null) ...[
                             const SizedBox(height: 8),
                             Text(
-                              'Largest: ${_getLargestFish()!.fishType} (${_getLargestFish()!.lengthCm} cm)',
+                              'Largest: ${_getLargestFish()!.fishType?.isEmpty ?? true ? 'Unidentified' : _getLargestFish()!.fishType!} (${_getLargestFish()!.lengthCm} cm)',
                               style: Theme.of(context).textTheme.bodyLarge,
                             ),
                           ],
@@ -483,17 +505,11 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                                       tag: 'trip_photo_${media.id}',
                                       child: ClipRRect(
                                         borderRadius: BorderRadius.circular(8),
-                                        child: Image.file(
-                                          File(media.filePath),
+                                        child: ResolvedImage(
+                                          imagePath: media.filePath,
                                           width: double.infinity,
                                           height: double.infinity,
                                           fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) {
-                                            return Container(
-                                              color: Colors.grey[300],
-                                              child: const Icon(Icons.image_not_supported),
-                                            );
-                                          },
                                         ),
                                       ),
                                     ),
@@ -656,22 +672,11 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                                       if (_journalPrimaryMediaPaths[entry.id] != null)
                                         ClipRRect(
                                           borderRadius: BorderRadius.circular(8),
-                                          child: Image.file(
-                                            File(_journalPrimaryMediaPaths[entry.id]!),
+                                          child: ResolvedImage(
+                                            imagePath: _journalPrimaryMediaPaths[entry.id]!,
                                             width: 60,
                                             height: 60,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) {
-                                              return Container(
-                                                width: 60,
-                                                height: 60,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.grey[300],
-                                                  borderRadius: BorderRadius.circular(8),
-                                                ),
-                                                child: const Icon(Icons.image_not_supported),
-                                              );
-                                            },
                                           ),
                                         ),
                                       if (_journalPrimaryMediaPaths[entry.id] != null)
@@ -791,22 +796,11 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                                       if (_primaryMediaPaths[catchItem.id] != null)
                                         ClipRRect(
                                           borderRadius: BorderRadius.circular(8),
-                                          child: Image.file(
-                                            File(_primaryMediaPaths[catchItem.id]!),
+                                          child: ResolvedImage(
+                                            imagePath: _primaryMediaPaths[catchItem.id]!,
                                             width: 60,
                                             height: 60,
                                             fit: BoxFit.cover,
-                                            errorBuilder: (context, error, stackTrace) {
-                                              return Container(
-                                                width: 60,
-                                                height: 60,
-                                                decoration: BoxDecoration(
-                                                  color: Colors.grey[300],
-                                                  borderRadius: BorderRadius.circular(8),
-                                                ),
-                                                child: const Icon(Icons.image_not_supported),
-                                              );
-                                            },
                                           ),
                                         )
                                       else
@@ -825,7 +819,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                                           crossAxisAlignment: CrossAxisAlignment.start,
                                           children: [
                                             Text(
-                                              catchItem.fishType,
+                                              catchItem.fishType?.isEmpty ?? true ? 'Unidentified' : catchItem.fishType!,
                                               style: Theme.of(context).textTheme.titleMedium,
                                             ),
                                             const SizedBox(height: 4),
@@ -908,14 +902,11 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                     if (summary.primaryPhotoPath != null)
                       ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: Image.file(
-                          File(summary.primaryPhotoPath!),
+                        child: ResolvedImage(
+                          imagePath: summary.primaryPhotoPath!,
                           width: 80,
                           height: 80,
                           fit: BoxFit.cover,
-                          errorBuilder: (context, error, stackTrace) {
-                            return _buildDefaultTripIcon();
-                          },
                         ),
                       )
                     else
@@ -1300,14 +1291,11 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
               if (highlight.photoPath != null)
                 ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Image.file(
-                    File(highlight.photoPath!),
+                  child: ResolvedImage(
+                    imagePath: highlight.photoPath!,
                     width: 50,
                     height: 50,
                     fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return _buildDefaultCatchIcon(icon);
-                    },
                   ),
                 )
               else

@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -8,6 +7,7 @@ import '../models/catch_media.dart';
 import '../models/fishing_buddy.dart';
 import '../models/fishing_trip.dart';
 import '../models/favourite_spot.dart';
+import '../widgets/resolved_image.dart';
 import 'catch_details_screen.dart';
 import '../services/connectivity_service.dart';
 
@@ -112,7 +112,13 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
       _filteredCatches = _catches.where((c) {
         if (_selectedTripId != null && c.tripId != _selectedTripId) return false;
         if (_selectedBuddyId != null && c.fishingBuddyId != _selectedBuddyId) return false;
-        if (_selectedFishType != null && c.fishType != _selectedFishType) return false;
+        if (_selectedFishType != null) {
+          if (_selectedFishType == 'Unidentified') {
+            if (c.fishType != null && c.fishType!.isNotEmpty) return false;
+          } else {
+            if (c.fishType != _selectedFishType) return false;
+          }
+        }
         return true;
       }).toList();
     });
@@ -195,10 +201,11 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
                 decoration: const InputDecoration(labelText: 'Fish Type'),
                 items: [
                   const DropdownMenuItem(value: null, child: Text('All Types')),
-                  ..._catches.map((c) => c.fishType).toSet().map((type) {
+                  const DropdownMenuItem(value: 'Unidentified', child: Text('Unidentified')),
+                  ..._catches.map((c) => c.fishType).where((t) => t != null && t!.isNotEmpty).map((type) {
                     return DropdownMenuItem(
                       value: type,
-                      child: Text(type),
+                      child: Text(type!),
                     );
                   }),
                 ],
@@ -660,7 +667,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
                     children: [
                       Expanded(
                         child: Text(
-                          catch_.fishType,
+                          catch_.fishType?.isEmpty ?? true ? 'Unidentified' : catch_.fishType!,
                           style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                                 fontWeight: FontWeight.bold,
                               ),
@@ -688,8 +695,8 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
                     padding: const EdgeInsets.symmetric(horizontal: 20),
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(12),
-                      child: Image.file(
-                        File(primaryMedia.filePath),
+                      child: ResolvedImage(
+                        imagePath: primaryMedia.filePath,
                         height: 200,
                         width: double.infinity,
                         fit: BoxFit.cover,

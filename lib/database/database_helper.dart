@@ -1241,10 +1241,12 @@ class DatabaseHelper {
     // Fish type statistics (count and average length)
     final fishTypeStats = <String, Map<String, int>>{};
     for (final catch_ in catches) {
-      final stats = fishTypeStats[catch_.fishType] ?? {'count': 0, 'totalLength': 0};
+      final fishType = catch_.fishType;
+      if (fishType == null || fishType.isEmpty) continue;
+      final stats = fishTypeStats[fishType] ?? {'count': 0, 'totalLength': 0};
       stats['count'] = stats['count']! + 1;
       stats['totalLength'] = stats['totalLength']! + catch_.lengthCm;
-      fishTypeStats[catch_.fishType] = stats;
+      fishTypeStats[fishType] = stats;
     }
     
     // Most common fish type (for backward compatibility)
@@ -1342,17 +1344,19 @@ class DatabaseHelper {
     final speciesRecords = <String, Map<String, dynamic>>{};
     final speciesSmallest = <String, Map<String, dynamic>>{};
     for (final catch_ in catches) {
+      final fishType = catch_.fishType;
+      if (fishType == null || fishType.isEmpty) continue;
       // Track largest
-      final currentRecord = speciesRecords[catch_.fishType];
+      final currentRecord = speciesRecords[fishType];
       if (currentRecord == null || catch_.lengthCm > (currentRecord['length'] as int)) {
         String? photoPath;
         if (catch_.id != null) {
           final media = await getPrimaryMediaForCatch(catch_.id!);
           photoPath = media?.filePath;
         }
-        speciesRecords[catch_.fishType] = {
+        speciesRecords[fishType] = {
           'id': catch_.id,
-          'fishType': catch_.fishType,
+          'fishType': fishType,
           'length': catch_.lengthCm,
           'photoPath': photoPath,
           'dateCaught': catch_.dateCaught ?? catch_.createdAt,
@@ -1360,9 +1364,9 @@ class DatabaseHelper {
         };
       }
       // Track smallest
-      final currentSmallest = speciesSmallest[catch_.fishType];
+      final currentSmallest = speciesSmallest[fishType];
       if (currentSmallest == null || catch_.lengthCm < (currentSmallest['length'] as int)) {
-        speciesSmallest[catch_.fishType] = {
+        speciesSmallest[fishType] = {
           'id': catch_.id,
           'length': catch_.lengthCm,
         };

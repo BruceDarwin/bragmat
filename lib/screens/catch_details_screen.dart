@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
@@ -7,10 +6,10 @@ import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
 import '../models/catch_media.dart';
 import '../models/environmental_condition.dart';
-import '../models/fishing_trip.dart';
 import '../models/lure.dart';
 import '../models/bait.dart';
 import '../widgets/bragmat_section_card.dart';
+import '../widgets/resolved_image.dart';
 import 'add_catch_screen.dart';
 import 'photo_viewer_screen.dart';
 import 'catch_map_screen.dart';
@@ -182,7 +181,7 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('Delete Catch'),
-        content: Text('Are you sure you want to delete ${_catchItem.fishType}?'),
+        content: Text('Are you sure you want to delete ${_catchItem.fishType?.isEmpty ?? true ? 'Unidentified' : _catchItem.fishType}?'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
@@ -293,8 +292,8 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                               tag: 'catch_photo_${media.id}',
                               child: ClipRRect(
                                 borderRadius: BorderRadius.circular(8),
-                                child: Image.file(
-                                  File(media.filePath),
+                                child: ResolvedImage(
+                                  imagePath: media.filePath,
                                   width: double.infinity,
                                   height: 200,
                                   fit: BoxFit.cover,
@@ -391,7 +390,7 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
               title: 'Catch Details',
               children: [
                 Text(
-                  _catchItem.fishType,
+                  _catchItem.fishType?.isEmpty ?? true ? 'Unidentified' : _catchItem.fishType!,
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
                       ),
@@ -447,8 +446,8 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                         const SizedBox(height: 8),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            File(_catchItem.lurePhotoPath!),
+                          child: ResolvedImage(
+                            imagePath: _catchItem.lurePhotoPath!,
                             height: 150,
                             width: double.infinity,
                             fit: BoxFit.cover,

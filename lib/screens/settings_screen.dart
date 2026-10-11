@@ -2025,7 +2025,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       
       // Data rows
       for (final catch_ in catches) {
-        final fishType = _escapeCSV(catch_.fishType);
+        final fishType = _escapeCSV(catch_.fishType?.isEmpty ?? true ? 'Unidentified' : catch_.fishType!);
         final size = catch_.lengthCm.toString();
         final dateCaught = catch_.dateCaught?.toString().split(' ')[0] ?? catch_.createdAt.toString().split(' ')[0];
         final location = _escapeCSV(catch_.location ?? '');

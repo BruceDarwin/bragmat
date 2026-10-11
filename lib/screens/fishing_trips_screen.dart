@@ -1,9 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/fishing_trip.dart';
-import '../models/trip_media.dart';
 import '../services/current_trip_service.dart';
+import '../widgets/resolved_image.dart';
 import 'trip_details_screen.dart';
 import 'add_trip_screen.dart';
 
@@ -215,22 +214,11 @@ class _FishingTripsScreenState extends State<FishingTripsScreen> {
                               if (_coverMediaPaths[trip.id] != null) ...[
                                 ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
-                                  child: Image.file(
-                                    File(_coverMediaPaths[trip.id]!),
+                                  child: ResolvedImage(
+                                    imagePath: _coverMediaPaths[trip.id]!,
                                     width: double.infinity,
                                     height: 120,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return Container(
-                                        width: double.infinity,
-                                        height: 120,
-                                        decoration: BoxDecoration(
-                                          color: Colors.grey[300],
-                                          borderRadius: BorderRadius.circular(8),
-                                        ),
-                                        child: const Icon(Icons.image_not_supported),
-                                      );
-                                    },
                                   ),
                                 ),
                                 const SizedBox(height: 12),

@@ -39,7 +39,7 @@ class TripSummaryService {
 
     // Calculate statistics
     final totalCatches = catches.length;
-    final speciesCount = catches.map((c) => c.fishType).toSet().length;
+    final speciesCount = catches.map((c) => c.fishType).where((t) => t != null && t!.isNotEmpty).toSet().length;
     
     Catch? largestFish;
     if (catches.isNotEmpty) {
@@ -67,7 +67,7 @@ class TripSummaryService {
           ? await _db.getPrimaryMediaForCatch(largestFish.id!)
           : null;
       largestFishHighlight = CatchHighlight(
-        species: largestFish.fishType,
+        species: largestFish.fishType?.isEmpty ?? true ? 'Unidentified' : largestFish.fishType!,
         length: largestFish.lengthCm,
         date: largestFish.dateCaught ?? largestFish.createdAt,
         photoPath: primaryMedia?.filePath,
@@ -79,7 +79,9 @@ class TripSummaryService {
     if (catches.isNotEmpty) {
       final speciesCounts = <String, int>{};
       for (final catchItem in catches) {
-        speciesCounts[catchItem.fishType] = (speciesCounts[catchItem.fishType] ?? 0) + 1;
+        final fishType = catchItem.fishType;
+        if (fishType == null || fishType.isEmpty) continue;
+        speciesCounts[fishType] = (speciesCounts[fishType] ?? 0) + 1;
       }
       
       final uniqueSpecies = speciesCounts.length;
@@ -141,7 +143,7 @@ class TripSummaryService {
           ? await _db.getPrimaryMediaForCatch(firstCatch.id!)
           : null;
       firstCatchHighlight = CatchHighlight(
-        species: firstCatch.fishType,
+        species: firstCatch.fishType?.isEmpty ?? true ? 'Unidentified' : firstCatch.fishType!,
         length: firstCatch.lengthCm,
         date: firstCatch.dateCaught ?? firstCatch.createdAt,
         photoPath: firstMedia?.filePath,
@@ -153,7 +155,7 @@ class TripSummaryService {
           ? await _db.getPrimaryMediaForCatch(lastCatch.id!)
           : null;
       lastCatchHighlight = CatchHighlight(
-        species: lastCatch.fishType,
+        species: lastCatch.fishType?.isEmpty ?? true ? 'Unidentified' : lastCatch.fishType!,
         length: lastCatch.lengthCm,
         date: lastCatch.dateCaught ?? lastCatch.createdAt,
         photoPath: lastMedia?.filePath,

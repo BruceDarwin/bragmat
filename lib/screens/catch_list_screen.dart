@@ -1,9 +1,8 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
-import '../models/fishing_trip.dart';
 import '../services/current_trip_service.dart';
+import '../widgets/resolved_image.dart';
 import 'catch_details_screen.dart';
 import 'add_catch_screen.dart';
 
@@ -158,7 +157,8 @@ class _CatchListScreenState extends State<CatchListScreen> {
       filtered = filtered.where((c) {
         // All search terms must be found in at least one searchable field
         return terms.every((term) {
-          return c.fishType.toLowerCase().contains(term) ||
+          final fishTypeDisplay = c.fishType?.isEmpty ?? true ? 'Unidentified' : c.fishType!;
+          return fishTypeDisplay.toLowerCase().contains(term) ||
                  (c.notes?.toLowerCase().contains(term) ?? false) ||
                  (c.location?.toLowerCase().contains(term) ?? false) ||
                  (_tripNames[c.tripId]?.toLowerCase().contains(term) ?? false) ||
@@ -169,7 +169,11 @@ class _CatchListScreenState extends State<CatchListScreen> {
     
     // Apply fish type filter
     if (_selectedFishTypeFilter != null && _selectedFishTypeFilter != 'All') {
-      filtered = filtered.where((c) => c.fishType == _selectedFishTypeFilter).toList();
+      if (_selectedFishTypeFilter == 'Unidentified') {
+        filtered = filtered.where((c) => c.fishType == null || c.fishType!.isEmpty).toList();
+      } else {
+        filtered = filtered.where((c) => c.fishType == _selectedFishTypeFilter).toList();
+      }
     }
     
     // Apply trip filter
@@ -239,7 +243,11 @@ class _CatchListScreenState extends State<CatchListScreen> {
         filtered.sort((a, b) => a.lengthCm.compareTo(b.lengthCm));
         break;
       case 'Fish Type':
-        filtered.sort((a, b) => a.fishType.compareTo(b.fishType));
+        filtered.sort((a, b) {
+          final aType = a.fishType?.isEmpty ?? true ? 'Unidentified' : a.fishType!;
+          final bType = b.fishType?.isEmpty ?? true ? 'Unidentified' : b.fishType!;
+          return aType.compareTo(bType);
+        });
         break;
     }
     
@@ -283,7 +291,12 @@ class _CatchListScreenState extends State<CatchListScreen> {
   }
 
   List<String> _getFishTypes() {
-    final types = _allCatches.map((c) => c.fishType).toSet().toList();
+    final types = _allCatches
+        .map((c) => c.fishType)
+        .where((t) => t != null && t!.isNotEmpty)
+        .cast<String>()
+        .toSet()
+        .toList();
     types.sort();
     return types;
   }
@@ -326,6 +339,7 @@ class _CatchListScreenState extends State<CatchListScreen> {
                   decoration: const InputDecoration(labelText: 'Fish Type'),
                   items: [
                     const DropdownMenuItem(value: null, child: Text('All')),
+                    const DropdownMenuItem(value: 'Unidentified', child: Text('Unidentified')),
                     ..._getFishTypes().map((type) {
                       return DropdownMenuItem(value: type, child: Text(type));
                     }),
@@ -772,8 +786,8 @@ class _CatchListScreenState extends State<CatchListScreen> {
                           if (_primaryMediaPaths[catchItem.id] != null)
                             ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: Image.file(
-                                File(_primaryMediaPaths[catchItem.id]!),
+                              child: ResolvedImage(
+                                imagePath: _primaryMediaPaths[catchItem.id]!,
                                 width: 80,
                                 height: 80,
                                 fit: BoxFit.cover,
@@ -799,7 +813,7 @@ class _CatchListScreenState extends State<CatchListScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text(
-                                  catchItem.fishType,
+                                  catchItem.fishType?.isEmpty ?? true ? 'Unidentified' : catchItem.fishType!,
                                   style: Theme.of(context).textTheme.titleLarge,
                                 ),
                                 const SizedBox(height: 4),
@@ -843,12 +857,14 @@ class _CatchListScreenState extends State<CatchListScreen> {
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () async {
+          debugPrint('[BragmatCamera] Navigating to Add Catch screen at ${DateTime.now()}');
           final result = await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (_) => const AddCatchScreen(),
             ),
           );
+          debugPrint('[BragmatCamera] Add Catch screen returned with result: $result at ${DateTime.now()}');
           // Refresh if a catch was saved (result is not null)
           if (result != null) {
             _loadCatches();

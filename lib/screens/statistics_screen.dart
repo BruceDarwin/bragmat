@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
 import 'dart:io';
+import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../services/achievement_service.dart';
 import '../services/environmental_conditions_service.dart';
+import '../widgets/resolved_image.dart';
 import 'catch_details_screen.dart';
-import 'trip_details_screen.dart';
 import 'achievements_screen.dart';
 
 class StatisticsScreen extends StatefulWidget {
@@ -577,14 +577,11 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
                       if (photoPath != null && File(photoPath).existsSync())
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            File(photoPath),
+                          child: ResolvedImage(
+                            imagePath: photoPath,
                             width: 50,
                             height: 50,
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return _buildSmallRecordIcon();
-                            },
                           ),
                         )
                       else

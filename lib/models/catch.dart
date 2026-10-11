@@ -1,6 +1,6 @@
 class Catch {
   final int? id;
-  final String fishType;
+  final String? fishType;
   final int lengthCm;
   final String? notes;
   final DateTime createdAt;
@@ -21,7 +21,7 @@ class Catch {
 
   Catch({
     this.id,
-    required this.fishType,
+    this.fishType,
     required this.lengthCm,
     this.notes,
     required this.createdAt,
@@ -68,9 +68,9 @@ class Catch {
 factory Catch.fromMap(Map<String, dynamic> map) {
   return Catch(
     id: map['id'] as int?,
-    fishType: map['fish_type'] as String? ?? '',
+    fishType: map['fish_type'] as String?,
     lengthCm: (map['length_cm'] as num?)?.toInt() ?? 0,
-    notes: map['notes'] as String? ?? '',
+    notes: map['notes'] as String?,
     createdAt: map['created_at'] != null
         ? DateTime.parse(map['created_at'] as String)
         : DateTime.now(),
@@ -118,7 +118,7 @@ factory Catch.fromMap(Map<String, dynamic> map) {
   }) {
     return Catch(
       id: id ?? this.id,
-      fishType: fishType ?? this.fishType,
+      fishType: fishType,
       lengthCm: lengthCm ?? this.lengthCm,
       notes: notes ?? this.notes,
       createdAt: createdAt ?? this.createdAt,

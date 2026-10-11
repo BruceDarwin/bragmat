@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
@@ -19,8 +20,10 @@ import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
 import '../services/tide_reference_service.dart';
+import '../services/media_storage_service.dart';
 import '../helpers/tide_context_helper.dart';
 import '../widgets/bragmat_section_card.dart';
+import '../widgets/resolved_image.dart';
 import '../widgets/location_action_buttons.dart';
 import 'location_picker_screen.dart';
 
@@ -120,6 +123,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   /// Load all required data before building the form
   /// This prevents dropdown assertion errors from selected values being set before item lists are loaded
   Future<void> _loadInitialData() async {
+    final initStartTime = DateTime.now();
+    
     if (widget.catchToEdit != null) {
       setState(() {
         _isLoadingInitialData = true;
@@ -144,7 +149,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       
       // Safely set fish type - will add to list if not present
       final fishType = widget.catchToEdit!.fishType;
-      _fishTypeController.text = fishType;
+      _fishTypeController.text = fishType ?? '';
       _selectedFishType = _safeFishTypeValue(fishType);
       _lengthController.text = widget.catchToEdit!.lengthCm.toString();
       _notesController.text = widget.catchToEdit!.notes ?? '';
@@ -195,6 +200,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     
     // Add text change listeners after data is loaded
     _addTextChangeListeners();
+    
+    final initEndTime = DateTime.now();
+    final elapsed = initEndTime.difference(initStartTime);
   }
 
   void _addTextChangeListeners() {
@@ -221,6 +229,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
 
   @override
   void dispose() {
+    
     // Remove observer when widget is disposed
     WidgetsBinding.instance.removeObserver(this);
     
@@ -265,6 +274,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    
     // When app resumes from camera, check for lost data
     if (state == AppLifecycleState.resumed) {
       _retrieveLostData();
@@ -406,8 +416,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   }
 
   Future<void> _retrieveLostData() async {
-    final picker = ImagePicker();
-    final lostData = await picker.retrieveLostData();
+    final lostData = await ImagePicker().retrieveLostData();
     
     if (lostData == null || lostData.isEmpty) {
       return;
@@ -659,19 +668,19 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   Future<void> _loadFishTypes() async {
     final types = await DatabaseHelper.instance.getFishTypes();
     setState(() {
-      // Remove duplicates and trim whitespace
-      final uniqueTypes = types.map((t) => t.trim()).toSet().toList();
+      // Remove duplicates and trim whitespace, filter out null
+      final uniqueTypes = types.map((t) => t?.trim()).where((t) => t != null && t!.isNotEmpty).cast<String>().toSet().toList();
       _fishTypes = uniqueTypes;
 
       // If editing and current fish type is not in list, add it once
       if (widget.catchToEdit != null) {
-        final currentFishType = widget.catchToEdit!.fishType.trim();
-        if (currentFishType.isNotEmpty &&
+        final currentFishType = widget.catchToEdit!.fishType;
+        if (currentFishType != null && currentFishType.isNotEmpty &&
             !_fishTypes.contains(currentFishType)) {
           _fishTypes = [..._fishTypes, currentFishType];
         }
         // Set selected fish type to the trimmed value
-        _selectedFishType = currentFishType.isEmpty ? null : currentFishType;
+        _selectedFishType = (currentFishType == null || currentFishType.isEmpty) ? null : currentFishType;
       }
     });
     
@@ -803,7 +812,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         await _processPickedFile(file, 'gallery');
       }
     } catch (e, stackTrace) {
-      debugPrint('ERROR in _pickImage: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error picking image: $e')),
@@ -827,7 +835,6 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         await _processPickedFile(file, 'camera');
       }
     } catch (e) {
-      debugPrint('Camera: Error taking photo: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error taking photo: $e')),
@@ -847,9 +854,32 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       );
       
       if (pickedFile != null) {
+        // Copy photo to persistent storage
+        final tempCatchId = widget.catchToEdit?.id ?? 0;
+        final persistentPath = await MediaStorageService.copyPhotoToStorage(
+          pickedFile.path,
+          'lure',
+          tempCatchId,
+          'photo',
+        );
+        
+        if (persistentPath == null) {
+          // Copy failed, show error and do not save photo
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Error: Could not save lure photo to persistent storage. Please try again.'),
+                duration: Duration(seconds: 4),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+          return;
+        }
+        
         if (mounted) {
           setState(() {
-            _lurePhotoPath = pickedFile.path;
+            _lurePhotoPath = persistentPath;
           });
         }
       }
@@ -873,13 +903,40 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     
     final photoDateTime = DateTime.now();
     
+    // Copy photo to persistent storage
+    String? persistentPath;
+    final role = _mediaItems.isEmpty ? 'primary' : 'other';
+    
+    // Use temporary catch ID (0) for new catches, will be updated on save
+    final tempCatchId = widget.catchToEdit?.id ?? 0;
+    
+    persistentPath = await MediaStorageService.copyPhotoToStorage(
+      originalPath,
+      'catch',
+      tempCatchId,
+      role,
+    );
+    
+    if (persistentPath == null) {
+      // Copy failed, show error and do not add photo
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error: Could not save photo to persistent storage. Please try again.'),
+            duration: Duration(seconds: 4),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+    
+    // persistentPath is guaranteed non-null at this point
     if (mounted) {
       setState(() {
-        // If this is the first photo, mark it as primary
-        final role = _mediaItems.isEmpty ? 'primary' : 'other';
         _mediaItems.add(CatchMedia(
           catchId: 0, // Will be set when saving
-          filePath: originalPath,
+          filePath: persistentPath!,
           mediaType: 'photo',
           role: role,
           dateTaken: photoDateTime,
@@ -1162,18 +1219,12 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     });
     
     final fishType = _selectedFishType ?? _fishTypeController.text;
+    final fishTypeToSave = fishType.trim().isEmpty ? null : fishType.trim();
     final length = int.tryParse(_lengthController.text) ?? 0;
     final notes = _notesController.text;
     final location = _locationController.text.trim();
     final latitude = double.tryParse(_latitudeController.text);
     final longitude = double.tryParse(_longitudeController.text);
-
-    if (fishType.isEmpty) {
-      setState(() {
-        _isSaving = false;
-      });
-      return;
-    }
 
     Catch? savedCatch;
 
@@ -1267,7 +1318,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         
         final updatedCatch = Catch(
           id: widget.catchToEdit!.id,
-          fishType: fishType,
+          fishType: fishTypeToSave,
           lengthCm: length,
           notes: notes,
           createdAt: widget.catchToEdit!.createdAt,
@@ -1403,7 +1454,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         }
       } else {
         final newCatch = Catch(
-          fishType: fishType,
+          fishType: fishTypeToSave,
           lengthCm: length,
           notes: notes,
           createdAt: DateTime.now(),
@@ -1818,8 +1869,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: Image.file(
-                                File(media.filePath),
+                              child: ResolvedImage(
+                                imagePath: media.filePath,
                                 height: 100,
                                 width: double.infinity,
                                 fit: BoxFit.cover,
@@ -2167,8 +2218,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                       children: [
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.file(
-                            File(_lurePhotoPath!),
+                          child: ResolvedImage(
+                            imagePath: _lurePhotoPath!,
                             height: 150,
                             width: double.infinity,
                             fit: BoxFit.cover,

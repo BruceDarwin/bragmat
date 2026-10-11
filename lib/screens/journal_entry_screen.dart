@@ -1,9 +1,10 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import '../database/database_helper.dart';
 import '../models/trip_journal.dart';
 import '../models/journal_media.dart';
+import '../services/media_storage_service.dart';
+import '../widgets/resolved_image.dart';
 import 'photo_viewer_screen.dart';
 
 class JournalEntryScreen extends StatefulWidget {
@@ -179,11 +180,35 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
     final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
     if (image == null) return;
 
+    // Copy photo to persistent storage
+    final isPrimary = _media.isEmpty;
+    final tempJournalId = widget.journalToEdit?.id ?? 0;
+    final persistentPath = await MediaStorageService.copyPhotoToStorage(
+      image.path,
+      'journal',
+      tempJournalId,
+      isPrimary ? 'primary' : 'other',
+    );
+
+    if (persistentPath == null) {
+      // Copy failed, show error and do not save photo
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Error: Could not save journal photo to persistent storage. Please try again.'),
+            duration: Duration(seconds: 4),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
     final journalMedia = JournalMedia(
       journalEntryId: widget.journalToEdit?.id ?? 0,
-      filePath: image.path,
+      filePath: persistentPath,
       mediaType: 'photo',
-      isPrimary: _media.isEmpty,
+      isPrimary: isPrimary,
     );
 
     if (widget.journalToEdit != null) {
@@ -381,17 +406,11 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
                                 tag: 'journal_photo_${media.id}',
                                 child: ClipRRect(
                                   borderRadius: BorderRadius.circular(8),
-                                  child: Image.file(
-                                    File(media.filePath),
+                                  child: ResolvedImage(
+                                    imagePath: media.filePath,
                                     width: double.infinity,
                                     height: double.infinity,
                                     fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return Container(
-                                        color: Colors.grey[300],
-                                        child: const Icon(Icons.image_not_supported),
-                                      );
-                                    },
                                   ),
                                 ),
                               ),
