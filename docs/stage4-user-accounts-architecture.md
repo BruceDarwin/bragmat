@@ -2,7 +2,26 @@
 
 Architecture proposal for review. **No implementation until approved.**
 
-Status: Draft — awaiting decisions listed in §8.
+Status: **Option 1 (Supabase Auth + PostgreSQL + local SQLite sync)
+approved.** Backend alternatives evaluated in
+`stage4-backend-comparison.md`. Implementation proceeds per
+`stage4a-implementation-plan.md`.
+
+## Approved amendments (user requirements)
+
+- Server-enforced invitation (RLS + RPC), not client-side checks.
+- Cloud upload and cross-device sync **disabled until explicitly
+  approved** — Stage 4A ships auth + access control only.
+- Offline-first preserved: full app use offline after initial auth;
+  defined session and account-revocation policy (§5.8).
+- Fishing locations private by default — nothing shares coordinates
+  without explicit user action.
+- Sync design is **not** committed in Stage 4A: last-writer-wins is not
+  assumed sufficient for important records; PowerSync remains an option
+  alongside a custom engine. Sync conflict policy decision (§8.6) deferred.
+- Existing ZIP backup/restore retained unchanged.
+- Schema v29 requires a migration specification reviewed and confirmed
+  **before** implementation.
 
 ## 1. Goals
 
@@ -147,14 +166,41 @@ On first account link on a device that already has data:
 - Admin screens in-app: list testers, add/remove invitations, view status.
   For earliest beta the Supabase dashboard can be used instead — decision §8.7.
 
+### 5.8 Session and account-revocation policy
+
+- **Session:** Supabase session persisted via secure storage; silent
+  refresh on launch. A valid cached session is sufficient for offline use.
+- **Entitlement re-check:** when online, the app re-verifies beta status
+  via the `is_approved_beta()` RPC on launch and on foregrounding (rate-
+  limited to once per hour; failures are non-fatal and never lock out an
+  offline user).
+- **Revocation:** if the check returns revoked, the app signs the user
+  out remotely, shows an "access removed" screen, and **retains all local
+  data** — revocation removes cloud identity, not the user's records.
+- **Sign-out / switch account:** explicit sign-out preserves local data
+  and returns to the sign-in gate. Signing in as a different account
+  keeps local data scoped to `owner_id`; cross-account data is never
+  merged implicitly.
+- **Password reset:** email-based reset via `resetPasswordForEmail` with
+  a `bragmat://reset-callback` deep link handled in-app.
+- **Account deletion:** in-app request sets `deletion_requested_at` on the
+  profile (server-side flag); an admin performs the actual `auth.users`
+  deletion via the Supabase dashboard/admin API — user deletion requires
+  the service key, which must never ship in the app. Local data is
+  unaffected; the user is informed it remains on-device.
+
 ## 6. Implementation phases
 
 | Phase | Scope | Deliverable |
 |---|---|---|
-| 4A | Supabase project, schema v29 (uuid/owner/timestamps/dirty), auth + session persistence, beta-allowlist gate, profiles | Signed-in users, ownership stamped, still fully local |
+| 4A | Supabase project, auth + session persistence, server-enforced beta allowlist, profiles, account management (logout/switch/reset/deletion request). **No user-table schema changes; no upload/sync.** | Signed-in approved testers; all data stays local |
 | 4B | Cloud ZIP backup/restore via existing pipeline to private bucket | Working cross-device backup/restore |
-| 4C | Delta sync engine (push/pull, tombstones, media upload/download) | Live Android↔iPhone sync |
+| 4C | Schema v29 ownership/sync columns + sync engine (LWW not presumed; PowerSync evaluated) + media sync | Live Android↔iPhone sync |
 | 4D | In-app admin console, invite management, polish | Beta-management UI |
+
+Schema v29 is now scoped to Phase 4C: ownership/sync columns on user-owned
+tables are only needed once cloud upload or sync exists, and the migration
+specification requires separate confirmation before implementation.
 
 Each phase is independently testable and shippable; 4A is mandatory groundwork,
 4B is high-value/low-risk, 4C is the large one, 4D can overlap 4C.
@@ -173,18 +219,24 @@ Each phase is independently testable and shippable; 4A is mandatory groundwork,
 
 ## 8. Decisions requiring approval
 
-1. **Supabase hosted vs self-hosted** — recommend hosted (free tier) for beta.
-2. **Auth method** — recommend email + password. Magic links need deep-link
-   config; OAuth (Google) triggers the App Store requirement to also offer
-   Sign in with Apple — defer all OAuth for beta.
-3. **Invite model** — recommend allowlist gating (§5.2) over invite codes.
-4. **Soft-delete scope** — tombstones on all synced tables now (recommended,
-   one migration) vs. only where needed.
-5. **Data migration policy** — auto-upload existing data on first link vs.
-   explicit opt-in prompt (recommend opt-in + ZIP backup offer).
-6. **Conflict policy** — last-writer-wins (recommended) vs. manual resolution.
-7. **Admin surface** — in-app admin screens vs. Supabase dashboard for beta.
-8. **Location privacy** — confirm storing GPS-bearing catches/spots in Supabase
-   is acceptable, and whether the privacy copy needs updating.
-9. **Cloud backup encryption** — rely on private bucket + RLS (recommended for
-   beta) vs. client-side-encrypted archives (adds password management).
+Resolved at approval of Option 1:
+
+1. **Supabase hosted vs self-hosted** — ✅ hosted.
+2. **Auth method** — ✅ email + password; all OAuth deferred.
+3. **Invite model** — ✅ allowlist, **server-enforced** (RLS + RPC).
+5. **Data migration policy** — ✅ opt-in prompt + ZIP backup offer first;
+   cloud upload disabled until approved regardless.
+8. **Location privacy** — ✅ locations private by default; nothing shares
+   coordinates without explicit user action.
+9. **Cloud backup encryption** — deferred with all of 4B; private bucket +
+   RLS remains the recommendation.
+
+Still open (deferred to the relevant phase):
+
+4. **Soft-delete scope** — deferred to sync phase (4C); tombstones only
+   matter once sync exists.
+6. **Conflict policy** — **no longer assumed to be LWW.** Stage 4C must
+   evaluate merge/field-level strategies for important records; PowerSync
+   retained as an implementation option.
+7. **Admin surface** — Supabase dashboard sufficient for early beta;
+   in-app admin console remains a 4D decision.
