@@ -130,7 +130,7 @@ create policy "users read own profile"
 -- email must equal the caller's verified email claim. Unverified email
 -- changes never reach the JWT, so this cannot be spoofed.
 drop policy if exists "profiles insert only for approved testers"
-  on public.profiles for insert;
+  on public.profiles;
 create policy "profiles insert only for approved testers"
   on public.profiles for insert to authenticated
   with check (
