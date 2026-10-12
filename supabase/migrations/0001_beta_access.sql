@@ -80,10 +80,12 @@ create policy "users read own profile"
   on public.profiles for select to authenticated
   using (id = auth.uid());
 
+-- Updates also require active beta status: a revoked tester cannot
+-- modify their profile server-side even while a stale session lives.
 create policy "users update own profile"
   on public.profiles for update to authenticated
-  using (id = auth.uid())
-  with check (id = auth.uid());
+  using (id = auth.uid() and public.is_approved_beta())
+  with check (id = auth.uid() and public.is_approved_beta());
 
 -- Server-enforced invitation: a profile row can only be created while the
 -- caller's email is on the beta allowlist.

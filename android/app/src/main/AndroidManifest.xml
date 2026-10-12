@@ -31,12 +31,13 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Password-reset deep link from Supabase auth emails -->
+            <!-- Supabase auth email deep links: signup confirmation and
+                 password recovery both redirect here -->
             <intent-filter android:autoVerify="false">
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
                 <category android:name="android.intent.category.BROWSABLE"/>
-                <data android:scheme="bragmat" android:host="reset-callback"/>
+                <data android:scheme="bragmat" android:host="auth-callback"/>
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

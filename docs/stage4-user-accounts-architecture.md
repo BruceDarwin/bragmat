@@ -181,8 +181,12 @@ On first account link on a device that already has data:
   and returns to the sign-in gate. Signing in as a different account
   keeps local data scoped to `owner_id`; cross-account data is never
   merged implicitly.
-- **Password reset:** email-based reset via `resetPasswordForEmail` with
-  a `bragmat://reset-callback` deep link handled in-app.
+- **Email verification:** signup confirmation is enabled — a new account
+  has no session until the emailed link is tapped; the app shows a
+  verify-your-email state with resend.
+- **Password reset:** email-based reset via `resetPasswordForEmail`;
+  the link opens `bragmat://auth-callback`, creating a recovery session
+  that gates the user to a set-new-password screen (`updateUser`).
 - **Account deletion:** in-app request sets `deletion_requested_at` on the
   profile (server-side flag); an admin performs the actual `auth.users`
   deletion via the Supabase dashboard/admin API — user deletion requires

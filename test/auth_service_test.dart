@@ -108,5 +108,35 @@ void main() {
       await auth.requestAccountDeletion();
       expect(backend.deletionRequested, true);
     });
+
+    test('sign-up without a session lands on emailVerificationPending', () async {
+      backend.signUpCreatesSession = false; // email confirmation enabled
+      await auth.start();
+      await auth.signUp('new@example.com', 'password');
+
+      expect(auth.status, AuthStatus.emailVerificationPending);
+      expect(auth.pendingEmail, 'new@example.com');
+      expect(backend.hasSession, false);
+    });
+
+    test('password-recovery event raises the recovery flag', () async {
+      await auth.start();
+      backend.emitPasswordRecovery('tester@example.com');
+      await Future.delayed(Duration.zero);
+
+      expect(auth.passwordRecoveryPending, true);
+    });
+
+    test('updatePassword clears recovery flag and resumes session', () async {
+      await auth.start();
+      backend.emitPasswordRecovery('tester@example.com');
+      await Future.delayed(Duration.zero);
+
+      await auth.updatePassword('newsecret');
+
+      expect(backend.updatedPassword, 'newsecret');
+      expect(auth.passwordRecoveryPending, false);
+      expect(auth.status, AuthStatus.signedIn);
+    });
   });
 }

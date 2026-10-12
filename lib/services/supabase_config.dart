@@ -15,10 +15,11 @@ class SupabaseConfig {
   static const String url = String.fromEnvironment('SUPABASE_URL');
   static const String anonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
 
-  /// Deep link that receives password-recovery links from Supabase email.
-  /// Must match an intent-filter in AndroidManifest.xml (and Info.plist
-  /// on iOS) and be listed in Supabase Auth redirect URLs.
-  static const String resetRedirectUrl = 'bragmat://reset-callback';
+  /// Deep link that receives auth email links (signup confirmation and
+  /// password recovery). Must match an intent-filter in
+  /// AndroidManifest.xml (and Info.plist on iOS) and be listed in
+  /// Supabase Auth redirect URLs.
+  static const String authRedirectUrl = 'bragmat://auth-callback';
 
   /// Whether Supabase credentials were supplied at build time.
   /// Dev/test builds without credentials bypass the auth gate entirely.

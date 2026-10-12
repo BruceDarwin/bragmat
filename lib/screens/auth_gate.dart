@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/supabase_config.dart';
 import 'sign_in_screen.dart';
+import 'reset_password_screen.dart';
 
 /// Routes between the app and auth screens based on [AuthService] status.
 ///
@@ -42,13 +43,21 @@ class _AuthGateState extends State<AuthGate> {
     if (!SupabaseConfig.isConfigured) {
       return widget.child;
     }
-    switch (AuthService.instance.status) {
+    final auth = AuthService.instance;
+    // A recovery-session deep link takes precedence over everything else:
+    // the user must set a new password before entering the app.
+    if (auth.passwordRecoveryPending) {
+      return const ResetPasswordScreen();
+    }
+    switch (auth.status) {
       case AuthStatus.unknown:
         return const Scaffold(
           body: Center(child: CircularProgressIndicator()),
         );
       case AuthStatus.signedOut:
         return const SignInScreen();
+      case AuthStatus.emailVerificationPending:
+        return const EmailVerificationScreen();
       case AuthStatus.awaitingApproval:
         return const AwaitingApprovalScreen();
       case AuthStatus.revoked:
@@ -56,6 +65,65 @@ class _AuthGateState extends State<AuthGate> {
       case AuthStatus.signedIn:
         return widget.child;
     }
+  }
+}
+
+/// Account created but email confirmation is still pending — Supabase
+/// email confirmation is enabled, so no session exists until the user
+/// taps the link in their inbox.
+class EmailVerificationScreen extends StatefulWidget {
+  const EmailVerificationScreen({super.key});
+
+  @override
+  State<EmailVerificationScreen> createState() =>
+      _EmailVerificationScreenState();
+}
+
+class _EmailVerificationScreenState extends State<EmailVerificationScreen> {
+  bool _resending = false;
+
+  Future<void> _resend() async {
+    if (_resending || AuthService.instance.pendingEmail == null) {
+      return;
+    }
+    setState(() => _resending = true);
+    try {
+      await AuthService.instance.resendConfirmation();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Confirmation email re-sent')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not resend: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _resending = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _AuthMessageScreen(
+      icon: Icons.mark_email_unread,
+      title: 'Verify Your Email',
+      message:
+          'We sent a confirmation link to '
+          '${AuthService.instance.pendingEmail ?? 'your email address'}.\n\n'
+          'Tap the link to verify your account, then return here and '
+          'sign in. The app will open automatically when you tap it.',
+      actions: [
+        ElevatedButton(
+          onPressed: _resending ? null : _resend,
+          child: Text(_resending ? 'Sending…' : 'Resend Email'),
+        ),
+        TextButton(
+          onPressed: () => AuthService.instance.signOut(),
+          child: const Text('Back to Sign In'),
+        ),
+      ],
+    );
   }
 }
 

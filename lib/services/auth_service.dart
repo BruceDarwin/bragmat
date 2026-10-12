@@ -23,6 +23,10 @@ enum AuthStatus {
   /// Previously approved, now revoked by an admin. Local data is kept;
   /// only cloud identity is removed.
   revoked,
+
+  /// Account created but the confirmation email has not been verified
+  /// yet (Supabase email confirmation is enabled). No session exists.
+  emailVerificationPending,
 }
 
 /// Result of a beta-entitlement check.
@@ -44,10 +48,25 @@ abstract class AuthBackend {
   /// password-recovery sessions).
   Stream<String?> get authStateChanges;
 
+  /// Emits when a password-recovery deep link created a recovery session
+  /// — the UI should then offer the new-password screen.
+  Stream<void> get passwordRecoveryEvents;
+
   Future<void> signIn(String email, String password);
-  Future<void> signUp(String email, String password);
+
+  /// Returns true when a session was created immediately (email
+  /// confirmation disabled); false when a confirmation email was sent
+  /// and no session exists yet.
+  Future<bool> signUp(String email, String password, String redirectTo);
+
   Future<void> signOut();
   Future<void> requestPasswordReset(String email, String redirectTo);
+
+  /// Resend the signup-confirmation email.
+  Future<void> resendConfirmation(String email, String redirectTo);
+
+  /// Set a new password during a password-recovery session.
+  Future<void> updatePassword(String newPassword);
 
   /// Server-side beta-entitlement check (RPC `is_approved_beta`).
   /// Returns null when the check could not be performed (offline etc).
@@ -81,13 +100,24 @@ class SupabaseAuthBackend implements AuthBackend {
       _client.auth.onAuthStateChange.map((e) => e.session?.user.id);
 
   @override
+  Stream<void> get passwordRecoveryEvents => _client.auth.onAuthStateChange
+      .where((e) => e.event == AuthChangeEvent.passwordRecovery)
+      .map((_) {});
+
+  @override
   Future<void> signIn(String email, String password) async {
     await _client.auth.signInWithPassword(email: email, password: password);
   }
 
   @override
-  Future<void> signUp(String email, String password) async {
-    await _client.auth.signUp(email: email, password: password);
+  Future<bool> signUp(
+      String email, String password, String redirectTo) async {
+    final response = await _client.auth.signUp(
+      email: email,
+      password: password,
+      emailRedirectTo: redirectTo,
+    );
+    return response.session != null;
   }
 
   @override
@@ -96,6 +126,21 @@ class SupabaseAuthBackend implements AuthBackend {
   @override
   Future<void> requestPasswordReset(String email, String redirectTo) {
     return _client.auth.resetPasswordForEmail(email, redirectTo: redirectTo);
+  }
+
+  @override
+  Future<void> resendConfirmation(String email, String redirectTo) {
+    return _client.auth.resend(
+      type: OtpType.signup,
+      email: email,
+      emailRedirectTo: redirectTo,
+    );
+  }
+
+  @override
+  Future<void> updatePassword(String newPassword) {
+    return _client.auth
+        .updateUser(UserAttributes(password: newPassword));
   }
 
   @override
@@ -133,7 +178,10 @@ class FakeAuthBackend implements AuthBackend {
   bool? approved = true;
   var deletionRequested = false;
   var profileUpserted = false;
+  var signUpCreatesSession = true;
+  String? updatedPassword;
   final _controller = StreamController<String?>.broadcast();
+  final _recoveryController = StreamController<void>.broadcast();
 
   @override
   bool get hasSession => _userId != null;
@@ -148,6 +196,9 @@ class FakeAuthBackend implements AuthBackend {
   Stream<String?> get authStateChanges => _controller.stream;
 
   @override
+  Stream<void> get passwordRecoveryEvents => _recoveryController.stream;
+
+  @override
   Future<void> signIn(String email, String password) async {
     _userId = 'uid-$email';
     _email = email;
@@ -155,7 +206,14 @@ class FakeAuthBackend implements AuthBackend {
   }
 
   @override
-  Future<void> signUp(String email, String password) => signIn(email, password);
+  Future<bool> signUp(
+      String email, String password, String redirectTo) async {
+    if (!signUpCreatesSession) {
+      return false; // confirmation email sent, no session yet
+    }
+    await signIn(email, password);
+    return true;
+  }
 
   @override
   Future<void> signOut() async {
@@ -166,6 +224,22 @@ class FakeAuthBackend implements AuthBackend {
 
   @override
   Future<void> requestPasswordReset(String email, String redirectTo) async {}
+
+  @override
+  Future<void> resendConfirmation(String email, String redirectTo) async {}
+
+  @override
+  Future<void> updatePassword(String newPassword) async {
+    updatedPassword = newPassword;
+  }
+
+  /// Test helper: simulate a recovery deep link creating a session.
+  void emitPasswordRecovery(String email) {
+    _userId = 'uid-$email';
+    _email = email;
+    _controller.add(_userId);
+    _recoveryController.add(null);
+  }
 
   @override
   Future<bool?> isApprovedBeta() async => approved;
@@ -180,7 +254,10 @@ class FakeAuthBackend implements AuthBackend {
     deletionRequested = true;
   }
 
-  void dispose() => _controller.close();
+  void dispose() {
+    _controller.close();
+    _recoveryController.close();
+  }
 }
 
 /// Account service: wraps the auth backend, owns beta-entitlement state,
@@ -231,13 +308,23 @@ class AuthService extends ChangeNotifier {
   AuthStatus _status = AuthStatus.unknown;
   AuthStatus get status => _status;
 
+  /// True while a password-recovery session is active — the UI should
+  /// show the new-password screen until [updatePassword] or [signOut].
+  bool get passwordRecoveryPending => _passwordRecoveryPending;
+  bool _passwordRecoveryPending = false;
+
   String? get userId => _backend.userId;
   String? get email => _backend.email;
+
+  /// Email of the account awaiting confirmation (no session exists yet).
+  String? get pendingEmail => _pendingEmail;
+  String? _pendingEmail;
   bool get isSignedIn =>
       _status == AuthStatus.signedIn ||
       _status == AuthStatus.awaitingApproval;
 
   StreamSubscription<String?>? _authSub;
+  StreamSubscription<void>? _recoverySub;
 
   static const _kLastEntitlementCheck = 'auth_last_entitlement_check_ms';
   static const _kEverApproved = 'auth_ever_approved';
@@ -247,12 +334,18 @@ class AuthService extends ChangeNotifier {
   Future<void> start() async {
     _authSub?.cancel();
     _authSub = _backend.authStateChanges.listen((_) => refresh());
+    _recoverySub?.cancel();
+    _recoverySub = _backend.passwordRecoveryEvents.listen((_) {
+      _passwordRecoveryPending = true;
+      notifyListeners();
+    });
     await refresh();
   }
 
   @override
   Future<void> dispose() async {
     await _authSub?.cancel();
+    await _recoverySub?.cancel();
     super.dispose();
   }
 
@@ -324,11 +417,24 @@ class AuthService extends ChangeNotifier {
 
   Future<void> signIn(String email, String password) async {
     await _backend.signIn(email, password);
+    _pendingEmail = null;
     await refresh(forceEntitlementCheck: true);
   }
 
+  /// Creates the account. When email confirmation is enabled no session
+  /// exists yet — status moves to [AuthStatus.emailVerificationPending]
+  /// and the user verifies via the emailed link before signing in.
   Future<void> signUp(String email, String password) async {
-    await _backend.signUp(email, password);
+    final sessionCreated = await _backend.signUp(
+      email,
+      password,
+      SupabaseConfig.authRedirectUrl,
+    );
+    if (!sessionCreated) {
+      _pendingEmail = email;
+      _setStatus(AuthStatus.emailVerificationPending);
+      return;
+    }
     await refresh(forceEntitlementCheck: true);
   }
 
@@ -337,11 +443,30 @@ class AuthService extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_kEverApproved);
     await _backend.signOut();
+    _passwordRecoveryPending = false;
+    _pendingEmail = null;
     _setStatus(AuthStatus.signedOut);
   }
 
   Future<void> requestPasswordReset(String email) =>
-      _backend.requestPasswordReset(email, SupabaseConfig.resetRedirectUrl);
+      _backend.requestPasswordReset(email, SupabaseConfig.authRedirectUrl);
+
+  /// Resend the signup-confirmation email while verification is pending.
+  Future<void> resendConfirmation() async {
+    final email = _pendingEmail;
+    if (email == null) {
+      return;
+    }
+    await _backend.resendConfirmation(email, SupabaseConfig.authRedirectUrl);
+  }
+
+  /// Set a new password during a password-recovery session, then clear
+  /// the recovery flag — the session continues as a normal sign-in.
+  Future<void> updatePassword(String newPassword) async {
+    await _backend.updatePassword(newPassword);
+    _passwordRecoveryPending = false;
+    await refresh(forceEntitlementCheck: true);
+  }
 
   Future<void> requestAccountDeletion() => _backend.requestAccountDeletion();
 

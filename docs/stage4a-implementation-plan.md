@@ -8,18 +8,27 @@ Implementation plan and acceptance criteria. Companion to
 ### In scope for 4A
 
 - `supabase_flutter` integration, configured via `--dart-define`
-  (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) — never committed.
-- Email/password sign-up and sign-in; session persistence and silent
-  refresh; offline-capable after first authentication.
+  (`SUPABASE_URL`, `SUPABASE_ANON_KEY`) — never committed. **Only the
+  publishable/anon key is ever used; the service-role key must never
+  appear in the app or this repo.**
+- Email/password sign-up and sign-in **with Supabase email confirmation
+  enabled**: sign-up produces no session until the emailed link is
+  tapped; a "verify your email" screen offers resend; the confirmation
+  and password-recovery links share the `bragmat://auth-callback`
+  deep link.
+- Session persistence and silent refresh; offline-capable after first
+  authentication.
 - **Server-enforced** beta gate: `beta_testers` allowlist table + RLS +
   `is_approved_beta()` RPC; profiles can only be created by approved
-  testers (RLS insert policy).
-- Auth gate at app start: signed-out → sign-in screen; signed-in but not
-  approved → "awaiting invitation"; revoked → "access removed".
+  testers (RLS insert policy), and profile updates also require active
+  status so a revoked tester loses server access immediately.
+- Auth gate at app start: signed-out → sign-in; verification pending →
+  check-your-email; signed-in but not approved → "awaiting invitation";
+  revoked → "access removed"; recovery session → set-new-password.
 - Session and revocation policy per architecture §5.8 (hourly-throttled
   online entitlement re-check; offline never blocked).
 - Account management in Settings: sign-out, switch account, password
-  reset (`bragmat://reset-callback` deep link), request account deletion.
+  reset request, request account deletion.
 - `supabase/migrations/` SQL checked into the repo for you to apply to
   your Supabase project.
 - Automated tests with a fake auth backend (no network).
@@ -75,12 +84,16 @@ Server-enforcement properties:
 main.dart
   └─ MaterialApp
        └─ home: AuthGate
-            ├─ Supabase not configured  → MainScreen (dev builds)
-            ├─ signed out               → SignInScreen (sign in / create
-            │                             account / reset password)
-            ├─ signed in, not approved  → AwaitingApprovalScreen
-            ├─ revoked                  → RevokedScreen
-            └─ approved                 → MainScreen (existing app)
+            ├─ Supabase not configured   → MainScreen (dev builds)
+            ├─ recovery session          → ResetPasswordScreen
+            │                              (set new password → updateUser)
+            ├─ signed out                → SignInScreen (sign in /
+            │                              create account / reset email)
+            ├─ email verification pending → EmailVerificationScreen
+            │                              (resend link / back)
+            ├─ signed in, not approved   → AwaitingApprovalScreen
+            ├─ revoked                   → RevokedScreen
+            └─ approved                  → MainScreen (existing app)
 ```
 
 - `lib/services/supabase_config.dart` — dart-define config +
@@ -190,24 +203,109 @@ first, per approved decision 5).
     (grep-verifiable: no `storage.from` / no PostgREST calls to entity
     tables — only `beta_testers`/`profiles`/`is_approved_beta` RPC).
 
-## 6. Manual test prerequisites (yours)
+## 6. Supabase setup — step by step
 
-- A Supabase project (hosted, free tier) — you create it; I cannot.
-- Apply `supabase/migrations/0001_beta_access.sql` in the SQL editor.
-- Insert your email into `beta_testers` (`status='invited'`) and your
-  `auth.users` id into `admins` after first sign-up.
-- Build with:
-  `flutter run --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...`
-  (same flags for `flutter build apk --debug`).
-- Enable email provider in Supabase Auth settings; set Site URL /
-  additional redirect URLs to include `bragmat://reset-callback`.
+### 6.1 Create the project
 
-## 7. Risks / notes
+1. Sign in at supabase.com → **New project** → pick organisation, name
+   (e.g. `bragmat`), a strong database password, region nearest to you.
+   Free tier is sufficient.
+
+### 6.2 Apply the schema
+
+2. In the left sidebar → **SQL Editor** → **New query**.
+3. Paste the full contents of `supabase/migrations/0001_beta_access.sql`
+   from this repo → **Run**. Expected output: success, no rows.
+4. Verify under **Table Editor** that `beta_testers`, `admins` and
+   `profiles` exist, each showing "RLS enabled".
+
+### 6.3 Invite yourself (and other testers)
+
+5. **Table Editor** → `beta_testers` → **Insert row**: `email` = your
+   address, `status` = `invited` (defaults are fine for the rest). Repeat
+   per tester. Admins can also revoke later by setting `status` to
+   `revoked`.
+6. After your first successful sign-in in the app, add yourself to
+   `admins`: **SQL Editor** →
+   `insert into public.admins (user_id) values ('<your auth user uuid>');`
+   — the UUID is visible under **Authentication → Users**.
+
+### 6.4 Configure authentication
+
+7. **Authentication → Providers**: ensure **Email** is enabled.
+   Keep **Confirm email** **ON** (the app implements the verification
+   flow: sign-up sends a link; the app shows a "verify your email"
+   screen with a resend option).
+8. **Authentication → URL Configuration**:
+   - **Site URL**: `bragmat://auth-callback` (mobile-only app — any value
+     works, but this keeps email links pointing at the app).
+   - **Redirect URLs** (allowed list): add `bragmat://auth-callback`.
+   The same URL serves both the signup-confirmation and password-recovery
+   emails — the app distinguishes them by the embedded token type.
+
+### 6.5 Credentials and build
+
+9. **Settings → API**: copy **Project URL** and the **anon public** key
+   (labelled `anon` / `public` / `publishable`). **Never use the
+   `service_role` key** — it bypasses RLS and must not ship in the app.
+10. Run / build with:
+
+    ```
+    flutter run \
+      --dart-define=SUPABASE_URL=https://<project>.supabase.co \
+      --dart-define=SUPABASE_ANON_KEY=<anon-key>
+
+    flutter build apk --debug \
+      --dart-define=SUPABASE_URL=... --dart-define=SUPABASE_ANON_KEY=...
+    ```
+
+    Optionally keep them in a local `.env` (gitignored) and pass them
+    through your shell.
+
+### 6.6 What each key is for
+
+| Key | Where it lives | Purpose |
+|---|---|---|
+| Project URL | App (dart-define) | API endpoint |
+| `anon`/`publishable` | App (dart-define) | Public client key — all access governed by RLS |
+| `service_role` | **Nowhere in the app/repo** | Admin only (dashboard, scripts); bypasses RLS |
+| DB password | Supabase only | Direct Postgres admin; not used by the app |
+
+## 7. Acceptance criteria — device test additions
+
+In addition to §5:
+
+12. Sign-up sends a confirmation email; the app shows "Verify your
+    email"; tapping the link opens the app; sign-in then succeeds.
+13. Unverified sign-in shows a clear "not verified" message.
+14. Reset request → email link → app opens to **Set New Password** →
+    update succeeds → signed in normally.
+15. A revoked tester's profile updates fail server-side (RLS), not just
+    in-app — verifiable in the dashboard by attempting an update as that
+    user.
+
+## 8. Deferred functionality (not in 4A)
+
+Account deletion is currently a **request workflow** only: the app sets
+`deletion_requested_at` on the profile; an admin performs the actual
+`auth.users` deletion in the Supabase dashboard (requires the
+service-role key, which must never ship in the app). Deferred to later
+phases: an admin console for processing deletions, any automated
+deletion of cloud data (no cloud data exists in 4A anyway), and a
+device-side "delete my local data too" option — local data is
+deliberately preserved today.
+
+Also deferred: schema v29 columns, cloud backup, synchronisation, OAuth,
+in-app admin console, iOS deep-link config (`bragmat://` in Info.plist —
+recorded for the MacBook work).
+
+## 9. Risks / notes
 
 - **No live backend in this environment** — all auth code is unit-tested
   against a fake backend; end-to-end verification happens on your device
-  against your project (criteria 4–9).
-- Email confirmation: recommend *off* for the beta (invite allowlist is
-  already the gate); otherwise sign-up needs an email-confirm step.
-- The `bragmat://` scheme must also be added to the iOS `Info.plist` when
-  the iOS build happens — recorded for the MacBook work.
+  against your project.
+- SMTP deliverability: Supabase's default email sender is rate-limited
+  and may land in spam; a custom SMTP provider can be configured later.
+- With email confirmation ON, an unverified user cannot authenticate at
+  all — so the beta check only ever runs for verified accounts, which is
+  the desired ordering.

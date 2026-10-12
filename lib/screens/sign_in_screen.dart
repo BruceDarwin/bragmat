@@ -52,9 +52,17 @@ class _SignInScreenState extends State<SignInScreen> {
       }
       // The AuthGate reacts to the resulting status change.
     } catch (e) {
-      _showMessage(
-        _isSignUp ? 'Sign up failed: $e' : 'Sign in failed: $e',
-      );
+      final msg = e.toString();
+      if (msg.contains('not confirmed') || msg.contains('not_confirmed')) {
+        _showMessage(
+          'This email is not verified yet — check your inbox for the '
+          'confirmation link, then sign in.',
+        );
+      } else {
+        _showMessage(
+          _isSignUp ? 'Sign up failed: $e' : 'Sign in failed: $e',
+        );
+      }
     } finally {
       if (mounted) setState(() => _busy = false);
     }
