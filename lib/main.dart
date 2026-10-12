@@ -12,6 +12,8 @@ import 'services/connectivity_service.dart';
 import 'services/notification_service.dart';
 import 'services/achievement_service.dart';
 import 'services/zip_backup_service.dart';
+import 'services/auth_service.dart';
+import 'screens/auth_gate.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,6 +21,13 @@ void main() {
   // Database-level recovery also runs on first database access, so this is
   // safe to run unawaited in the background.
   unawaited(ZipBackupService.recoverInterruptedRestore());
+  // Initialise Supabase auth (no-op when credentials are not supplied via
+  // --dart-define) and resolve the initial auth/beta state.
+  unawaited(() async {
+    if (await AuthService.initialize()) {
+      await AuthService.instance.start();
+    }
+  }());
   runApp(const BragmatApp());
 }
 
@@ -62,7 +71,7 @@ class _BragmatAppState extends State<BragmatApp> {
       title: 'Bragmat',
       theme: AppTheme.lightTheme(palette: _themeService.currentPalette),
       scaffoldMessengerKey: _notificationService.scaffoldMessengerKey,
-      home: MainScreen(themeService: _themeService),
+      home: AuthGate(child: MainScreen(themeService: _themeService)),
     );
   }
 }

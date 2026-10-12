@@ -18,6 +18,8 @@ import '../models/tide_reference.dart';
 import '../services/backup_service.dart';
 import '../services/media_storage_service.dart';
 import '../services/zip_backup_service.dart';
+import '../services/auth_service.dart';
+import '../services/supabase_config.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
 import '../services/worldtides_service.dart';
@@ -3109,6 +3111,89 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Future<void> _resetAccountPassword() async {
+    final email = AuthService.instance.email;
+    if (email == null) return;
+    try {
+      await AuthService.instance.requestPasswordReset(email);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Password reset email sent')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not send reset email: $e')),
+      );
+    }
+  }
+
+  Future<void> _showSignOutDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign Out?'),
+        content: const Text(
+          'Your catches, trips and photos stay on this device. '
+          'You can sign in again with the same or a different invited account.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Sign Out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await AuthService.instance.signOut();
+    }
+  }
+
+  Future<void> _showDeleteAccountDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Request Account Deletion?'),
+        content: const Text(
+          'This flags your account for removal by an administrator. '
+          'Your cloud account and any cloud data will be deleted. '
+          'Catches and photos stored on this device are NOT deleted.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Request Deletion'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    try {
+      await AuthService.instance.requestAccountDeletion();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Deletion requested — an administrator will process it'),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Could not submit request: $e')),
+      );
+    }
+  }
+
   Future<void> _restoreLegacyJsonBackup(File backupFile) async {
     // Check if database has data
     final existingCatches = await DatabaseHelper.instance.getCatches();
@@ -3175,6 +3260,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          // Account Section — only when Supabase is configured
+          if (SupabaseConfig.isConfigured) ...[
+            BragmatSectionCard(
+              icon: Icons.account_circle,
+              title: 'Account',
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.verified_user),
+                  title: Text(AuthService.instance.email ?? 'Signed in'),
+                  subtitle: const Text('Beta tester account'),
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.lock_reset),
+                  title: const Text('Reset Password'),
+                  subtitle: const Text('Email a reset link to this address'),
+                  onTap: _resetAccountPassword,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: const Text('Sign Out / Switch Account'),
+                  subtitle: const Text('Your catches and photos stay on this device'),
+                  onTap: _showSignOutDialog,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline, color: Colors.red),
+                  title: const Text('Request Account Deletion',
+                      style: TextStyle(color: Colors.red)),
+                  subtitle: const Text(
+                      'Flags your account for admin removal; local data stays on this device'),
+                  onTap: _showDeleteAccountDialog,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
+
           // Preferences Section
           BragmatSectionCard(
             icon: Icons.tune,
