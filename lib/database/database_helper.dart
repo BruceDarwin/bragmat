@@ -124,8 +124,11 @@ class DatabaseHelper {
   /// the recovery copy is put back. Stale WAL/SHM sidecars are always
   /// removed in this situation because they cannot belong to a swapped file.
   ///
-  /// When the live file already verifies OK, the swap had completed — the
-  /// restored database is kept and only the markers are cleaned up.
+  /// When the live file already verifies OK, the swap had committed — the
+  /// restored database is kept AND the recovery marker is retained so the
+  /// service layer can finish pending media staging before treating the
+  /// restore as complete. On rollback the marker is deleted: the restore
+  /// is then definitively closed and staged media must be discarded.
   Future<void> recoverInterruptedRestore([String? dbPathOverride]) async {
     final dbPath = dbPathOverride ?? await databaseFilePath;
     final dbFile = File(dbPath);
@@ -155,15 +158,14 @@ class DatabaseHelper {
       if (await recoveryFile.length() > 0) {
         await recoveryFile.copy(dbPath);
       }
+      // Rolled back — the restore is closed, remove the marker.
+      await recoveryFile.delete();
     }
-
-    // Keep the recovery file on failure so the next launch can retry.
-    await recoveryFile.delete();
   }
 
-  /// Delete the WAL and SHM sidecar files for a database path.
+  /// Delete the WAL, SHM and rollback-journal sidecar files for a database.
   Future<void> deleteDatabaseSidecars(String dbPath) async {
-    for (final suffix in const ['-wal', '-shm']) {
+    for (final suffix in const ['-wal', '-shm', '-journal']) {
       final file = File('$dbPath$suffix');
       try {
         if (await file.exists()) {

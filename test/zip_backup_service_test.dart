@@ -710,6 +710,7 @@ void main() {
     });
 
     tearDown(() async {
+      ZipBackupService.debugStageHook = null;
       await DatabaseHelper.instance.closeDatabase();
       DatabaseHelper.clearTestDatabasePath();
       if (await testDir.exists()) {
@@ -843,9 +844,17 @@ void main() {
       await DatabaseHelper.instance.recoverInterruptedRestore(targetDbPath);
 
       expect(await readTargetFishTypes(), ['New Fish']);
-      expect(await File('$targetDbPath.restore').exists(), false);
       expect(await File('$targetDbPath-wal').exists(), false);
       expect(await File('$targetDbPath-shm').exists(), false);
+      // Marker is retained to signal "committed swap" for media promotion;
+      // the service-level recovery completes staging and clears it.
+      expect(await File('$targetDbPath.restore').exists(), true);
+
+      await ZipBackupService.recoverInterruptedRestore(
+        databasePathOverride: targetDbPath,
+        mediaDirectoryOverride: mediaDir,
+      );
+      expect(await File('$targetDbPath.restore').exists(), false);
     });
 
     test('interrupted restore - empty marker drops corrupt target', () async {
@@ -868,11 +877,15 @@ void main() {
       expect(await readTargetFishTypes(), ['Old Fish']);
     });
 
-    test('pending media staging is completed on recovery', () async {
+    test('pending media staging promoted when swap committed', () async {
       final stagingDir = Directory(path.join(mediaDir.parent.path, 'media.staging'));
       final staged = File(path.join(stagingDir.path, 'catches', 'leftover.jpg'));
       await staged.parent.create(recursive: true);
       await staged.writeAsBytes([7, 7, 7]);
+
+      // Marker + valid target = the restore committed its swap.
+      await createTargetDatabase(catchFishTypes: ['New Fish']);
+      await File('$targetDbPath.restore').writeAsBytes(const []);
 
       await ZipBackupService.recoverInterruptedRestore(
         databasePathOverride: targetDbPath,
@@ -883,6 +896,105 @@ void main() {
       expect(await moved.exists(), true);
       expect(await moved.readAsBytes(), [7, 7, 7]);
       expect(await stagingDir.exists(), false);
+      expect(await File('$targetDbPath.restore').exists(), false);
+    });
+
+    test('pending media staging discarded when restore never committed', () async {
+      final stagingDir = Directory(path.join(mediaDir.parent.path, 'media.staging'));
+      final staged = File(path.join(stagingDir.path, 'catches', 'staged.jpg'));
+      await staged.parent.create(recursive: true);
+      await staged.writeAsBytes([7, 7, 7]);
+
+      // No recovery marker — the restore died before the swap committed.
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+
+      await ZipBackupService.recoverInterruptedRestore(
+        databasePathOverride: targetDbPath,
+        mediaDirectoryOverride: mediaDir,
+      );
+
+      // Staging is discarded; the live database's media is untouched.
+      expect(await stagingDir.exists(), false);
+      expect(
+        await File(path.join(mediaDir.path, 'catches', 'staged.jpg')).exists(),
+        false,
+      );
+      expect(await readTargetFishTypes(), ['Old Fish']);
+    });
+
+    test('media promotion never overwrites existing files', () async {
+      // Existing file the live (old) database would reference.
+      final existing = File(path.join(mediaDir.path, 'catches', 'same.jpg'));
+      await existing.parent.create(recursive: true);
+      await existing.writeAsBytes([1, 1, 1]);
+
+      final stagingDir = Directory(path.join(mediaDir.parent.path, 'media.staging'));
+      final staged = File(path.join(stagingDir.path, 'catches', 'same.jpg'));
+      await staged.parent.create(recursive: true);
+      await staged.writeAsBytes([9, 9, 9]);
+
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+      await File('$targetDbPath.restore').writeAsBytes(const []);
+
+      await ZipBackupService.recoverInterruptedRestore(
+        databasePathOverride: targetDbPath,
+        mediaDirectoryOverride: mediaDir,
+      );
+
+      // Original content preserved — same generated name means same file.
+      expect(await existing.readAsBytes(), [1, 1, 1]);
+      expect(await stagingDir.exists(), false);
+    });
+
+    test('debug stage hook - marker exists at swap point', () async {
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+      var markerSeenAtSwap = false;
+
+      ZipBackupService.debugStageHook = (stage) async {
+        if (stage == 'swapped') {
+          markerSeenAtSwap = await File('$targetDbPath.restore').exists();
+        }
+      };
+
+      final zipPath = await buildBackupZip(backupCatches: ['New Fish']);
+      await ZipBackupService.restoreBackup(
+        zipPath: zipPath,
+        databasePathOverride: targetDbPath,
+        mediaDirectoryOverride: mediaDir,
+      );
+      ZipBackupService.debugStageHook = null;
+
+      expect(markerSeenAtSwap, true);
+      expect(await readTargetFishTypes(), ['New Fish']);
+    });
+
+    test('debug stage hook - abort at mediaStaged leaves target intact', () async {
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+
+      ZipBackupService.debugStageHook = (stage) async {
+        if (stage == 'mediaStaged') {
+          throw StateError('simulated abort at mediaStaged');
+        }
+      };
+
+      final zipPath = await buildBackupZip(
+        backupCatches: ['New Fish'],
+        mediaFiles: {'media/catches/x.jpg': [1]},
+      );
+
+      await expectLater(
+        ZipBackupService.restoreBackup(
+          zipPath: zipPath,
+          databasePathOverride: targetDbPath,
+          mediaDirectoryOverride: mediaDir,
+        ),
+        throwsA(isA<StateError>()),
+      );
+      ZipBackupService.debugStageHook = null;
+
+      expect(await readTargetFishTypes(), ['Old Fish']);
+      expect(await File('$targetDbPath.stage').exists(), false);
+      expect(await File('$targetDbPath.restore').exists(), false);
     });
 
     test('restore lock blocks database access until released', () async {

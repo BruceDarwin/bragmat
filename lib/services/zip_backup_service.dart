@@ -420,6 +420,27 @@ class ZipBackupService {
   /// stay on the same filesystem.
   static const String _mediaStagingDirName = 'media.staging';
 
+  /// Debug/test hook invoked at each restore stage boundary.
+  ///
+  /// Stages, in order: `validated`, `dbStaged`, `mediaStaged`,
+  /// `recoveryCreated`, `swapped`, `mediaMoved`, `settingsRestored`,
+  /// `restored`. Throwing or calling `exit()` inside the hook simulates an
+  /// interruption at that point — for tests and debug builds only.
+  static Future<void> Function(String stage)? debugStageHook;
+
+  /// Report progress and fire the debug stage hook.
+  static Future<void> _reportStage(
+    String stage,
+    Function(String)? onProgress,
+    String message,
+  ) async {
+    onProgress?.call(message);
+    final hook = debugStageHook;
+    if (hook != null) {
+      await hook(stage);
+    }
+  }
+
   /// Restore a portable ZIP backup, replacing the current database and media.
   ///
   /// Restore is staged for safety:
@@ -483,6 +504,7 @@ class ZipBackupService {
       if (!validation.isValid) {
         throw Exception('Invalid backup: ${validation.errors.join('; ')}');
       }
+      await _reportStage('validated', onProgress, 'Backup validated');
 
       final sourceDbFile = File(path.join(extractDir.path, _databaseFileName));
       final liveMode = databasePathOverride == null;
@@ -501,6 +523,7 @@ class ZipBackupService {
       if (!await _verifyDatabaseFile(stagePath)) {
         throw Exception('Backup database failed integrity check after staging');
       }
+      await _reportStage('dbStaged', onProgress, 'Database staged');
 
       onProgress?.call('Staging media files...');
 
@@ -522,6 +545,7 @@ class ZipBackupService {
           missingReferenced.add(relPath);
         }
       }
+      await _reportStage('mediaStaged', onProgress, 'Media staged');
 
       onProgress?.call('Creating recovery copy...');
 
@@ -537,6 +561,7 @@ class ZipBackupService {
       } else {
         await File(recoveryPath).writeAsBytes(const []);
       }
+      await _reportStage('recoveryCreated', onProgress, 'Recovery copy created');
 
       onProgress?.call('Restoring database...');
 
@@ -550,12 +575,14 @@ class ZipBackupService {
 
         // Sidecars from the old database can never apply to the new file.
         await _deleteSidecars(targetDbPath);
-        if (await targetDbFile.exists()) {
+
+        // Same-directory rename. On POSIX (Android/iOS) rename atomically
+        // replaces the destination — there is no gap where no database
+        // exists. Windows' MoveFileEx cannot overwrite, so the target is
+        // deleted first; the recovery marker covers that brief window.
+        if (Platform.isWindows && await targetDbFile.exists()) {
           await targetDbFile.delete();
         }
-
-        // Same-directory rename: atomic on POSIX; the target was deleted
-        // above so it also succeeds on Windows.
         await File(stagePath).rename(targetDbPath);
         stagePath = null;
 
@@ -574,8 +601,7 @@ class ZipBackupService {
           await DatabaseHelper.instance.endRestore();
         }
       }
-
-      onProgress?.call('Restoring media files...');
+      await _reportStage('swapped', onProgress, 'Database replaced');
 
       final mediaResult = await _moveMediaTree(stagingMediaDir, mediaDir);
       if (mediaResult.skipped == 0 && await stagingMediaDir.exists()) {
@@ -586,8 +612,7 @@ class ZipBackupService {
       }
       // If files were skipped the staging directory is kept so
       // recoverInterruptedRestore() can retry the move on next launch.
-
-      onProgress?.call('Restoring settings...');
+      await _reportStage('mediaMoved', onProgress, 'Media moved');
 
       final settings = validation.manifest?.settings;
       if (settings != null) {
@@ -599,13 +624,15 @@ class ZipBackupService {
         }
       }
 
+      await _reportStage('settingsRestored', onProgress, 'Settings restored');
+
       // Restore confirmed — drop the recovery marker.
       await File(recoveryPath).delete();
       recoveryPath = null;
 
       await tempDir.delete(recursive: true);
 
-      onProgress?.call('Restore complete');
+      await _reportStage('restored', onProgress, 'Restore complete');
 
       return BackupRestoreResult(
         manifest: validation.manifest!,
@@ -644,6 +671,11 @@ class ZipBackupService {
   /// Called at application startup. Delegates database-file recovery to
   /// [DatabaseHelper.recoverInterruptedRestore] (which also runs on first
   /// database access) and completes any pending media staging move.
+  ///
+  /// Staged media is only promoted when the database swap committed — the
+  /// helper retains the `.restore` marker in exactly that case. Staging left
+  /// by a restore that never swapped (or was rolled back) is discarded so
+  /// the live database never references media from an aborted restore.
   static Future<void> recoverInterruptedRestore({
     String? databasePathOverride,
     Directory? mediaDirectoryOverride,
@@ -651,15 +683,38 @@ class ZipBackupService {
     await DatabaseHelper.instance
         .recoverInterruptedRestore(databasePathOverride);
 
+    final dbPath = databasePathOverride ??
+        await DatabaseHelper.instance.databaseFilePath;
     final mediaDir =
         mediaDirectoryOverride ?? await MediaStorageService.getMediaDirectory();
-    await completePendingMediaStaging(mediaDir);
+
+    // Marker still present after helper recovery → the swap committed and
+    // staged media belongs to the now-live database.
+    final recoveryMarker = File('$dbPath.restore');
+    final swapCommitted = await recoveryMarker.exists();
+
+    await completePendingMediaStaging(mediaDir, promote: swapCommitted);
+
+    if (swapCommitted) {
+      await recoveryMarker.delete();
+    }
   }
 
-  /// Move any leftover staged media into place and remove the staging dir.
-  static Future<void> completePendingMediaStaging(Directory mediaDir) async {
+  /// Move leftover staged media into place and remove the staging dir.
+  ///
+  /// When [promote] is false the staging directory is discarded instead —
+  /// the restore it belonged to never committed its database swap, so the
+  /// files must not overwrite media referenced by the live database.
+  static Future<void> completePendingMediaStaging(
+    Directory mediaDir, {
+    required bool promote,
+  }) async {
     final stagingDir = _mediaStagingDirectory(mediaDir);
     if (!await stagingDir.exists()) {
+      return;
+    }
+    if (!promote) {
+      await stagingDir.delete(recursive: true);
       return;
     }
     final result = await _moveMediaTree(stagingDir, mediaDir);
@@ -735,9 +790,15 @@ class ZipBackupService {
 
   /// Move staged media files into [mediaDir], preserving relative paths.
   ///
-  /// Renames are used first (same filesystem, atomic); an existing
-  /// destination is replaced — the restored database references the backup's
-  /// copy. Falls back to copy+delete when rename is not possible.
+  /// Existing destination files are never overwritten — generated media
+  /// filenames are collision-resistant, so an identical name means the file
+  /// is already the correct content. This keeps promotion safe even when a
+  /// restore was interrupted and rolled back: the live database continues
+  /// to reference its original, intact files.
+  ///
+  /// Renames are atomic on the same filesystem. The copy fallback goes
+  /// through a `.partial` sibling file so an interrupted copy can never
+  /// leave a truncated file at a referenced path.
   static Future<({int moved, int skipped})> _moveMediaTree(
     Directory stagingDir,
     Directory mediaDir,
@@ -757,27 +818,30 @@ class ZipBackupService {
       try {
         await destFile.parent.create(recursive: true);
         if (await destFile.exists()) {
-          await destFile.delete();
-        }
-        await entity.rename(destFile.path);
-        moved++;
-      } catch (e) {
-        try {
-          await entity.copy(destFile.path);
           await entity.delete();
           moved++;
-        } catch (_) {
-          skipped++;
+          continue;
         }
+        try {
+          await entity.rename(destFile.path);
+        } catch (_) {
+          final partialPath = '${destFile.path}.partial';
+          await entity.copy(partialPath);
+          await File(partialPath).rename(destFile.path);
+          await entity.delete();
+        }
+        moved++;
+      } catch (e) {
+        skipped++;
       }
     }
 
     return (moved: moved, skipped: skipped);
   }
 
-  /// Delete the WAL and SHM sidecar files for a database path.
+  /// Delete the WAL, SHM and rollback-journal sidecars for a database path.
   static Future<void> _deleteSidecars(String dbPath) async {
-    for (final suffix in const ['-wal', '-shm']) {
+    for (final suffix in const ['-wal', '-shm', '-journal']) {
       final file = File('$dbPath$suffix');
       try {
         if (await file.exists()) {
