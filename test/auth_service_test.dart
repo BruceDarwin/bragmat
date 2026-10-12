@@ -109,6 +109,18 @@ void main() {
       expect(backend.deletionRequested, true);
     });
 
+    test('revoked user can still request account deletion', () async {
+      await auth.start();
+      await auth.signIn('tester@example.com', 'password');
+      backend.approved = false;
+      await auth.refresh(forceEntitlementCheck: true);
+      expect(auth.status, AuthStatus.revoked);
+
+      // The deletion RPC is callable regardless of beta status.
+      await auth.requestAccountDeletion();
+      expect(backend.deletionRequested, true);
+    });
+
     test('sign-up without a session lands on emailVerificationPending', () async {
       backend.signUpCreatesSession = false; // email confirmation enabled
       await auth.start();

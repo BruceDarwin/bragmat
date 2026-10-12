@@ -59,24 +59,33 @@ admins         (user_id uuid pk -> auth.users)
 profiles       (id uuid pk -> auth.users cascade, email, display_name,
                 created_at, last_seen_at, deletion_requested_at)
 
-RPC is_approved_beta() -> bool      -- security definer; checks caller's
-                                    -- jwt email against allowlist status
+RPC is_approved_beta() -> bool      -- security definer; joins auth.users —
+                                    -- requires allowlist entry AND
+                                    -- email_confirmed_at (verified email)
+RPC request_account_deletion()      -- security definer; flags own profile;
+                                    -- callable even when revoked
 
 RLS:
   beta_testers: select own email only; admins all
   admins:       select own row only
-  profiles:     select/update own row;
-                insert requires is_approved_beta()   -- server-enforced
-                                                    -- invitation
+  profiles:     select own row;
+                insert/update require is_approved_beta() AND
+                email = caller's verified JWT email
+Grants:         explicit to `authenticated` only (automatic Data API
+                exposure is disabled); nothing granted to `anon`
 ```
 
 Server-enforcement properties:
 
-- An uninvited user can create an auth account but cannot create a
-  profile and `is_approved_beta()` returns false → gated in-app.
-- Admin sets `status='revoked'` → next online check revokes the session
-  locally (§5.8 of the architecture doc).
-- Only the anon key ships in the app; all enforcement is Postgres-side.
+- An uninvited or unverified user can create an auth account but cannot
+  create a profile and `is_approved_beta()` returns false → gated in-app.
+- Profile emails cannot differ from the caller's verified email.
+- `status='revoked'` immediately blocks approval and all profile writes
+  server-side; the app's next online check signs the session out.
+- Revoked users can still read their own profile and request deletion
+  via the RPC.
+- Only `admins` members can manage the allowlist; only the anon key
+  ships in the app; all enforcement is Postgres-side.
 
 ## 3. App-side design
 
@@ -205,43 +214,49 @@ first, per approved decision 5).
 
 ## 6. Supabase setup — step by step
 
-### 6.1 Create the project
+Project `bragmat-dev` already exists and the `bragmat://auth-callback`
+redirect URL is configured. Remaining steps:
 
-1. Sign in at supabase.com → **New project** → pick organisation, name
-   (e.g. `bragmat`), a strong database password, region nearest to you.
-   Free tier is sufficient.
+### 6.1 Apply the schema
 
-### 6.2 Apply the schema
+1. **SQL Editor** → **New query** → paste the full contents of
+   `supabase/migrations/0001_beta_access.sql` → **Run**. The migration is
+   idempotent — safe to re-run. Expected: success, no rows.
+2. Verify under **Table Editor** that `beta_testers`, `admins` and
+   `profiles` exist, each showing RLS enabled.
 
-2. In the left sidebar → **SQL Editor** → **New query**.
-3. Paste the full contents of `supabase/migrations/0001_beta_access.sql`
-   from this repo → **Run**. Expected output: success, no rows.
-4. Verify under **Table Editor** that `beta_testers`, `admins` and
-   `profiles` exist, each showing "RLS enabled".
+### 6.2 Verify the policies (optional but recommended)
 
-### 6.3 Invite yourself (and other testers)
+3. Create the four test accounts described at the top of
+   `supabase/tests/rls_checks.sql` (Authentication → Users → Add user;
+   one with **Auto Confirm OFF**), substitute their UUIDs/emails into the
+   script, and run each `begin; … rollback;` block in the SQL Editor.
+   Every expectation is annotated in the file — it covers unverified,
+   uninvited and revoked users, cross-user profile access, self-invite
+   attempts and anonymous access.
 
-5. **Table Editor** → `beta_testers` → **Insert row**: `email` = your
-   address, `status` = `invited` (defaults are fine for the rest). Repeat
-   per tester. Admins can also revoke later by setting `status` to
-   `revoked`.
-6. After your first successful sign-in in the app, add yourself to
-   `admins`: **SQL Editor** →
-   `insert into public.admins (user_id) values ('<your auth user uuid>');`
-   — the UUID is visible under **Authentication → Users**.
+### 6.3 Create your initial approved account
 
-### 6.4 Configure authentication
+4. Invite yourself first — either **Table Editor** → `beta_testers` →
+   Insert row (`email` = your address, `status` = `invited`), or SQL:
+   `insert into public.beta_testers (email) values ('you@example.com');`
+5. Build/run the app with dart-defines (§6.4) → **Create an account**
+   with the same email → the "Verify your email" screen appears.
+6. Tap the confirmation link in the email (opens the app) → **Sign in**
+   → entitlement check passes → you're in.
+7. Make yourself an admin — **Authentication → Users** → copy your UUID →
+   SQL Editor:
+   `insert into public.admins (user_id) values ('<your-uuid>');`
+8. Invite other testers the same way as step 4; revoke anyone by setting
+   their `beta_testers.status = 'revoked'`.
 
-7. **Authentication → Providers**: ensure **Email** is enabled.
-   Keep **Confirm email** **ON** (the app implements the verification
-   flow: sign-up sends a link; the app shows a "verify your email"
-   screen with a resend option).
-8. **Authentication → URL Configuration**:
-   - **Site URL**: `bragmat://auth-callback` (mobile-only app — any value
-     works, but this keeps email links pointing at the app).
-   - **Redirect URLs** (allowed list): add `bragmat://auth-callback`.
-   The same URL serves both the signup-confirmation and password-recovery
-   emails — the app distinguishes them by the embedded token type.
+### 6.4 Authentication configuration (already done)
+
+- **Email** provider enabled with **Confirm email ON** — required, do not
+  disable (approval now also checks `email_confirmed_at` server-side).
+- **Redirect URLs** include `bragmat://auth-callback` — serves both
+  signup-confirmation and password-recovery emails; the app distinguishes
+  them by token type.
 
 ### 6.5 Credentials and build
 

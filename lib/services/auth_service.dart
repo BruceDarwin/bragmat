@@ -165,9 +165,9 @@ class SupabaseAuthBackend implements AuthBackend {
 
   @override
   Future<void> requestAccountDeletion() async {
-    await _client.from('profiles').update({
-      'deletion_requested_at': DateTime.now().toIso8601String(),
-    }).eq('id', userId ?? '');
+    // Security-definer RPC: works even for revoked testers whose
+    // profile UPDATE rights are gone.
+    await _client.rpc('request_account_deletion');
   }
 }
 
