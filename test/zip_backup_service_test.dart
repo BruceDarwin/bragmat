@@ -757,8 +757,12 @@ void main() {
 
     Future<void> createTargetDatabase({
       List<String> catchFishTypes = const [],
+      List<String> catchMediaPaths = const [],
     }) async {
-      final bytes = await createDatabaseBytes(catchFishTypes: catchFishTypes);
+      final bytes = await createDatabaseBytes(
+        catchFishTypes: catchFishTypes,
+        catchMediaPaths: catchMediaPaths,
+      );
       await File(targetDbPath).writeAsBytes(bytes);
     }
 
@@ -767,6 +771,16 @@ void main() {
       try {
         final rows = await db.query('catches');
         return rows.map((r) => r['fish_type'] as String).toList();
+      } finally {
+        await db.close();
+      }
+    }
+
+    Future<List<String>> readTargetMediaPaths() async {
+      final db = await openDatabase(targetDbPath, readOnly: true);
+      try {
+        final rows = await db.query('catch_media');
+        return rows.map((r) => r['file_path'] as String).toList();
       } finally {
         await db.close();
       }
@@ -941,9 +955,74 @@ void main() {
         mediaDirectoryOverride: mediaDir,
       );
 
-      // Original content preserved — same generated name means same file.
+      // Original content preserved; the different-content staged file is
+      // kept under a collision-resolved name instead of being dropped.
       expect(await existing.readAsBytes(), [1, 1, 1]);
+      final renamed = File(path.join(mediaDir.path, 'catches', 'same_r1.jpg'));
+      expect(await renamed.exists(), true);
+      expect(await renamed.readAsBytes(), [9, 9, 9]);
       expect(await stagingDir.exists(), false);
+    });
+
+    test('media promotion skips identical-name identical-content files', () async {
+      final existing = File(path.join(mediaDir.path, 'catches', 'same.jpg'));
+      await existing.parent.create(recursive: true);
+      await existing.writeAsBytes([1, 1, 1]);
+
+      final stagingDir = Directory(path.join(mediaDir.parent.path, 'media.staging'));
+      final staged = File(path.join(stagingDir.path, 'catches', 'same.jpg'));
+      await staged.parent.create(recursive: true);
+      await staged.writeAsBytes([1, 1, 1]);
+
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+      await File('$targetDbPath.restore').writeAsBytes(const []);
+
+      await ZipBackupService.recoverInterruptedRestore(
+        databasePathOverride: targetDbPath,
+        mediaDirectoryOverride: mediaDir,
+      );
+
+      // Same content → treated as already in place; no suffixed copy.
+      expect(await existing.readAsBytes(), [1, 1, 1]);
+      expect(
+        await File(path.join(mediaDir.path, 'catches', 'same_r1.jpg')).exists(),
+        false,
+      );
+      expect(await stagingDir.exists(), false);
+    });
+
+    test('restore remaps db path when media filename collides', () async {
+      // Live media dir already contains a DIFFERENT file at the path the
+      // backup's database references.
+      final existing = File(path.join(mediaDir.path, 'catches', 'dup.jpg'));
+      await existing.parent.create(recursive: true);
+      await existing.writeAsBytes([1, 1, 1]);
+
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+
+      final zipPath = await buildBackupZip(
+        backupCatches: ['New Fish'],
+        backupCatchMedia: ['catches/dup.jpg'],
+        mediaFiles: {
+          'media/catches/dup.jpg': [9, 9, 9],
+        },
+      );
+
+      final result = await ZipBackupService.restoreBackup(
+        zipPath: zipPath,
+        databasePathOverride: targetDbPath,
+        mediaDirectoryOverride: mediaDir,
+      );
+
+      expect(result.mediaPathConflicts, 1);
+      // Existing file untouched; backup copy kept under resolved name.
+      expect(await existing.readAsBytes(), [1, 1, 1]);
+      final renamed = File(path.join(mediaDir.path, 'catches', 'dup_r1.jpg'));
+      expect(await renamed.exists(), true);
+      expect(await renamed.readAsBytes(), [9, 9, 9]);
+      // Restored database points at the backup's copy.
+      expect(await readTargetMediaPaths(), ['catches/dup_r1.jpg']);
+      expect(await readTargetFishTypes(), ['New Fish']);
     });
 
     test('debug stage hook - marker exists at swap point', () async {

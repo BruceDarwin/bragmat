@@ -1,4 +1,6 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:image_picker/image_picker.dart';
@@ -14,6 +16,7 @@ import '../models/lure.dart';
 import '../models/bait.dart';
 import '../models/tide_reference.dart';
 import '../services/backup_service.dart';
+import '../services/media_storage_service.dart';
 import '../services/zip_backup_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
@@ -2935,7 +2938,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
           content: Text(
             'Backup restored successfully'
             '${result.mediaFilesSkipped > 0 ? ' (${result.mediaFilesSkipped} media file(s) could not be copied)' : ''}'
-            '${result.referencedMediaMissing > 0 ? ' (${result.referencedMediaMissing} referenced photo(s) were not in the backup)' : ''}',
+            '${result.referencedMediaMissing > 0 ? ' (${result.referencedMediaMissing} referenced photo(s) were not in the backup)' : ''}'
+            '${result.mediaPathConflicts > 0 ? ' (${result.mediaPathConflicts} photo name conflict(s) — both copies kept)' : ''}',
           ),
         ),
       );
@@ -2955,6 +2959,154 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
+  }
+
+  /// 1x1 transparent PNG used for seeded test photos (valid, decodable).
+  static const String _tinyPngBase64 =
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
+
+  /// Seed clearly-marked disposable data (TESTDATA trip, catch and photo)
+  /// so restore tests have a distinct before/after state to compare.
+  /// Debug builds only.
+  Future<void> _seedDisposableTestData() async {
+    try {
+      final db = await DatabaseHelper.instance.database;
+      final now = DateTime.now().toIso8601String();
+      final stamp = now.replaceAll(':', '-').replaceAll('.', '-');
+
+      final tripId = await db.insert('fishing_trips', {
+        'name': 'TESTDATA Trip $stamp',
+        'start_date': now,
+        'created_at': now,
+      });
+      final catchId = await db.insert('catches', {
+        'fish_type': 'TESTDATA Fish $stamp',
+        'created_at': now,
+        'date_caught': now,
+        'trip_id': tripId,
+      });
+
+      final mediaDir = await MediaStorageService.getMediaDirectory();
+      final relPath = 'catches/testdata_$stamp.png';
+      final photoFile =
+          File(path.joinAll([mediaDir.path, ...relPath.split('/')]));
+      await photoFile.parent.create(recursive: true);
+      await photoFile.writeAsBytes(base64Decode(_tinyPngBase64));
+      await db.insert('catch_media', {
+        'catch_id': catchId,
+        'file_path': relPath,
+        'media_type': 'photo',
+        'role': 'primary',
+        'created_at': now,
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+                'Seeded TESTDATA trip, catch and photo (stamp $stamp)'),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Seed failed: $e')),
+        );
+      }
+    }
+  }
+
+  /// Run the normal restore flow but kill the process when restore reaches
+  /// the selected stage. Relaunch the app afterwards to verify recovery.
+  /// Debug builds only — never reachable in release builds.
+  Future<void> _runFaultInjectionRestore() async {
+    const stages = <String, String>{
+      'mediaStaged': 'media staged, before DB swap',
+      'swapped': 'DB swapped, before media promotion',
+      'mediaMoved': 'media promoted, before settings',
+    };
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: const Text('Kill app at restore stage'),
+        children: [
+          for (final entry in stages.entries)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, entry.key),
+              child: Text('${entry.key}\n${entry.value}'),
+            ),
+        ],
+      ),
+    );
+    if (selected == null || !mounted) {
+      return;
+    }
+
+    ZipBackupService.debugStageHook = (stage) async {
+      if (stage == selected) {
+        debugPrint('Fault injection: exiting process at stage "$stage"');
+        exit(0);
+      }
+    };
+    try {
+      await _restoreData();
+    } finally {
+      ZipBackupService.debugStageHook = null;
+    }
+  }
+
+  /// Show recovery/staging artifacts so device tests can verify cleanup
+  /// without a file manager. Debug builds only.
+  Future<void> _showRestoreDiagnostics() async {
+    final dbPath = await DatabaseHelper.instance.databaseFilePath;
+    final mediaDir = await MediaStorageService.getMediaDirectory();
+    final stagingDir =
+        ZipBackupService.mediaStagingDirectoryFor(mediaDir);
+
+    Future<int> countFiles(Directory dir) async {
+      if (!await dir.exists()) return -1;
+      var n = 0;
+      await for (final entity in dir.list(recursive: true)) {
+        if (entity is File) n++;
+      }
+      return n;
+    }
+
+    Future<String> marker(String suffix) async =>
+        await File('$dbPath$suffix').exists() ? 'PRESENT' : 'absent';
+
+    final stagingCount = await countFiles(stagingDir);
+    final mediaCount = await countFiles(mediaDir);
+    final lines = <String>[
+      'Database file: ${await File(dbPath).exists() ? 'exists' : 'MISSING'}',
+      'db.stage: ${await marker('.stage')}',
+      'db.restore: ${await marker('.restore')}',
+      'db-wal: ${await marker('-wal')}',
+      'db-shm: ${await marker('-shm')}',
+      'db-journal: ${await marker('-journal')}',
+      'media.staging: ${stagingCount < 0 ? 'absent' : 'PRESENT ($stagingCount file(s))'}',
+      'media files: $mediaCount',
+      '',
+      'db: $dbPath',
+      'media: ${mediaDir.path}',
+    ];
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore Diagnostics'),
+        content: SingleChildScrollView(
+          child: SelectableText(lines.join('\n')),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _restoreLegacyJsonBackup(File backupFile) async {
@@ -3382,6 +3534,47 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
           const SizedBox(height: 16),
+
+          // Restore testing tools — debug builds only. kDebugMode is a
+          // compile-time constant, so this entire section (including the
+          // fault-injection path that calls exit()) is tree-shaken out of
+          // release builds and cannot ship enabled.
+          if (kDebugMode) ...[
+            BragmatSectionCard(
+              icon: Icons.bug_report,
+              title: 'Restore Testing (Debug)',
+              children: [
+                ListTile(
+                  leading: const Icon(Icons.science, color: Colors.orange),
+                  title: const Text('Seed Disposable Test Data',
+                      style: TextStyle(color: Colors.orange)),
+                  subtitle: const Text(
+                      'Add a TESTDATA trip, catch and photo for restore tests'),
+                  onTap: _seedDisposableTestData,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.power_settings_new,
+                      color: Colors.orange),
+                  title: const Text('Fault-Injection Restore',
+                      style: TextStyle(color: Colors.orange)),
+                  subtitle: const Text(
+                      'Kill the app at a chosen restore stage, then relaunch'),
+                  onTap: _runFaultInjectionRestore,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.fact_check, color: Colors.orange),
+                  title: const Text('Restore Diagnostics',
+                      style: TextStyle(color: Colors.orange)),
+                  subtitle: const Text(
+                      'Show recovery markers, staging and media counts'),
+                  onTap: _showRestoreDiagnostics,
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+          ],
 
           // App Section
           BragmatSectionCard(

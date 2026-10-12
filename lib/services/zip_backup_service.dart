@@ -604,6 +604,8 @@ class ZipBackupService {
       await _reportStage('swapped', onProgress, 'Database replaced');
 
       final mediaResult = await _moveMediaTree(stagingMediaDir, mediaDir);
+      await _remapMediaPathsInDatabase(
+          targetDbPath, liveMode, mediaResult.remapped);
       if (mediaResult.skipped == 0 && await stagingMediaDir.exists()) {
         await stagingMediaDir.delete(recursive: true);
       }
@@ -639,6 +641,7 @@ class ZipBackupService {
         mediaFilesRestored: mediaResult.moved,
         mediaFilesSkipped: mediaResult.skipped,
         referencedMediaMissing: missingReferenced.length,
+        mediaPathConflicts: mediaResult.remapped.length,
       );
     } catch (e) {
       // Discard leftovers. The recovery copy is only dropped when the live
@@ -693,7 +696,12 @@ class ZipBackupService {
     final recoveryMarker = File('$dbPath.restore');
     final swapCommitted = await recoveryMarker.exists();
 
-    await completePendingMediaStaging(mediaDir, promote: swapCommitted);
+    await completePendingMediaStaging(
+      mediaDir,
+      promote: swapCommitted,
+      databasePath: dbPath,
+      liveMode: databasePathOverride == null,
+    );
 
     if (swapCommitted) {
       await recoveryMarker.delete();
@@ -705,9 +713,14 @@ class ZipBackupService {
   /// When [promote] is false the staging directory is discarded instead —
   /// the restore it belonged to never committed its database swap, so the
   /// files must not overwrite media referenced by the live database.
+  ///
+  /// [databasePath] and [liveMode] identify the database whose media paths
+  /// may need remapping after collision-resolved promotions.
   static Future<void> completePendingMediaStaging(
     Directory mediaDir, {
     required bool promote,
+    String? databasePath,
+    bool liveMode = true,
   }) async {
     final stagingDir = _mediaStagingDirectory(mediaDir);
     if (!await stagingDir.exists()) {
@@ -718,6 +731,9 @@ class ZipBackupService {
       return;
     }
     final result = await _moveMediaTree(stagingDir, mediaDir);
+    if (databasePath != null) {
+      await _remapMediaPathsInDatabase(databasePath, liveMode, result.remapped);
+    }
     if (result.skipped == 0) {
       await stagingDir.delete(recursive: true);
     }
@@ -726,6 +742,12 @@ class ZipBackupService {
   /// The staging directory for restored media, sibling of [mediaDir].
   static Directory _mediaStagingDirectory(Directory mediaDir) {
     return Directory(path.join(mediaDir.parent.path, _mediaStagingDirName));
+  }
+
+  /// Public accessor for debug diagnostics — the staging directory that
+  /// would be used next to [mediaDir].
+  static Directory mediaStagingDirectoryFor(Directory mediaDir) {
+    return _mediaStagingDirectory(mediaDir);
   }
 
   /// Collect every media path referenced by a backup database.
@@ -791,36 +813,52 @@ class ZipBackupService {
   /// Move staged media files into [mediaDir], preserving relative paths.
   ///
   /// Existing destination files are never overwritten — generated media
-  /// filenames are collision-resistant, so an identical name means the file
-  /// is already the correct content. This keeps promotion safe even when a
-  /// restore was interrupted and rolled back: the live database continues
-  /// to reference its original, intact files.
+  /// filenames are collision-resistant and media is immutable once stored,
+  /// so an identical name normally means identical content (verified by
+  /// byte comparison). If contents ever differ, both files are kept: the
+  /// staged file moves under a `_rN` suffixed name and the conflict is
+  /// reported via the returned `remapped` map so the restored database
+  /// can be pointed at the backup's copy.
+  ///
+  /// This keeps promotion safe even when a restore was interrupted and
+  /// rolled back: the live database always references intact files.
   ///
   /// Renames are atomic on the same filesystem. The copy fallback goes
   /// through a `.partial` sibling file so an interrupted copy can never
   /// leave a truncated file at a referenced path.
-  static Future<({int moved, int skipped})> _moveMediaTree(
+  static Future<({int moved, int skipped, Map<String, String> remapped})>
+      _moveMediaTree(
     Directory stagingDir,
     Directory mediaDir,
   ) async {
     int moved = 0;
     int skipped = 0;
+    final remapped = <String, String>{};
 
     if (!await stagingDir.exists()) {
-      return (moved: moved, skipped: skipped);
+      return (moved: moved, skipped: skipped, remapped: remapped);
     }
 
     final entities = await stagingDir.list(recursive: true).toList();
     for (final entity in entities) {
       if (entity is! File) continue;
       final rel = _toPortablePath(path.relative(entity.path, from: stagingDir.path));
-      final destFile = File(path.joinAll([mediaDir.path, ...rel.split('/')]));
+      var destRel = rel;
+      var destFile = File(path.joinAll([mediaDir.path, ...destRel.split('/')]));
       try {
         await destFile.parent.create(recursive: true);
         if (await destFile.exists()) {
-          await entity.delete();
-          moved++;
-          continue;
+          if (await _filesEqual(entity, destFile)) {
+            // Identical name, identical content — already in place.
+            await entity.delete();
+            moved++;
+            continue;
+          }
+          // Genuine name collision: keep both files and remap the path.
+          destRel = _collisionFreeRel(mediaDir, rel);
+          remapped[rel] = destRel;
+          destFile = File(path.joinAll([mediaDir.path, ...destRel.split('/')]));
+          await destFile.parent.create(recursive: true);
         }
         try {
           await entity.rename(destFile.path);
@@ -836,7 +874,85 @@ class ZipBackupService {
       }
     }
 
-    return (moved: moved, skipped: skipped);
+    return (moved: moved, skipped: skipped, remapped: remapped);
+  }
+
+  /// Whether two files have identical content (size then byte compare).
+  static Future<bool> _filesEqual(File a, File b) async {
+    if (await a.length() != await b.length()) {
+      return false;
+    }
+    final aBytes = await a.readAsBytes();
+    final bBytes = await b.readAsBytes();
+    for (var i = 0; i < aBytes.length; i++) {
+      if (aBytes[i] != bBytes[i]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /// Produce a collision-free relative path by appending `_rN` to the stem.
+  /// Assumes the destination directory already exists.
+  static String _collisionFreeRel(Directory mediaDir, String rel) {
+    final ext = path.extension(rel);
+    final stem = rel.substring(0, rel.length - ext.length);
+    var candidate = '${stem}_r1$ext';
+    var n = 1;
+    while (File(path.joinAll([mediaDir.path, ...candidate.split('/')])).existsSync()) {
+      n++;
+      candidate = '${stem}_r$n$ext';
+    }
+    return candidate;
+  }
+
+  /// Point restored-database media paths at their collision-resolved names.
+  static Future<void> _remapMediaPathsInDatabase(
+    String dbPath,
+    bool liveMode,
+    Map<String, String> remaps,
+  ) async {
+    if (remaps.isEmpty) {
+      return;
+    }
+    Database? db;
+    var ownDb = false;
+    try {
+      if (liveMode) {
+        db = await DatabaseHelper.instance.database;
+      } else {
+        db = await openDatabase(dbPath);
+        ownDb = true;
+      }
+      for (final table in const ['catch_media', 'trip_media', 'journal_media']) {
+        for (final entry in remaps.entries) {
+          try {
+            await db.update(
+              table,
+              {'file_path': entry.value},
+              where: 'file_path = ?',
+              whereArgs: [entry.key],
+            );
+          } catch (_) {
+            // Table may not exist in older-schema backups.
+          }
+        }
+      }
+      for (final entry in remaps.entries) {
+        try {
+          await db.update(
+            'catches',
+            {'lure_photo_path': entry.value},
+            where: 'lure_photo_path = ?',
+            whereArgs: [entry.key],
+          );
+        } catch (_) {}
+      }
+    } finally {
+      if (ownDb) {
+        await db?.close();
+      }
+    }
   }
 
   /// Delete the WAL, SHM and rollback-journal sidecars for a database path.
@@ -1118,10 +1234,16 @@ class BackupRestoreResult {
   /// present in the backup archive (missing when the backup was created).
   final int referencedMediaMissing;
 
+  /// Number of staged media files that collided with a same-named but
+  /// different-content destination file. Both files were kept and the
+  /// database paths were remapped to the backup's copy.
+  final int mediaPathConflicts;
+
   BackupRestoreResult({
     required this.manifest,
     required this.mediaFilesRestored,
     required this.mediaFilesSkipped,
     this.referencedMediaMissing = 0,
+    this.mediaPathConflicts = 0,
   });
 }
