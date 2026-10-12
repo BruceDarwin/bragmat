@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
@@ -22,16 +23,50 @@ class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
 
+  /// Test hook: overrides the database file location.
+  static String? _testDatabasePath;
+
+  /// Held while a restore owns the database file; [database] waits on it.
+  static Completer<void>? _restoreLock;
+
+  /// Whether the interrupted-restore check has run this process.
+  static bool _recoveryChecked = false;
+
   DatabaseHelper._init();
 
+  /// Point the live database at a test file location.
+  /// Call [closeDatabase] first if a connection is already open.
+  static void setTestDatabasePath(String path) {
+    _testDatabasePath = path;
+  }
+
+  /// Clear the test database path override.
+  static void clearTestDatabasePath() {
+    _testDatabasePath = null;
+  }
+
+  /// Whether a restore currently holds exclusive access to the database.
+  bool get restoreInProgress => _restoreLock != null;
+
   Future<Database> get database async {
+    // Wait for any in-progress restore to finish before handing out a handle.
+    while (_restoreLock != null) {
+      await _restoreLock!.future;
+    }
     if (_database != null) return _database!;
+    if (!_recoveryChecked) {
+      _recoveryChecked = true;
+      try {
+        await recoverInterruptedRestore();
+      } catch (_) {}
+    }
     _database = await _initDB('bragmat.db');
     return _database!;
   }
 
   /// Get the file path of the live database.
   Future<String> get databaseFilePath async {
+    if (_testDatabasePath != null) return _testDatabasePath!;
     final dbPath = await getDatabasesPath();
     return join(dbPath, 'bragmat.db');
   }
@@ -48,9 +83,113 @@ class DatabaseHelper {
     }
   }
 
+  /// Acquire exclusive database access for a restore operation.
+  ///
+  /// While held, [database] callers wait for [endRestore]. Restore code must
+  /// use [reopenDatabaseForRestore] (which bypasses the lock) instead of
+  /// [database] to avoid deadlocking.
+  Future<void> beginRestore() async {
+    if (_restoreLock != null) {
+      throw StateError('A restore is already in progress');
+    }
+    // Ensure the connection exists before locking so a snapshot can be taken.
+    await database;
+    _restoreLock = Completer<void>();
+  }
+
+  /// Release exclusive database access after a restore operation.
+  Future<void> endRestore() async {
+    final lock = _restoreLock;
+    _restoreLock = null;
+    lock?.complete();
+  }
+
+  /// Re-open the database after its file was replaced by a restore.
+  ///
+  /// Bypasses the restore lock — only call while holding it.
+  Future<Database> reopenDatabaseForRestore() async {
+    _database = await _initDB('bragmat.db');
+    return _database!;
+  }
+
+  /// Recover the database file after an interrupted restore.
+  ///
+  /// A restore leaves two marker files next to the database:
+  /// - `bragmat.db.restore` — the pre-restore database (or an empty marker
+  ///   when no database existed), present for the whole swap
+  /// - `bragmat.db.stage` — the staged replacement awaiting rename
+  ///
+  /// If the recovery marker exists, the restore was interrupted: leftover
+  /// staging is discarded and, when the live file is missing or corrupt,
+  /// the recovery copy is put back. Stale WAL/SHM sidecars are always
+  /// removed in this situation because they cannot belong to a swapped file.
+  ///
+  /// When the live file already verifies OK, the swap had completed — the
+  /// restored database is kept and only the markers are cleaned up.
+  Future<void> recoverInterruptedRestore([String? dbPathOverride]) async {
+    final dbPath = dbPathOverride ?? await databaseFilePath;
+    final dbFile = File(dbPath);
+    final stageFile = File('$dbPath.stage');
+    final recoveryFile = File('$dbPath.restore');
+
+    // A staged file is only ever awaiting rename — safe to drop.
+    if (await stageFile.exists()) {
+      await stageFile.delete();
+    }
+
+    if (!await recoveryFile.exists()) {
+      return;
+    }
+
+    // Sidecars from the pre-restore database can never apply to the new file.
+    await deleteDatabaseSidecars(dbPath);
+
+    final targetOk =
+        await dbFile.exists() && await verifyDatabaseIntegrity(dbPath);
+
+    if (!targetOk) {
+      if (await dbFile.exists()) {
+        await dbFile.delete();
+      }
+      // A non-empty recovery file holds the pre-restore database.
+      if (await recoveryFile.length() > 0) {
+        await recoveryFile.copy(dbPath);
+      }
+    }
+
+    // Keep the recovery file on failure so the next launch can retry.
+    await recoveryFile.delete();
+  }
+
+  /// Delete the WAL and SHM sidecar files for a database path.
+  Future<void> deleteDatabaseSidecars(String dbPath) async {
+    for (final suffix in const ['-wal', '-shm']) {
+      final file = File('$dbPath$suffix');
+      try {
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (_) {}
+    }
+  }
+
+  /// Verify a database file opens and passes PRAGMA integrity_check.
+  Future<bool> verifyDatabaseIntegrity(String dbPath) async {
+    Database? db;
+    try {
+      db = await openDatabase(dbPath, readOnly: true);
+      final result = await db.rawQuery('PRAGMA integrity_check');
+      return result.isNotEmpty && result.first['integrity_check'] == 'ok';
+    } catch (e) {
+      return false;
+    } finally {
+      await db?.close();
+    }
+  }
+
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
-    final path = join(dbPath, filePath);
+    final path = _testDatabasePath ?? join(dbPath, filePath);
 
     return await openDatabase(
       path,

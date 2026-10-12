@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'screens/catch_list_screen.dart';
 import 'screens/add_catch_screen.dart';
@@ -10,8 +11,14 @@ import 'services/theme_service.dart';
 import 'services/connectivity_service.dart';
 import 'services/notification_service.dart';
 import 'services/achievement_service.dart';
+import 'services/zip_backup_service.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Recover from an interrupted backup restore (DB swap + staged media).
+  // Database-level recovery also runs on first database access, so this is
+  // safe to run unawaited in the background.
+  unawaited(ZipBackupService.recoverInterruptedRestore());
   runApp(const BragmatApp());
 }
 

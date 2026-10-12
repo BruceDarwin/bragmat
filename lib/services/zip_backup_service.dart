@@ -415,11 +415,29 @@ class ZipBackupService {
     }
   }
 
+  /// Directory name used to stage restored media files before the database
+  /// is swapped. Created as a sibling of the media directory so final moves
+  /// stay on the same filesystem.
+  static const String _mediaStagingDirName = 'media.staging';
+
   /// Restore a portable ZIP backup, replacing the current database and media.
   ///
-  /// The backup is fully validated before any changes are made. A safety
-  /// snapshot of the current database is taken before the swap so the original
-  /// data can be restored if the backup's database fails verification.
+  /// Restore is staged for safety:
+  /// 1. The ZIP is extracted and fully validated (manifest + integrity).
+  /// 2. The replacement database is staged as `<db>.stage` next to the live
+  ///    file and verified — a bad file never touches the live path.
+  /// 3. All media is copied into a staging directory and every path the
+  ///    backup database references is accounted for. A staging failure aborts
+  ///    the restore before the database is swapped.
+  /// 4. A persistent recovery copy `<db>.restore` is retained for the whole
+  ///    swap — if the process dies mid-restore, the next launch recovers via
+  ///    [recoverInterruptedRestore].
+  /// 5. The live database is closed (blocking other access via the restore
+  ///    lock), sidecars are removed, and the staged file is renamed into
+  ///    place — atomic on POSIX, and safe on Windows because the target was
+  ///    deleted first.
+  /// 6. Staged media is moved into place (same-filesystem rename) and
+  ///    settings are restored. Only then is the recovery copy deleted.
   ///
   /// Parameters:
   /// - [zipPath]: path to the backup ZIP file
@@ -440,6 +458,11 @@ class ZipBackupService {
     Directory? mediaDirectoryOverride,
   }) async {
     final tempDir = Directory.systemTemp.createTempSync('bragmat_restore_');
+
+    String? targetDbPath;
+    String? stagePath;
+    String? recoveryPath;
+    Directory? stagingMediaDir;
 
     try {
       onProgress?.call('Extracting backup...');
@@ -463,60 +486,122 @@ class ZipBackupService {
 
       final sourceDbFile = File(path.join(extractDir.path, _databaseFileName));
       final liveMode = databasePathOverride == null;
-      final targetDbPath =
+      targetDbPath =
           databasePathOverride ?? await DatabaseHelper.instance.databaseFilePath;
       final targetDbFile = File(targetDbPath);
+      final mediaDir =
+          mediaDirectoryOverride ?? await MediaStorageService.getMediaDirectory();
 
-      onProgress?.call('Creating safety snapshot...');
+      onProgress?.call('Staging database...');
 
-      // Preserve the current database so a failed restore can be rolled back.
-      String? rollbackPath;
-      if (await targetDbFile.exists()) {
-        rollbackPath = path.join(tempDir.path, 'rollback.db');
-        if (liveMode) {
-          await DatabaseHelper.instance.createSnapshot(rollbackPath);
-        } else {
-          await targetDbFile.copy(rollbackPath);
+      // Stage the replacement on the same filesystem as the target so the
+      // final rename is atomic (POSIX) and cannot produce a torn file.
+      stagePath = '$targetDbPath.stage';
+      await sourceDbFile.copy(stagePath);
+      if (!await _verifyDatabaseFile(stagePath)) {
+        throw Exception('Backup database failed integrity check after staging');
+      }
+
+      onProgress?.call('Staging media files...');
+
+      // Stage all media and account for every path the backup database
+      // references before the database is swapped. Files referenced but
+      // absent from the archive are reported; copy failures abort the
+      // restore while the live database is still untouched.
+      final referencedPaths = await _collectReferencedMediaPaths(sourceDbFile.path);
+      stagingMediaDir = _mediaStagingDirectory(mediaDir);
+      await _stageMediaFiles(extractDir, stagingMediaDir);
+      final missingReferenced = <String>[];
+      for (final relPath in referencedPaths) {
+        if (path.isAbsolute(relPath)) {
+          missingReferenced.add(relPath);
+          continue;
         }
+        final staged = File(path.joinAll([stagingMediaDir.path, ...relPath.split('/')]));
+        if (!await staged.exists()) {
+          missingReferenced.add(relPath);
+        }
+      }
+
+      onProgress?.call('Creating recovery copy...');
+
+      // Retained next to the live database until the restore is confirmed —
+      // doubles as the "restore in flight" marker for next-launch recovery.
+      recoveryPath = '$targetDbPath.restore';
+      if (await targetDbFile.exists()) {
+        if (liveMode) {
+          await DatabaseHelper.instance.createSnapshot(recoveryPath);
+        } else {
+          await targetDbFile.copy(recoveryPath);
+        }
+      } else {
+        await File(recoveryPath).writeAsBytes(const []);
       }
 
       onProgress?.call('Restoring database...');
 
       if (liveMode) {
-        await DatabaseHelper.instance.closeDatabase();
+        await DatabaseHelper.instance.beginRestore();
       }
-
       try {
-        await sourceDbFile.copy(targetDbPath);
-      } catch (e) {
-        await _rollbackDatabase(targetDbPath, rollbackPath, liveMode);
-        throw Exception('Failed to restore database: $e');
-      }
+        if (liveMode) {
+          await DatabaseHelper.instance.closeDatabase();
+        }
 
-      // Verify the swapped-in database before touching anything else.
-      if (!await _verifyDatabaseFile(targetDbPath)) {
-        await _rollbackDatabase(targetDbPath, rollbackPath, liveMode);
-        throw Exception('Restored database failed integrity check; original data was preserved');
+        // Sidecars from the old database can never apply to the new file.
+        await _deleteSidecars(targetDbPath);
+        if (await targetDbFile.exists()) {
+          await targetDbFile.delete();
+        }
+
+        // Same-directory rename: atomic on POSIX; the target was deleted
+        // above so it also succeeds on Windows.
+        await File(stagePath).rename(targetDbPath);
+        stagePath = null;
+
+        if (!await _verifyDatabaseFile(targetDbPath)) {
+          throw Exception('Restored database failed integrity check');
+        }
+
+        if (liveMode) {
+          await DatabaseHelper.instance.reopenDatabaseForRestore();
+        }
+      } catch (e) {
+        await _rollbackDatabase(targetDbPath, recoveryPath, liveMode);
+        throw Exception('Failed to restore database: ${_errorMessage(e)}');
+      } finally {
+        if (liveMode) {
+          await DatabaseHelper.instance.endRestore();
+        }
       }
 
       onProgress?.call('Restoring media files...');
 
-      final mediaResult = await _restoreMediaFiles(
-        extractDir,
-        mediaDirectoryOverride ?? await MediaStorageService.getMediaDirectory(),
-      );
+      final mediaResult = await _moveMediaTree(stagingMediaDir, mediaDir);
+      if (mediaResult.skipped == 0 && await stagingMediaDir.exists()) {
+        await stagingMediaDir.delete(recursive: true);
+      }
+      if (mediaResult.skipped == 0) {
+        stagingMediaDir = null;
+      }
+      // If files were skipped the staging directory is kept so
+      // recoverInterruptedRestore() can retry the move on next launch.
 
       onProgress?.call('Restoring settings...');
 
       final settings = validation.manifest?.settings;
       if (settings != null) {
-        await _restoreSettings(settings, targetDbPath, liveMode);
+        try {
+          await _restoreSettings(settings, targetDbPath, liveMode);
+        } catch (_) {
+          // Settings are non-critical — a preferences failure must not
+          // fail the restore once the database has been swapped.
+        }
       }
 
-      if (liveMode) {
-        // Re-open the live database so the app can keep using it.
-        await DatabaseHelper.instance.database;
-      }
+      // Restore confirmed — drop the recovery marker.
+      await File(recoveryPath).delete();
+      recoveryPath = null;
 
       await tempDir.delete(recursive: true);
 
@@ -524,14 +609,181 @@ class ZipBackupService {
 
       return BackupRestoreResult(
         manifest: validation.manifest!,
-        mediaFilesRestored: mediaResult.restored,
+        mediaFilesRestored: mediaResult.moved,
         mediaFilesSkipped: mediaResult.skipped,
+        referencedMediaMissing: missingReferenced.length,
       );
     } catch (e) {
+      // Discard leftovers. The recovery copy is only dropped when the live
+      // database is intact (never swapped or successfully rolled back);
+      // otherwise it stays for next-launch recovery.
+      if (stagePath != null) {
+        final stageFile = File(stagePath);
+        if (await stageFile.exists()) {
+          await stageFile.delete();
+        }
+      }
+      if (stagingMediaDir != null && await stagingMediaDir.exists()) {
+        await stagingMediaDir.delete(recursive: true);
+      }
+      if (targetDbPath != null &&
+          recoveryPath != null &&
+          await File(recoveryPath).exists() &&
+          await _verifyDatabaseFile(targetDbPath)) {
+        await File(recoveryPath).delete();
+      }
       if (await tempDir.exists()) {
         await tempDir.delete(recursive: true);
       }
       rethrow;
+    }
+  }
+
+  /// Recover after an interrupted restore.
+  ///
+  /// Called at application startup. Delegates database-file recovery to
+  /// [DatabaseHelper.recoverInterruptedRestore] (which also runs on first
+  /// database access) and completes any pending media staging move.
+  static Future<void> recoverInterruptedRestore({
+    String? databasePathOverride,
+    Directory? mediaDirectoryOverride,
+  }) async {
+    await DatabaseHelper.instance
+        .recoverInterruptedRestore(databasePathOverride);
+
+    final mediaDir =
+        mediaDirectoryOverride ?? await MediaStorageService.getMediaDirectory();
+    await completePendingMediaStaging(mediaDir);
+  }
+
+  /// Move any leftover staged media into place and remove the staging dir.
+  static Future<void> completePendingMediaStaging(Directory mediaDir) async {
+    final stagingDir = _mediaStagingDirectory(mediaDir);
+    if (!await stagingDir.exists()) {
+      return;
+    }
+    final result = await _moveMediaTree(stagingDir, mediaDir);
+    if (result.skipped == 0) {
+      await stagingDir.delete(recursive: true);
+    }
+  }
+
+  /// The staging directory for restored media, sibling of [mediaDir].
+  static Directory _mediaStagingDirectory(Directory mediaDir) {
+    return Directory(path.join(mediaDir.parent.path, _mediaStagingDirName));
+  }
+
+  /// Collect every media path referenced by a backup database.
+  static Future<Set<String>> _collectReferencedMediaPaths(String dbPath) async {
+    final paths = <String>{};
+    Database? db;
+    try {
+      db = await openDatabase(dbPath, readOnly: true);
+      for (final table in const ['catch_media', 'trip_media', 'journal_media']) {
+        try {
+          final rows = await db.query(table, columns: ['file_path']);
+          for (final row in rows) {
+            final filePath = row['file_path'] as String?;
+            if (filePath != null && filePath.isNotEmpty) {
+              paths.add(_toPortablePath(filePath));
+            }
+          }
+        } catch (_) {
+          // Table may not exist in older-schema backups.
+        }
+      }
+      try {
+        final rows = await db.query('catches', columns: ['lure_photo_path']);
+        for (final row in rows) {
+          final filePath = row['lure_photo_path'] as String?;
+          if (filePath != null && filePath.isNotEmpty) {
+            paths.add(_toPortablePath(filePath));
+          }
+        }
+      } catch (_) {}
+    } finally {
+      await db?.close();
+    }
+    return paths;
+  }
+
+  /// Copy all media from the extracted backup into [stagingDir].
+  ///
+  /// The staging directory sits next to the media directory so the final
+  /// move stays on the same filesystem. A copy failure aborts the restore.
+  static Future<void> _stageMediaFiles(
+    Directory extractDir,
+    Directory stagingDir,
+  ) async {
+    if (await stagingDir.exists()) {
+      await stagingDir.delete(recursive: true);
+    }
+
+    final sourceMediaDir = Directory(path.join(extractDir.path, _mediaDirectoryName));
+    if (!await sourceMediaDir.exists()) {
+      return; // Nothing to stage.
+    }
+
+    await for (final entity in sourceMediaDir.list(recursive: true)) {
+      if (entity is! File) continue;
+      final rel = _toPortablePath(path.relative(entity.path, from: sourceMediaDir.path));
+      final destFile = File(path.joinAll([stagingDir.path, ...rel.split('/')]));
+      await destFile.parent.create(recursive: true);
+      await entity.copy(destFile.path);
+    }
+  }
+
+  /// Move staged media files into [mediaDir], preserving relative paths.
+  ///
+  /// Renames are used first (same filesystem, atomic); an existing
+  /// destination is replaced — the restored database references the backup's
+  /// copy. Falls back to copy+delete when rename is not possible.
+  static Future<({int moved, int skipped})> _moveMediaTree(
+    Directory stagingDir,
+    Directory mediaDir,
+  ) async {
+    int moved = 0;
+    int skipped = 0;
+
+    if (!await stagingDir.exists()) {
+      return (moved: moved, skipped: skipped);
+    }
+
+    final entities = await stagingDir.list(recursive: true).toList();
+    for (final entity in entities) {
+      if (entity is! File) continue;
+      final rel = _toPortablePath(path.relative(entity.path, from: stagingDir.path));
+      final destFile = File(path.joinAll([mediaDir.path, ...rel.split('/')]));
+      try {
+        await destFile.parent.create(recursive: true);
+        if (await destFile.exists()) {
+          await destFile.delete();
+        }
+        await entity.rename(destFile.path);
+        moved++;
+      } catch (e) {
+        try {
+          await entity.copy(destFile.path);
+          await entity.delete();
+          moved++;
+        } catch (_) {
+          skipped++;
+        }
+      }
+    }
+
+    return (moved: moved, skipped: skipped);
+  }
+
+  /// Delete the WAL and SHM sidecar files for a database path.
+  static Future<void> _deleteSidecars(String dbPath) async {
+    for (final suffix in const ['-wal', '-shm']) {
+      final file = File('$dbPath$suffix');
+      try {
+        if (await file.exists()) {
+          await file.delete();
+        }
+      } catch (_) {}
     }
   }
 
@@ -649,62 +901,37 @@ class ZipBackupService {
     }
   }
 
-  /// Restore the original database after a failed restore attempt.
+  /// Restore the original database after a failed swap.
+  ///
+  /// Puts the recovery copy back over the target and removes stale
+  /// WAL/SHM sidecars. An empty recovery file means no database existed
+  /// before the restore — the broken target is simply deleted.
   static Future<void> _rollbackDatabase(
     String targetDbPath,
-    String? rollbackPath,
+    String? recoveryPath,
     bool liveMode,
   ) async {
     try {
-      final rollbackFile = rollbackPath != null ? File(rollbackPath) : null;
-      if (rollbackFile != null && await rollbackFile.exists()) {
-        await rollbackFile.copy(targetDbPath);
-      } else {
-        final target = File(targetDbPath);
-        if (await target.exists()) {
-          await target.delete();
-        }
+      await _deleteSidecars(targetDbPath);
+      final target = File(targetDbPath);
+      if (await target.exists()) {
+        await target.delete();
+      }
+      final recoveryFile = recoveryPath != null ? File(recoveryPath) : null;
+      if (recoveryFile != null &&
+          await recoveryFile.exists() &&
+          await recoveryFile.length() > 0) {
+        await recoveryFile.copy(targetDbPath);
       }
     } finally {
       if (liveMode) {
         // Re-open the live database regardless of rollback outcome.
+        // Bypasses the restore lock — safe while the lock is held.
         try {
-          await DatabaseHelper.instance.database;
+          await DatabaseHelper.instance.reopenDatabaseForRestore();
         } catch (_) {}
       }
     }
-  }
-
-  /// Copy media files from the extracted backup into the media directory.
-  ///
-  /// Preserves the relative directory structure under media/ so database
-  /// paths (e.g. catches/photo.jpg) resolve correctly after restore.
-  static Future<({int restored, int skipped})> _restoreMediaFiles(
-    Directory extractDir,
-    Directory mediaDir,
-  ) async {
-    int restored = 0;
-    int skipped = 0;
-
-    final sourceMediaDir = Directory(path.join(extractDir.path, _mediaDirectoryName));
-    if (!await sourceMediaDir.exists()) {
-      return (restored: restored, skipped: skipped);
-    }
-
-    await for (final entity in sourceMediaDir.list(recursive: true)) {
-      if (entity is! File) continue;
-      try {
-        final rel = _toPortablePath(path.relative(entity.path, from: sourceMediaDir.path));
-        final destFile = File(path.joinAll([mediaDir.path, ...rel.split('/')]));
-        await destFile.parent.create(recursive: true);
-        await entity.copy(destFile.path);
-        restored++;
-      } catch (e) {
-        skipped++;
-      }
-    }
-
-    return (restored: restored, skipped: skipped);
   }
 
   /// Restore application settings captured in the backup manifest.
@@ -823,9 +1050,14 @@ class BackupRestoreResult {
   /// Number of media files that could not be copied.
   final int mediaFilesSkipped;
 
+  /// Number of media paths the restored database references that were not
+  /// present in the backup archive (missing when the backup was created).
+  final int referencedMediaMissing;
+
   BackupRestoreResult({
     required this.manifest,
     required this.mediaFilesRestored,
     required this.mediaFilesSkipped,
+    this.referencedMediaMissing = 0,
   });
 }

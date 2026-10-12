@@ -11,6 +11,7 @@ import 'package:bragmat/services/zip_backup_service.dart';
 import 'package:bragmat/services/preferences_service.dart';
 import 'package:bragmat/services/current_trip_service.dart';
 import 'package:bragmat/services/tide_reference_service.dart';
+import 'package:bragmat/database/database_helper.dart';
 
 void main() {
   // Initialize sqflite ffi for testing
@@ -338,6 +339,7 @@ void main() {
       int userVersion = 28,
       List<String> catchFishTypes = const [],
       List<int> tripIds = const [],
+      List<String> catchMediaPaths = const [],
     }) async {
       stagingCounter++;
       final tmpPath = path.join(
@@ -370,6 +372,9 @@ void main() {
       }
       for (final tripId in tripIds) {
         await db.insert('fishing_trips', {'id': tripId, 'name': 'Trip $tripId'});
+      }
+      for (final mediaPath in catchMediaPaths) {
+        await db.insert('catch_media', {'catch_id': 1, 'file_path': mediaPath});
       }
       await db.close();
 
@@ -406,6 +411,7 @@ void main() {
       bool validDatabase = true,
       List<String> backupCatches = const [],
       List<int> backupTrips = const [],
+      List<String> backupCatchMedia = const [],
       BackupSettings? settings,
       Map<String, List<int>> mediaFiles = const {},
       List<String> extraEntryNames = const [],
@@ -446,6 +452,7 @@ void main() {
                 userVersion: databaseUserVersion,
                 catchFishTypes: backupCatches,
                 tripIds: backupTrips,
+                catchMediaPaths: backupCatchMedia,
               )
             : utf8.encode('this is not a sqlite database');
         archive.addFile(ArchiveFile('database.sqlite', dbBytes.length, dbBytes));
@@ -685,6 +692,332 @@ void main() {
       expect(names, contains('manifest.json'));
       expect(names, contains('database.sqlite'));
       expect(names, contains('media/catches/photo.jpg'));
+    });
+  });
+
+  group('ZipBackupService - Phase 3 Restore Hardening', () {
+    late Directory testDir;
+    late Directory mediaDir;
+    late String targetDbPath;
+    int stagingCounter = 0;
+
+    setUp(() async {
+      testDir = Directory.systemTemp.createTempSync('bragmat_hardening_test_');
+      MediaStorageService.setTestDirectory(testDir);
+      mediaDir = await MediaStorageService.getMediaDirectory();
+      targetDbPath = path.join(testDir.path, 'target_bragmat.db');
+      SharedPreferences.setMockInitialValues({});
+    });
+
+    tearDown(() async {
+      await DatabaseHelper.instance.closeDatabase();
+      DatabaseHelper.clearTestDatabasePath();
+      if (await testDir.exists()) {
+        await testDir.delete(recursive: true);
+      }
+      MediaStorageService.clearTestDirectory();
+    });
+
+    /// Create a minimal SQLite database file and return its bytes.
+    Future<List<int>> createDatabaseBytes({
+      int userVersion = 28,
+      List<String> catchFishTypes = const [],
+      List<String> catchMediaPaths = const [],
+    }) async {
+      stagingCounter++;
+      final tmpPath = path.join(testDir.path, 'hardening_db_$stagingCounter.db');
+      final db = await openDatabase(
+        tmpPath,
+        version: userVersion,
+        onCreate: (db, version) async {
+          await db.execute(
+            'CREATE TABLE catches (id INTEGER PRIMARY KEY AUTOINCREMENT, fish_type TEXT)',
+          );
+          await db.execute(
+            'CREATE TABLE fishing_trips (id INTEGER PRIMARY KEY, name TEXT)',
+          );
+          await db.execute(
+            'CREATE TABLE catch_media (id INTEGER PRIMARY KEY AUTOINCREMENT, catch_id INTEGER, file_path TEXT)',
+          );
+        },
+      );
+      for (final fishType in catchFishTypes) {
+        await db.insert('catches', {'fish_type': fishType});
+      }
+      for (final mediaPath in catchMediaPaths) {
+        await db.insert('catch_media', {'catch_id': 1, 'file_path': mediaPath});
+      }
+      await db.close();
+
+      final bytes = await File(tmpPath).readAsBytes();
+      await File(tmpPath).delete();
+      return bytes;
+    }
+
+    Future<void> createTargetDatabase({
+      List<String> catchFishTypes = const [],
+    }) async {
+      final bytes = await createDatabaseBytes(catchFishTypes: catchFishTypes);
+      await File(targetDbPath).writeAsBytes(bytes);
+    }
+
+    Future<List<String>> readTargetFishTypes() async {
+      final db = await openDatabase(targetDbPath, readOnly: true);
+      try {
+        final rows = await db.query('catches');
+        return rows.map((r) => r['fish_type'] as String).toList();
+      } finally {
+        await db.close();
+      }
+    }
+
+    /// Build a backup ZIP with the given database contents.
+    Future<String> buildBackupZip({
+      List<String> backupCatches = const [],
+      List<String> backupCatchMedia = const [],
+      BackupSettings? settings,
+      Map<String, List<int>> mediaFiles = const {},
+    }) async {
+      final archive = Archive();
+
+      final manifest = BackupManifest.create(
+        bragmatVersion: '1.0.0+8',
+        databaseSchemaVersion: 28,
+        platform: 'android',
+        contents: BackupContents(
+          database: true,
+          media: BackupMediaCounts(
+            catches: mediaFiles.keys.where((k) => k.startsWith('media/catches/')).length,
+            trips: 0,
+            journals: 0,
+            lures: 0,
+          ),
+          settings: settings != null,
+        ),
+        statistics: BackupStatistics(
+          catches: backupCatches.length,
+          trips: 0,
+          photos: mediaFiles.length,
+          missingPhotos: 0,
+        ),
+        settings: settings,
+      );
+      final manifestBytes = utf8.encode(jsonEncode(manifest.toMap()));
+      archive.addFile(ArchiveFile('manifest.json', manifestBytes.length, manifestBytes));
+
+      final dbBytes = await createDatabaseBytes(
+        catchFishTypes: backupCatches,
+        catchMediaPaths: backupCatchMedia,
+      );
+      archive.addFile(ArchiveFile('database.sqlite', dbBytes.length, dbBytes));
+
+      for (final entry in mediaFiles.entries) {
+        archive.addFile(ArchiveFile(entry.key, entry.value.length, entry.value));
+      }
+
+      final zipPath = path.join(testDir.path, 'hardening_backup_$stagingCounter.zip');
+      await File(zipPath).writeAsBytes(ZipEncoder().encode(archive)!);
+      return zipPath;
+    }
+
+    test('interrupted restore - recovery copy restores corrupt target', () async {
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+      await File(targetDbPath).copy('$targetDbPath.restore');
+      await File(targetDbPath).writeAsBytes(utf8.encode('corrupted db'));
+
+      await DatabaseHelper.instance.recoverInterruptedRestore(targetDbPath);
+
+      expect(await readTargetFishTypes(), ['Old Fish']);
+      expect(await File('$targetDbPath.restore').exists(), false);
+    });
+
+    test('interrupted restore - keeps valid swapped target', () async {
+      // Simulate: swap completed, restore died before marker cleanup.
+      await createTargetDatabase(catchFishTypes: ['New Fish']);
+      await File('$targetDbPath.restore').writeAsBytes(
+        await createDatabaseBytes(catchFishTypes: ['Old Fish']),
+      );
+      await File('$targetDbPath-wal').writeAsBytes([1, 2, 3]);
+      await File('$targetDbPath-shm').writeAsBytes([4, 5]);
+
+      await DatabaseHelper.instance.recoverInterruptedRestore(targetDbPath);
+
+      expect(await readTargetFishTypes(), ['New Fish']);
+      expect(await File('$targetDbPath.restore').exists(), false);
+      expect(await File('$targetDbPath-wal').exists(), false);
+      expect(await File('$targetDbPath-shm').exists(), false);
+    });
+
+    test('interrupted restore - empty marker drops corrupt target', () async {
+      await File(targetDbPath).writeAsBytes(utf8.encode('corrupted db'));
+      await File('$targetDbPath.restore').writeAsBytes(const []);
+
+      await DatabaseHelper.instance.recoverInterruptedRestore(targetDbPath);
+
+      expect(await File(targetDbPath).exists(), false);
+      expect(await File('$targetDbPath.restore').exists(), false);
+    });
+
+    test('interrupted restore - stale stage file is removed', () async {
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+      await File('$targetDbPath.stage').writeAsBytes([1, 2, 3]);
+
+      await DatabaseHelper.instance.recoverInterruptedRestore(targetDbPath);
+
+      expect(await File('$targetDbPath.stage').exists(), false);
+      expect(await readTargetFishTypes(), ['Old Fish']);
+    });
+
+    test('pending media staging is completed on recovery', () async {
+      final stagingDir = Directory(path.join(mediaDir.parent.path, 'media.staging'));
+      final staged = File(path.join(stagingDir.path, 'catches', 'leftover.jpg'));
+      await staged.parent.create(recursive: true);
+      await staged.writeAsBytes([7, 7, 7]);
+
+      await ZipBackupService.recoverInterruptedRestore(
+        databasePathOverride: targetDbPath,
+        mediaDirectoryOverride: mediaDir,
+      );
+
+      final moved = File(path.join(mediaDir.path, 'catches', 'leftover.jpg'));
+      expect(await moved.exists(), true);
+      expect(await moved.readAsBytes(), [7, 7, 7]);
+      expect(await stagingDir.exists(), false);
+    });
+
+    test('restore lock blocks database access until released', () async {
+      DatabaseHelper.setTestDatabasePath(targetDbPath);
+
+      await DatabaseHelper.instance.beginRestore();
+      expect(DatabaseHelper.instance.restoreInProgress, true);
+
+      var completed = false;
+      final pending = DatabaseHelper.instance.database.then((_) => completed = true);
+      await Future.delayed(const Duration(milliseconds: 100));
+      expect(completed, false);
+
+      await DatabaseHelper.instance.endRestore();
+      await pending;
+      expect(completed, true);
+      expect(DatabaseHelper.instance.restoreInProgress, false);
+    });
+
+    test('second beginRestore throws while lock is held', () async {
+      DatabaseHelper.setTestDatabasePath(targetDbPath);
+
+      await DatabaseHelper.instance.beginRestore();
+      await expectLater(
+        DatabaseHelper.instance.beginRestore(),
+        throwsA(isA<StateError>()),
+      );
+      await DatabaseHelper.instance.endRestore();
+    });
+
+    test('live restore end-to-end via DatabaseHelper singleton', () async {
+      DatabaseHelper.setTestDatabasePath(targetDbPath);
+
+      // Open the real database (full v28 schema) and seed old data.
+      final db = await DatabaseHelper.instance.database;
+      await db.insert('catches', {'fish_type': 'Old Fish'});
+
+      final zipPath = await buildBackupZip(
+        backupCatches: ['New Fish'],
+        settings: BackupSettings(
+          fishTypeSelectionMode: 1,
+          defaultFishType: 'New Fish',
+        ),
+        mediaFiles: {
+          'media/catches/restored.jpg': [5, 5, 5],
+        },
+      );
+
+      // Live mode: no databasePathOverride — exercises the full swap path.
+      final result = await ZipBackupService.restoreBackup(
+        zipPath: zipPath,
+        mediaDirectoryOverride: mediaDir,
+      );
+
+      // Database was swapped and reopened through the singleton.
+      final liveDb = await DatabaseHelper.instance.database;
+      final rows = await liveDb.query('catches');
+      expect(rows.map((r) => r['fish_type']), ['New Fish']);
+
+      // Media moved into place; markers cleaned up.
+      expect(await File(path.join(mediaDir.path, 'catches', 'restored.jpg')).exists(), true);
+      expect(await File('$targetDbPath.restore').exists(), false);
+      expect(await File('$targetDbPath.stage').exists(), false);
+      expect(result.mediaFilesRestored, 1);
+      expect(result.referencedMediaMissing, 0);
+
+      // Settings applied.
+      expect(await PreferencesService.getDefaultFishType(), 'New Fish');
+    });
+
+    test('restore removes stale WAL/SHM sidecars', () async {
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+      await File('$targetDbPath-wal').writeAsBytes([9, 9]);
+      await File('$targetDbPath-shm').writeAsBytes([9, 9]);
+
+      final zipPath = await buildBackupZip(backupCatches: ['New Fish']);
+
+      await ZipBackupService.restoreBackup(
+        zipPath: zipPath,
+        databasePathOverride: targetDbPath,
+        mediaDirectoryOverride: mediaDir,
+      );
+
+      expect(await File('$targetDbPath-wal').exists(), false);
+      expect(await File('$targetDbPath-shm').exists(), false);
+      expect(await readTargetFishTypes(), ['New Fish']);
+    });
+
+    test('unreadable archive aborts before any database change', () async {
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+
+      // Nested path collision: 'media/blocker' as file and as directory.
+      final zipPath = await buildBackupZip(
+        backupCatches: ['New Fish'],
+        mediaFiles: {
+          'media/blocker': [1],
+          'media/blocker/inner.jpg': [2, 2],
+        },
+      );
+
+      await expectLater(
+        ZipBackupService.restoreBackup(
+          zipPath: zipPath,
+          databasePathOverride: targetDbPath,
+          mediaDirectoryOverride: mediaDir,
+        ),
+        throwsA(isA<Exception>()),
+      );
+
+      // Original database untouched; no markers left behind.
+      expect(await readTargetFishTypes(), ['Old Fish']);
+      expect(await File('$targetDbPath.restore').exists(), false);
+      expect(await File('$targetDbPath.stage').exists(), false);
+      expect(
+        await Directory(path.join(mediaDir.parent.path, 'media.staging')).exists(),
+        false,
+      );
+    });
+
+    test('referenced media absent from backup is reported', () async {
+      await createTargetDatabase(catchFishTypes: ['Old Fish']);
+
+      final zipPath = await buildBackupZip(
+        backupCatches: ['New Fish'],
+        backupCatchMedia: ['catches/ghost.jpg'],
+      );
+
+      final result = await ZipBackupService.restoreBackup(
+        zipPath: zipPath,
+        databasePathOverride: targetDbPath,
+        mediaDirectoryOverride: mediaDir,
+      );
+
+      expect(result.referencedMediaMissing, 1);
+      expect(await readTargetFishTypes(), ['New Fish']);
     });
   });
 }

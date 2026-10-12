@@ -2934,7 +2934,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         SnackBar(
           content: Text(
             'Backup restored successfully'
-            '${result.mediaFilesSkipped > 0 ? ' (${result.mediaFilesSkipped} media file(s) could not be copied)' : ''}',
+            '${result.mediaFilesSkipped > 0 ? ' (${result.mediaFilesSkipped} media file(s) could not be copied)' : ''}'
+            '${result.referencedMediaMissing > 0 ? ' (${result.referencedMediaMissing} referenced photo(s) were not in the backup)' : ''}',
           ),
         ),
       );
