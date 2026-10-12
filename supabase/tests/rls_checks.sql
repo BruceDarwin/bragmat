@@ -2,27 +2,24 @@
 -- Stage 4A — RLS / allowlist verification for bragmat-dev
 --
 -- HOW TO RUN: paste this ENTIRE file into the Supabase SQL Editor as one
--- query and press Run. It executes in a single transaction that ends in
--- ROLLBACK — test users are created and discarded, nothing persists.
+-- query and press Run. The script:
+--   * creates four disposable test users inside a transaction,
+--   * runs each check while simulating that user's JWT claims,
+--   * prints a single PASS/FAIL results table at the end,
+--   * ends in ROLLBACK — nothing persists, nothing needs editing.
 --
--- READING RESULTS: each check states its expectation inline.
---   * For SELECT checks the PASS value is printed.
---   * For denied operations the PASS signal is the annotated ERROR
---     (e.g. "ERROR: new row violates row-level security policy…").
---     A savepoint restores the transaction after each expected error,
---     so the script keeps running to the end. If a denied statement
---     instead reports success (INSERT/UPDATE n rows), that check FAILS.
+-- PASS column should be true for every row.
 --
--- AUTH NOTE: auth.users rows are inserted directly — they need to exist
--- for is_approved_beta() to join against. These users can never log in
--- (no identities rows, empty password) and are rolled back anyway.
+-- AUTH NOTE: auth.users rows are inserted directly so the
+-- is_approved_beta() join has real users to find. They can never log in
+-- (no identities, empty password) and are rolled back anyway.
 -- ────────────────────────────────────────────────────────────────────────
 
 begin;
 
--- ═══ SETUP: four test users covering every state ═══════════════════════
--- A = invited + verified   B = verified but NOT invited
--- C = invited + unverified D = invited but status='revoked'
+-- ═══ SETUP ═════════════════════════════════════════════════════════════
+-- A = invited + verified   B = verified, not invited
+-- C = invited + unverified D = invited, status='revoked'
 insert into auth.users
   (instance_id, id, aud, role, email, encrypted_password,
    email_confirmed_at, created_at, updated_at)
@@ -49,70 +46,193 @@ insert into public.beta_testers (email, status) values
   ('rlstest.c@bragmat.invalid', 'invited'),
   ('rlstest.d@bragmat.invalid', 'revoked');
 
--- D gets a profile (created while they were still approved)
+-- D owns a profile (created while still approved)
 insert into public.profiles (id, email) values
   ('d0000000-0000-4000-8000-00000000000d', 'rlstest.d@bragmat.invalid');
 
+create temp table rls_results(
+  n int, check_name text, expected text, actual text, pass boolean
+);
+
+-- Each check: set role + JWT claims, run the operation, reset role to
+-- 'none' (session user), then record the outcome. Resetting before the
+-- results write is required — temp tables are privilege-checked too.
+
 -- ═══ CHECK 1: is_approved_beta() across all four states ════════════════
-set local role authenticated;
+do $$
+declare r boolean;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  select public.is_approved_beta() into r;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (1,'invited + verified user is approved','true',r::text,(r = true));
+end $$;
 
-set local request.jwt.claims = '{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}';
-select public.is_approved_beta() as check1_a_expect_TRUE;   -- PASS: t
+do $$
+declare r boolean;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"b0000000-0000-4000-8000-00000000000b","email":"rlstest.b@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  select public.is_approved_beta() into r;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (2,'uninvited user is NOT approved','false',r::text,(r = false));
+end $$;
 
-set local request.jwt.claims = '{"sub":"b0000000-0000-4000-8000-00000000000b","email":"rlstest.b@bragmat.invalid","role":"authenticated","aud":"authenticated"}';
-select public.is_approved_beta() as check1_b_expect_FALSE;  -- PASS: f
+do $$
+declare r boolean;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"c0000000-0000-4000-8000-00000000000c","email":"rlstest.c@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  select public.is_approved_beta() into r;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (3,'invited + UNVERIFIED user is NOT approved','false',r::text,(r = false));
+end $$;
 
-set local request.jwt.claims = '{"sub":"c0000000-0000-4000-8000-00000000000c","email":"rlstest.c@bragmat.invalid","role":"authenticated","aud":"authenticated"}';
-select public.is_approved_beta() as check1_c_expect_FALSE;  -- PASS: f
-
-set local request.jwt.claims = '{"sub":"d0000000-0000-4000-8000-00000000000d","email":"rlstest.d@bragmat.invalid","role":"authenticated","aud":"authenticated"}';
-select public.is_approved_beta() as check1_d_expect_FALSE;  -- PASS: f
+do $$
+declare r boolean;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"d0000000-0000-4000-8000-00000000000d","email":"rlstest.d@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  select public.is_approved_beta() into r;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (4,'revoked user is NOT approved','false',r::text,(r = false));
+end $$;
 
 -- ═══ CHECK 2: uninvited user cannot create a profile ═══════════════════
-set local request.jwt.claims = '{"sub":"b0000000-0000-4000-8000-00000000000b","email":"rlstest.b@bragmat.invalid","role":"authenticated","aud":"authenticated"}';
-savepoint c2;
-insert into public.profiles (id, email)
-  values (auth.uid(), 'rlstest.b@bragmat.invalid');          -- PASS: ERROR 42501
-rollback to savepoint c2;
+do $$
+declare outcome text;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"b0000000-0000-4000-8000-00000000000b","email":"rlstest.b@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  begin
+    insert into public.profiles (id, email)
+      values (auth.uid(), 'rlstest.b@bragmat.invalid');
+    outcome := 'allowed';
+  exception when insufficient_privilege then
+    outcome := 'denied';
+  end;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (5,'uninvited profile insert denied','denied',outcome,(outcome='denied'));
+end $$;
 
--- ═══ CHECK 3: approved user cannot spoof a different email ═════════════
-set local request.jwt.claims = '{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}';
-savepoint c3;
-insert into public.profiles (id, email)
-  values (auth.uid(), 'spoofed@bragmat.invalid');            -- PASS: ERROR 42501
-rollback to savepoint c3;
+-- ═══ CHECK 3: profile email cannot differ from caller's email ══════════
+do $$
+declare outcome text;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  begin
+    insert into public.profiles (id, email)
+      values (auth.uid(), 'spoofed@bragmat.invalid');
+    outcome := 'allowed';
+  exception when insufficient_privilege then
+    outcome := 'denied';
+  end;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (6,'profile email spoof denied','denied',outcome,(outcome='denied'));
+end $$;
 
--- ═══ CHECK 4: approved user CAN create own profile; cannot touch others ═
-insert into public.profiles (id, email)
-  values (auth.uid(), 'rlstest.a@bragmat.invalid');          -- PASS: INSERT 0 1
-select id, email from public.profiles
-  where id = 'b0000000-0000-4000-8000-00000000000b';          -- PASS: 0 rows
-update public.profiles set display_name = 'hijack'
-  where id = 'b0000000-0000-4000-8000-00000000000b';          -- PASS: UPDATE 0
+-- ═══ CHECK 4: own profile insert works; other users invisible ══════════
+do $$
+declare rc int;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  insert into public.profiles (id, email)
+    values (auth.uid(), 'rlstest.a@bragmat.invalid');
+  get diagnostics rc = row_count;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (7,'approved user inserts own profile','1',rc::text,(rc = 1));
 
--- ═══ CHECK 5: non-admin cannot self-invite or modify the allowlist ═════
-savepoint c5a;
-insert into public.beta_testers (email)
-  values ('selfinvite@bragmat.invalid');                     -- PASS: ERROR 42501
-rollback to savepoint c5a;
+  perform set_config('role','authenticated',true);
+  select count(*) into rc from public.profiles
+    where id = 'b0000000-0000-4000-8000-00000000000b';
+  update public.profiles set display_name = 'hijack'
+    where id = 'b0000000-0000-4000-8000-00000000000b';
+  get diagnostics rc = row_count;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (8,'other user''s profile unmodifiable','0',rc::text,(rc = 0));
+end $$;
 
-update public.beta_testers set status = 'revoked';           -- PASS: UPDATE 0
-select email, status from public.beta_testers;               -- PASS: only own row
+-- ═══ CHECK 5: non-admin cannot modify the allowlist ════════════════════
+do $$
+declare outcome text; rc int;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  begin
+    insert into public.beta_testers (email)
+      values ('selfinvite@bragmat.invalid');
+    outcome := 'allowed';
+  exception when insufficient_privilege then
+    outcome := 'denied';
+  end;
+  update public.beta_testers set status = 'revoked';
+  get diagnostics rc = row_count;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (9,'self-invite denied','denied',outcome,(outcome='denied'));
+  insert into rls_results values
+    (10,'non-admin cannot modify allowlist','0',rc::text,(rc = 0));
+end $$;
+
+do $$
+declare rc int;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  select count(*) into rc from public.beta_testers;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (11,'allowlist read shows own row only','1',rc::text,(rc = 1));
+end $$;
 
 -- ═══ CHECK 6: anonymous access fully denied ════════════════════════════
-savepoint c6;
-set local role anon;
-select * from public.profiles;                               -- PASS: permission denied
-rollback to savepoint c6;
-set local role authenticated;
+do $$
+declare outcome text; rc int;
+begin
+  perform set_config('role','anon',true);
+  begin
+    select count(*) into rc from public.profiles;
+    outcome := 'allowed';
+  exception when insufficient_privilege then
+    outcome := 'denied';
+  end;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (12,'anon cannot read profiles','denied',outcome,(outcome='denied'));
+end $$;
 
--- ═══ CHECK 7: revoked user — profile update blocked, deletion allowed ══
-set local request.jwt.claims = '{"sub":"d0000000-0000-4000-8000-00000000000d","email":"rlstest.d@bragmat.invalid","role":"authenticated","aud":"authenticated"}';
-update public.profiles set display_name = 'x'
-  where id = auth.uid();                                     -- PASS: UPDATE 0
-select public.request_account_deletion();                    -- PASS: succeeds
-select deletion_requested_at is not null as check7_flag_set_expect_TRUE
-  from public.profiles where id = auth.uid();                -- PASS: t
+-- ═══ CHECK 7: revoked user — update blocked, deletion request allowed ══
+do $$
+declare rc int; flag boolean;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"d0000000-0000-4000-8000-00000000000d","email":"rlstest.d@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  update public.profiles set display_name = 'x' where id = auth.uid();
+  get diagnostics rc = row_count;
+  perform public.request_account_deletion();
+  select deletion_requested_at is not null into flag
+    from public.profiles where id = auth.uid();
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (13,'revoked user cannot update profile','0',rc::text,(rc = 0));
+  insert into rls_results values
+    (14,'revoked user can request deletion','true',flag::text,(flag = true));
+end $$;
 
--- ═══ DONE — everything above is discarded ══════════════════════════════
+-- ═══ RESULTS ═══════════════════════════════════════════════════════════
+select n, check_name, expected, actual, pass
+  from rls_results order by n;
+
+-- Everything above is discarded — test users, allowlist rows, results.
 rollback;
