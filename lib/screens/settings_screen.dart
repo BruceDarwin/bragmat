@@ -14,6 +14,7 @@ import '../models/lure.dart';
 import '../models/bait.dart';
 import '../models/tide_reference.dart';
 import '../services/backup_service.dart';
+import '../services/zip_backup_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
 import '../services/worldtides_service.dart';
@@ -2389,10 +2390,71 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return values;
   }
 
+  Future<T?> _runWithProgress<T>({
+    required String title,
+    required Future<T> Function(void Function(String) report) task,
+  }) async {
+    final progress = ValueNotifier<String>('Starting...');
+    if (!mounted) return null;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(title),
+        content: ValueListenableBuilder<String>(
+          valueListenable: progress,
+          builder: (context, message, _) => Row(
+            children: [
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+              const SizedBox(width: 16),
+              Expanded(child: Text(message)),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      return await task((message) => progress.value = message);
+    } finally {
+      progress.dispose();
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+  }
+
   Future<void> _backupData() async {
     try {
       debugPrint('=== Backup Data Started ===');
-      final filePath = await BackupService.exportBackup();
+
+      final directory = await getDownloadsDirectory();
+      if (directory == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not access downloads directory')),
+          );
+        }
+        return;
+      }
+
+      final filePath = await _runWithProgress<String>(
+        title: 'Creating Backup',
+        task: (report) => ZipBackupService.createBackup(
+          outputDirectory: directory.path,
+          onProgress: report,
+        ),
+      );
+
+      if (filePath == null) {
+        return;
+      }
+
       debugPrint('Backup file created at: $filePath');
       
       final file = File(filePath);
@@ -2653,11 +2715,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Text('To restore a backup:'),
             SizedBox(height: 8),
-            Text('1. Copy your backup JSON file to the Downloads folder'),
+            Text('1. Copy your backup file to the Downloads folder'),
             SizedBox(height: 4),
-            Text('2. The file must be named: bragmat_backup_*.json'),
+            Text('2. The file must be named: bragmat_backup_*.zip'),
             SizedBox(height: 4),
-            Text('3. The most recent backup will be used'),
+            Text('3. You will be able to preview the backup before restoring'),
             SizedBox(height: 16),
             Text('Warning: This will replace your current data if it exists.',
               style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
@@ -2682,7 +2744,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     try {
-      // Find backup file in downloads
+      // Find backup files in downloads
       final directory = await getDownloadsDirectory();
       if (directory == null) {
         if (mounted) {
@@ -2693,10 +2755,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return;
       }
 
-      // Find most recent backup file
       final files = directory.listSync().whereType<File>().toList();
       final backupFiles = files
-          .where((f) => f.path.contains('bragmat_backup_') && f.path.endsWith('.json'))
+          .where((f) =>
+              f.path.contains('bragmat_backup_') &&
+              (f.path.endsWith('.zip') || f.path.endsWith('.json')))
           .toList();
 
       if (backupFiles.isEmpty) {
@@ -2710,61 +2773,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
       // Sort by last modified, most recent first
       backupFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-      final backupFile = backupFiles.first;
-
-      // Check if database has data
-      final existingCatches = await DatabaseHelper.instance.getCatches();
-      final hasExistingData = existingCatches.isNotEmpty;
 
       if (!mounted) return;
-      
-      // Show confirmation with file name
-      final restoreConfirmed = await showDialog<bool>(
+
+      // Let the user pick which backup to restore
+      final selected = await showDialog<File>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Restore Backup'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text('Restore from this file?'),
-              const SizedBox(height: 8),
-              Text('File: ${backupFile.path.split('/').last}'),
-              const SizedBox(height: 8),
-              if (hasExistingData) ...[
-                const Text(
-                  'Warning: Your current data will be replaced.',
-                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('Restore'),
-            ),
-          ],
+        builder: (context) => SimpleDialog(
+          title: const Text('Select Backup'),
+          children: backupFiles.map((file) {
+            final fileName = file.path.split(RegExp(r'[/\\]')).last;
+            final modified = file.lastModifiedSync();
+            final isZip = file.path.endsWith('.zip');
+            return SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, file),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(fileName),
+                  Text(
+                    '${isZip ? 'Portable backup' : 'Legacy JSON backup'} • '
+                    '${modified.toLocal().toString().split('.').first}',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                ],
+              ),
+            );
+          }).toList(),
         ),
       );
 
-      if (restoreConfirmed != true) {
+      if (selected == null || !mounted) {
         return;
       }
 
-      await BackupService.restoreBackup(backupFile.path, overwrite: hasExistingData);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Backup restored successfully')),
-        );
-        // Reload data
-        _loadStatistics();
-        _loadFishTypes();
-        _loadFishingBuddies();
+      if (selected.path.endsWith('.json')) {
+        await _restoreLegacyJsonBackup(selected);
+      } else {
+        await _restoreZipBackup(selected);
       }
     } catch (e) {
       if (mounted) {
@@ -2772,6 +2818,198 @@ class _SettingsScreenState extends State<SettingsScreen> {
           SnackBar(content: Text('Restore failed: $e')),
         );
       }
+    }
+  }
+
+  Future<void> _restoreZipBackup(File backupFile) async {
+    // Validate the backup and show a preview before restoring
+    final validation = await ZipBackupService.validateBackup(backupFile.path);
+    if (!mounted) return;
+
+    if (!validation.isValid) {
+      await showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Invalid Backup'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('This backup cannot be restored:'),
+              const SizedBox(height: 8),
+              ...validation.errors.map(
+                (error) => Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
+                  child: Text('• $error', style: const TextStyle(fontSize: 13)),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK'),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    final manifest = validation.manifest!;
+    final fileName = backupFile.path.split(RegExp(r'[/\\]')).last;
+
+    // Check if database has data that would be replaced
+    final existingCatches = await DatabaseHelper.instance.getCatches();
+    final hasExistingData = existingCatches.isNotEmpty;
+
+    if (!mounted) return;
+
+    // Show preview and confirmation
+    final restoreConfirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore Backup'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Restore from this backup?'),
+            const SizedBox(height: 8),
+            Text('File: $fileName'),
+            const SizedBox(height: 8),
+            Text('Created: ${manifest.createdAt}'),
+            Text('App version: ${manifest.bragmatVersion}'),
+            const SizedBox(height: 8),
+            Text('Catches: ${manifest.statistics.catches}'),
+            Text('Trips: ${manifest.statistics.trips}'),
+            Text('Photos: ${validation.mediaFileCount}'),
+            if (manifest.statistics.missingPhotos > 0) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Note: ${manifest.statistics.missingPhotos} photo(s) were missing when this backup was created.',
+                style: const TextStyle(fontSize: 12, color: Colors.orange),
+              ),
+            ],
+            if (hasExistingData) ...[
+              const SizedBox(height: 8),
+              const Text(
+                'Warning: Your current data will be replaced.',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+
+    if (restoreConfirmed != true) {
+      return;
+    }
+
+    try {
+      final result = await _runWithProgress<BackupRestoreResult>(
+        title: 'Restoring Backup',
+        task: (report) => ZipBackupService.restoreBackup(
+          zipPath: backupFile.path,
+          onProgress: report,
+        ),
+      );
+
+      if (result == null || !mounted) {
+        return;
+      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Backup restored successfully'
+            '${result.mediaFilesSkipped > 0 ? ' (${result.mediaFilesSkipped} media file(s) could not be copied)' : ''}',
+          ),
+        ),
+      );
+
+      // Reload data
+      _loadStatistics();
+      _loadFishTypes();
+      _loadFishingBuddies();
+      _loadLures();
+      _loadBaits();
+      _loadFishTypePreferences();
+      _loadTideReference();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Restore failed: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _restoreLegacyJsonBackup(File backupFile) async {
+    // Check if database has data
+    final existingCatches = await DatabaseHelper.instance.getCatches();
+    final hasExistingData = existingCatches.isNotEmpty;
+
+    if (!mounted) return;
+
+    // Show confirmation with file name
+    final restoreConfirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Restore Backup'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Restore from this file?'),
+            const SizedBox(height: 8),
+            Text('File: ${backupFile.path.split(RegExp(r'[/\\]')).last}'),
+            const SizedBox(height: 8),
+            if (hasExistingData) ...[
+              const Text(
+                'Warning: Your current data will be replaced.',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Restore'),
+          ),
+        ],
+      ),
+    );
+
+    if (restoreConfirmed != true) {
+      return;
+    }
+
+    await BackupService.restoreBackup(backupFile.path, overwrite: hasExistingData);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Backup restored successfully')),
+      );
+      // Reload data
+      _loadStatistics();
+      _loadFishTypes();
+      _loadFishingBuddies();
     }
   }
 
@@ -3100,7 +3338,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ListTile(
                 leading: const Icon(Icons.backup),
                 title: const Text('Backup Data'),
-                subtitle: const Text('Create a backup of all your data'),
+                subtitle: const Text('Create a portable backup (data + photos)'),
                 onTap: _backupData,
               ),
               const Divider(height: 1),

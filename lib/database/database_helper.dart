@@ -30,6 +30,24 @@ class DatabaseHelper {
     return _database!;
   }
 
+  /// Get the file path of the live database.
+  Future<String> get databaseFilePath async {
+    final dbPath = await getDatabasesPath();
+    return join(dbPath, 'bragmat.db');
+  }
+
+  /// Close the live database connection.
+  ///
+  /// The connection will be re-opened lazily on the next [database] access.
+  /// Used by backup restore to allow the database file to be replaced.
+  Future<void> closeDatabase() async {
+    final db = _database;
+    _database = null;
+    if (db != null) {
+      await db.close();
+    }
+  }
+
   Future<Database> _initDB(String filePath) async {
     final dbPath = await getDatabasesPath();
     final path = join(dbPath, filePath);
