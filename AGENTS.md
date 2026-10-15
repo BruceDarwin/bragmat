@@ -26,6 +26,34 @@ Flutter fishing log app. Primary dev/test device: Moto G15 (Android).
 - Manual backup/restore verification on the Moto G15 before tagging a
   validated baseline
 
+## Android installs — data-preserving procedure (MANDATORY)
+
+App data (SQLite DB + photos) lives in the app's private storage and is
+**destroyed by uninstall**. Never uninstall to install.
+
+**Rules:**
+
+1. NEVER run `flutter install` (it uninstalls+reinstalls on signature or
+   version conflicts, wiping all app data). NEVER run `adb uninstall`.
+2. ALWAYS install via `tool/safe_install.sh <apk>` — it verifies the APK
+   package ID, version code and signing certificate against the installed
+   app, refuses downgrades, checks that a `bragmat_backup_*.zip` exists on
+   shared storage before updating a data-bearing install, and installs via
+   `adb install -r` only.
+3. If `adb install -r` fails (signature mismatch, downgrade, etc.) STOP —
+   report the error and wait for the user. Do NOT uninstall and retry.
+4. Before any significant deployment, confirm a backup exists OUTSIDE the
+   app's private storage (e.g. a `bragmat_backup_*.zip` in Downloads, or
+   a copy on the PC/cloud).
+5. When a new build must be signed differently from what is installed
+   (e.g. future release signing), the only data-safe path is: export a ZIP
+   backup inside the app first, then approve the data-losing install
+   explicitly with the user.
+6. `tool/safe_install.sh --check-only` runs all verifications without
+   installing — use it to inspect state before any device operation.
+7. `tool/inspect_db.dart <db-path>` reads schema version + row counts of a
+   SQLite file read-only — use it to verify backup contents.
+
 ## Baselines
 
 - `v1.0.0-backup-restore-validated` — portable ZIP backup (create + restore)
