@@ -150,7 +150,8 @@ void main() {
     expect(await targetOwner(), isNull);
   });
 
-  test('unowned backup is stamped with the install owner', () async {
+  test('unowned backup restores unowned even on a claimed install — '
+      'never silently assigned, explicit claim required', () async {
     await writeV29File(targetDbPath,
         accountOwner: 'user-A', fish: ['Owned']);
     final src = path.join(testDir.path, 'src.db');
@@ -162,8 +163,9 @@ void main() {
 
     final catches = await readTargetCatches();
     expect(catches.single['fish_type'], 'FromBackup');
-    expect(catches.single['owner_id'], 'user-A');
-    expect(await targetOwner(), 'user-A');
+    // Restored data stays unowned — claiming is always explicit.
+    expect(catches.single['owner_id'], isNull);
+    expect(await targetOwner(), isNull);
   });
 
   test('v29 backup with matching owner restores', () async {

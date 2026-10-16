@@ -82,6 +82,38 @@ void main() {
           created_at TEXT NOT NULL, updated_at TEXT NOT NULL
         )
       ''');
+      await db.execute('''
+        CREATE TABLE trip_media (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          trip_id INTEGER NOT NULL, file_path TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE journal_media (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          journal_entry_id INTEGER NOT NULL, file_path TEXT NOT NULL,
+          created_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE environmental_conditions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          catch_id INTEGER, observation_date_time TEXT NOT NULL,
+          created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE user_achievements (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          achievement_id TEXT NOT NULL, unlocked_date TEXT NOT NULL
+        )
+      ''');
+      await db.execute('''
+        CREATE TABLE baits (
+          id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT UNIQUE NOT NULL
+        )
+      ''');
       if (populate) {
         for (var i = 0; i < catchCount; i++) {
           await db.insert('catches',
@@ -100,6 +132,19 @@ void main() {
         await db.insert('trip_journal',
             {'trip_id': 1, 'title': 'Day 1', 'created_at': '2025-01-01',
              'updated_at': '2025-01-01'});
+        await db.insert('trip_media',
+            {'trip_id': 1, 'file_path': 'trips/t.jpg',
+             'created_at': '2025-01-01'});
+        await db.insert('journal_media',
+            {'journal_entry_id': 1, 'file_path': 'journal/j.jpg',
+             'created_at': '2025-01-01'});
+        await db.insert('environmental_conditions',
+            {'catch_id': 1, 'observation_date_time': '2025-01-01',
+             'created_at': '2025-01-01', 'updated_at': '2025-01-01'});
+        await db.insert('user_achievements',
+            {'achievement_id': 'first-catch',
+             'unlocked_date': '2025-01-01'});
+        await db.insert('baits', {'name': 'Worm'});
       }
     });
     await db.close();
@@ -154,15 +199,65 @@ void main() {
       expect(await MigrationV29.tableExists(db, 'sync_queue'), isTrue);
       expect(await OwnershipService.ownerIdFrom(db), isNull);
 
-      // Triggers installed on every present user table.
+      // All four triggers installed on every one of the 12 tables.
       final triggers = await triggerNames(db);
-      for (final t in [
-        'catches', 'catch_media', 'fishing_trips', 'fishing_buddies',
-        'lures', 'favourite_spots', 'trip_journal'
-      ]) {
+      for (final t in MigrationV29.userOwnedTables) {
         for (final s in ['ai', 'touch', 'qu', 'qd']) {
-          expect(triggers, contains('trg_${t}_$s'));
+          expect(triggers, contains('trg_${t}_$s'),
+              reason: 'missing trg_${t}_$s');
         }
+      }
+    });
+
+    test('identity triggers fire on all 12 user-owned tables', () async {
+      await createV28Database(dbPath);
+      final db = await openLive();
+      await db.update('local_account', {'owner_id': 'user-A'},
+          where: 'id = 1');
+
+      const inserts = <String, Map<String, Object?>>{
+        'catches': {'fish_type': 'x', 'created_at': 't'},
+        'catch_media': {'catch_id': 1, 'file_path': 'x',
+                        'created_at': 't'},
+        'fishing_trips': {'name': 'x', 'start_date': 't',
+                          'created_at': 't'},
+        'trip_media': {'trip_id': 1, 'file_path': 'x',
+                       'created_at': 't'},
+        'trip_journal': {'trip_id': 1, 'title': 'x',
+                         'created_at': 't', 'updated_at': 't'},
+        'journal_media': {'journal_entry_id': 1, 'file_path': 'x',
+                          'created_at': 't'},
+        'favourite_spots': {'name': 'x'},
+        'environmental_conditions': {
+          'observation_date_time': 't', 'created_at': 't',
+          'updated_at': 't'},
+        'user_achievements': {'achievement_id': 'x',
+                              'unlocked_date': 't'},
+        'lures': {'name': 'x'},
+        'baits': {'name': 'x'},
+        'fishing_buddies': {'name': 'x'},
+      };
+      expect(inserts.keys.toSet(),
+          MigrationV29.userOwnedTables.toSet());
+
+      for (final t in MigrationV29.userOwnedTables) {
+        final id = await db.insert(t, inserts[t]!);
+        final row =
+            (await db.query(t, where: 'id = ?', whereArgs: [id])).first;
+        expect(row['uuid'], isNotNull, reason: '$t uuid not filled');
+        expect(row['owner_id'], 'user-A',
+            reason: '$t owner not stamped');
+        expect(row['updated_at'], isNotNull,
+            reason: '$t updated_at not filled');
+
+        // Deletion writes a uuid-bearing tombstone.
+        await db.delete(t, where: 'id = ?', whereArgs: [id]);
+        final tomb = await db.query('sync_queue',
+            where: "table_name = '$t' AND operation = 'delete' "
+                'AND local_id = ?',
+            whereArgs: [id]);
+        expect(tomb.length, 1, reason: '$t delete tombstone missing');
+        expect(tomb.first['record_uuid'], row['uuid']);
       }
     });
 
@@ -326,31 +421,41 @@ void main() {
       expect(events.any((e) => e['operation'] == 'insert'), isTrue);
     });
 
-    test('compaction keeps only the latest event per record', () async {
+    test('compaction coalesces updates but keeps every tombstone',
+        () async {
       await createV28Database(dbPath);
       final db = await openLive();
       // Generate several events for catch id=1.
       await db.update('catches', {'fish_type': 'A'}, where: 'id = 1');
       await db.update('catches', {'fish_type': 'B'}, where: 'id = 1');
       await db.delete('catches', where: 'id = 2');
-      final before =
-          (await db.query('sync_queue')).length;
-      expect(before, greaterThan(1));
+      // A second record fully created and deleted.
+      final newId = await db.insert('lures', {'name': 'Temp'});
+      await db.delete('lures', where: 'id = ?', whereArgs: [newId]);
+      final before = (await db.query('sync_queue')).length;
+      expect(before, greaterThan(2));
 
       await MigrationV29.compactSyncQueue(db);
       final rows = await db.query('sync_queue');
-      // One surviving event per distinct record.
-      final keys = rows
-          .map((r) =>
-              '${r['table_name']}:${r['record_uuid'] ?? r['local_id']}')
-          .toSet();
-      expect(rows.length, keys.length);
-      // The delete tombstone for catch 2 survives.
+
+      // Catch 1: superseded update events coalesced to the latest.
+      final catch1 = rows
+          .where((r) => r['table_name'] == 'catches' && r['local_id'] == 1)
+          .toList();
+      expect(catch1.length, 1);
+      expect(catch1.single['operation'], 'update');
+
+      // Both tombstones survive compaction unconditionally.
+      final deletes =
+          rows.where((r) => r['operation'] == 'delete').toList();
+      expect(deletes.length, greaterThanOrEqualTo(2));
       expect(
-          rows.any((r) =>
-              r['table_name'] == 'catches' &&
-              r['local_id'] == 2 &&
-              r['operation'] == 'delete'),
+          deletes.any((r) =>
+              r['table_name'] == 'catches' && r['local_id'] == 2),
+          isTrue);
+      expect(
+          deletes.any((r) =>
+              r['table_name'] == 'lures' && r['local_id'] == newId),
           isTrue);
     });
   });

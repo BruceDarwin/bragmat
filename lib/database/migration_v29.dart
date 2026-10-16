@@ -214,13 +214,16 @@ class MigrationV29 {
     }
   }
 
-  /// Keep only the latest event per record. Without a sync consumer the
-  /// queue must not grow unboundedly; the newest event per record
-  /// (insert/update/delete tombstone) is all a future sync needs.
+  /// Bound queue growth without losing information sync will need:
+  /// only superseded insert/update events are dropped (the newest one
+  /// per record survives). Delete tombstones are ALWAYS kept — they are
+  /// the only record that a row was removed and cannot be recovered.
   static Future<int> compactSyncQueue(DatabaseExecutor db) async {
     return await db.rawDelete('''
-      DELETE FROM sync_queue WHERE seq NOT IN (
+      DELETE FROM sync_queue
+      WHERE operation != 'delete' AND seq NOT IN (
         SELECT MAX(seq) FROM sync_queue
+        WHERE operation != 'delete'
         GROUP BY table_name, COALESCE(record_uuid, CAST(local_id AS TEXT))
       )
     ''');

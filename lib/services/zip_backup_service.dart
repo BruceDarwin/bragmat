@@ -15,13 +15,11 @@ import '../services/tide_reference_service.dart';
 
 /// What a restore may do about ownership.
 enum _RestoreOwnership {
-  /// Restore and leave ownership as stored (unowned backup on an
-  /// unclaimed install, or a backup that carries its own owner).
+  /// Restore and leave ownership exactly as stored in the backup.
+  /// Restored data is NEVER silently assigned to the current install
+  /// owner — an unowned backup restores unowned and requires the
+  /// explicit claim afterwards, even on a claimed install.
   allow,
-
-  /// Restore and stamp every unowned row + local_account with the
-  /// install's current owner (unowned backup on a claimed install).
-  stamp,
 
   /// Refuse — different owner.
   deny,
@@ -517,11 +515,11 @@ class ZipBackupService {
           databasePathOverride ?? await DatabaseHelper.instance.databaseFilePath;
 
       // Ownership gate — a restore must never silently bypass the
-      // installation's ownership controls. v28/unowned backups restore
-      // normally and are stamped with the current owner when the device
-      // is claimed (or stay unowned, requiring the explicit claim).
-      // v29 backups restore only when their owner matches; mismatched
-      // or ambiguous ownership blocks the restore before any staging.
+      // installation's ownership controls. Ownership comes only from
+      // the backup file itself: unowned (v28) backups restore unowned
+      // and need the explicit claim afterwards; v29 backups restore
+      // only when their owner matches; mismatched or ambiguous
+      // ownership blocks the restore before any staging.
       final backupOwnership =
           await _readDbOwnership(sourceDbFile.path);
       // Live mode must read ownership via the live connection — a second
@@ -560,14 +558,10 @@ class ZipBackupService {
         throw Exception('Backup database failed integrity check after staging');
       }
 
-      // Upgrade the staged file to the current schema and apply the
-      // ownership decision. Doing this before the swap keeps stamping
-      // atomic with staging — a failure here aborts with the live
-      // database untouched.
-      await _prepareStagedOwnership(
-          stagePath, ownershipAction == _RestoreOwnership.stamp
-              ? targetOwnership.ownerId
-              : null);
+      // Upgrade the staged file to the current schema before the swap —
+      // ownership is left exactly as the backup stores it; a failure
+      // here aborts with the live database untouched.
+      await _upgradeStagedDatabase(stagePath);
       await _reportStage('dbStaged', onProgress, 'Database staged');
 
       onProgress?.call('Staging media files...');
@@ -819,9 +813,9 @@ class ZipBackupService {
       ({String? ownerId, bool ambiguous}) backup) {
     if (backup.ambiguous) return _RestoreOwnership.ambiguous;
     if (backup.ownerId == null) {
-      return currentOwner == null
-          ? _RestoreOwnership.allow
-          : _RestoreOwnership.stamp;
+      // Unowned backup: always allowed, ownership never assigned —
+      // the explicit claim decides afterwards.
+      return _RestoreOwnership.allow;
     }
     if (currentOwner == null || backup.ownerId == currentOwner) {
       return _RestoreOwnership.allow;
@@ -829,33 +823,14 @@ class ZipBackupService {
     return _RestoreOwnership.deny;
   }
 
-  /// Upgrade [stagedDbPath] to the current schema and, when
-  /// [stampOwner] is non-null, stamp every unowned row and the
-  /// local_account record with that owner. Ownership triggers are
-  /// suspended during stamping so bulk updates don't churn updated_at
-  /// or flood sync_queue.
-  static Future<void> _prepareStagedOwnership(
-      String stagedDbPath, String? stampOwner) async {
+  /// Upgrade [stagedDbPath] to the current schema in place before the
+  /// file is promoted to the live database path.
+  static Future<void> _upgradeStagedDatabase(String stagedDbPath) async {
     Database? db;
     try {
       db = await openDatabase(stagedDbPath,
           version: _maxSupportedSchemaVersion,
           onUpgrade: DatabaseHelper.instance.upgradeDatabase);
-      if (stampOwner == null) return;
-      await db.transaction((txn) async {
-        await MigrationV29.withoutTriggers(txn, () async {
-          for (final table in MigrationV29.userOwnedTables) {
-            if (!await MigrationV29.tableExists(txn, table)) continue;
-            await txn.rawUpdate(
-                'UPDATE $table SET owner_id = ? WHERE owner_id IS NULL',
-                [stampOwner]);
-          }
-        });
-        await txn.rawUpdate(
-            'UPDATE local_account SET owner_id = ? WHERE id = 1 AND '
-            'owner_id IS NULL',
-            [stampOwner]);
-      });
     } finally {
       await db?.close();
     }
