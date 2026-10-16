@@ -165,6 +165,24 @@ up to 1 hour — not instantly. This is the documented limitation.*
 4. **This test**: second account only; primary `beta_testers` row is
    never modified.
 
+## Functional defects recorded during testing
+
+- **DEFECT-1 — `everApproved` is device-wide and cleared on sign-out.**
+  - Symptom A (insecurity): a stale flag set by an approved account can
+    be read by a different account whose entitlement check is
+    unresolvable (offline/RPC failure) → `signedIn` for a never-approved
+    account. Only the ownership gate limits the damage on a claimed
+    install; an unclaimed install would be browsable.
+  - Symptom B (messaging): `signOut()` deletes the flag, so a revoked
+    user who signs out and back in sees **"Awaiting Invitation"**
+    (never-approved copy) instead of **"Access Removed"** — the revoked
+    screen is only reachable while the revoked session is still alive.
+  - Required fix (pre-beta): key approval history per Supabase user ID
+    (e.g. `auth_ever_approved_<uid>`) and persist it across sign-out so
+    that (a) accounts can't inherit each other's approval state and
+    (b) a returning revoked user sees "Access Removed". Regression
+    tests must cover account switching and sign-out/sign-in cycles.
+
 ## Post-test state
 
 - `beta_testers` restored: main `active`, second `active`.
