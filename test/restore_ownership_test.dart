@@ -236,4 +236,14 @@ void main() {
     expect((await readTargetCatches()).single['fish_type'], 'Theirs');
     expect(await targetOwner(), 'user-B');
   });
+
+  test('schemaVersionOf reports the file\'s real user_version', () async {
+    final v28 = path.join(testDir.path, 'v28.db');
+    await writeV28File(v28, ['x']);
+    expect(await ZipBackupService.schemaVersionOf(v28), 28);
+
+    final v29 = path.join(testDir.path, 'v29.db');
+    await writeV29File(v29, accountOwner: null, fish: ['x']);
+    expect(await ZipBackupService.schemaVersionOf(v29), 29);
+  });
 }

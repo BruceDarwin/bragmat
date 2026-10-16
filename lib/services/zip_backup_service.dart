@@ -73,7 +73,8 @@ class ZipBackupService {
       
       onProgress?.call('Creating manifest...');
       
-      // Step 4: Create manifest
+      // Step 4: Create manifest — report the snapshot's actual schema
+      // version, not a constant.
       String bragmatVersion = 'unknown';
       try {
         final packageInfo = await PackageInfo.fromPlatform();
@@ -81,9 +82,10 @@ class ZipBackupService {
       } catch (_) {
         // Package info is unavailable in unit tests; keep creating backups.
       }
+      final snapshotSchemaVersion = await schemaVersionOf(snapshotPath);
       final manifest = BackupManifest.create(
         bragmatVersion: bragmatVersion,
-        databaseSchemaVersion: 28,
+        databaseSchemaVersion: snapshotSchemaVersion,
         platform: _getPlatform(),
         contents: BackupContents(
           database: true,
@@ -821,6 +823,19 @@ class ZipBackupService {
       return _RestoreOwnership.allow;
     }
     return _RestoreOwnership.deny;
+  }
+
+  /// Read the `PRAGMA user_version` of a database file — used to record
+  /// the snapshot's real schema version in the backup manifest.
+  static Future<int> schemaVersionOf(String dbPath) async {
+    Database? db;
+    try {
+      db = await openDatabase(dbPath, readOnly: true);
+      return (await db.rawQuery('PRAGMA user_version'))
+          .first.values.first as int;
+    } finally {
+      await db?.close();
+    }
   }
 
   /// Upgrade [stagedDbPath] to the current schema in place before the

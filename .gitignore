@@ -47,3 +47,7 @@ app.*.map.json
 # Environment secrets (use --dart-define; never commit real values)
 .env
 .env.local
+
+# Local device snapshots and verification scratch files
+device_snapshots/
+tool/verify_*_tmp.dart
