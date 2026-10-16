@@ -20,6 +20,7 @@ import '../services/backup_file_service.dart';
 import '../services/media_storage_service.dart';
 import '../services/zip_backup_service.dart';
 import '../services/auth_service.dart';
+import '../services/ownership_service.dart';
 import '../services/supabase_config.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
@@ -28,6 +29,7 @@ import '../services/secure_storage_service.dart';
 import '../services/tide_reference_service.dart';
 import '../widgets/bragmat_section_card.dart';
 import 'favourite_spots_screen.dart';
+import 'claim_data_screen.dart';
 import 'achievements_screen.dart';
 import 'photo_metadata_diagnostic_screen.dart';
 
@@ -3308,6 +3310,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   leading: const Icon(Icons.verified_user),
                   title: Text(AuthService.instance.email ?? 'Signed in'),
                   subtitle: const Text('Beta tester account'),
+                ),
+                const Divider(height: 1),
+                FutureBuilder<OwnershipState>(
+                  future:
+                      OwnershipService.evaluate(AuthService.instance.userId),
+                  builder: (context, snap) {
+                    final state = snap.data;
+                    if (state == OwnershipState.owner) {
+                      return const ListTile(
+                        leading: Icon(Icons.lock_person),
+                        title: Text('Device Data Linked'),
+                        subtitle: Text(
+                            'This device\'s data belongs to your account'),
+                      );
+                    }
+                    if (state == OwnershipState.unclaimed) {
+                      return ListTile(
+                        leading: const Icon(Icons.link),
+                        title: const Text('Link Data to Account'),
+                        subtitle: const Text(
+                            'Assign this device\'s fishing data to your account'),
+                        onTap: () {
+                          Navigator.of(context)
+                              .push<bool>(MaterialPageRoute(
+                            builder: (_) => const ClaimDataScreen(),
+                          ))
+                              .then((done) {
+                            if (done == true) setState(() {});
+                          });
+                        },
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
                 ),
                 const Divider(height: 1),
                 ListTile(

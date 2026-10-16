@@ -1,7 +1,10 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
+import '../services/ownership_service.dart';
 import '../services/supabase_config.dart';
 import 'sign_in_screen.dart';
 import 'reset_password_screen.dart';
@@ -39,7 +42,12 @@ class _AuthGateState extends State<AuthGate> {
     super.dispose();
   }
 
-  void _onAuthChanged() => setState(() {});
+  void _onAuthChanged() {
+    // Re-evaluate ownership on every auth transition — including
+    // sign-out — so the DB-layer guard arms/disarms promptly.
+    unawaited(OwnershipService.evaluate(AuthService.instance.userId));
+    setState(() {});
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -71,8 +79,49 @@ class _AuthGateState extends State<AuthGate> {
       case AuthStatus.revoked:
         return const RevokedScreen();
       case AuthStatus.signedIn:
-        return widget.child;
+        // Ownership gate — a signed-in account that does not own this
+        // installation's data is refused entry entirely (the DB-layer
+        // guard is also armed by OwnershipService.evaluate).
+        return FutureBuilder<OwnershipState>(
+          key: ValueKey(auth.userId),
+          future: OwnershipService.evaluate(auth.userId),
+          builder: (context, snap) {
+            if (snap.connectionState != ConnectionState.done) {
+              return const Scaffold(
+                body: Center(child: CircularProgressIndicator()),
+              );
+            }
+            if (snap.data == OwnershipState.denied) {
+              return const _OwnershipDeniedScreen();
+            }
+            return widget.child;
+          },
+        );
     }
+  }
+}
+
+/// Signed-in account does not own this installation's local data.
+/// Terminal: sign-out only — no data access, delete, or reassignment.
+class _OwnershipDeniedScreen extends StatelessWidget {
+  const _OwnershipDeniedScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return _AuthMessageScreen(
+      icon: Icons.folder_off_outlined,
+      title: 'Data Belongs to Another Account',
+      message:
+          'The fishing data on this device is linked to a different '
+          'account. You cannot view or modify it.\n\n'
+          'Sign in with the account that claimed this device.',
+      actions: [
+        ElevatedButton(
+          onPressed: () => AuthService.instance.signOut(),
+          child: const Text('Sign Out'),
+        ),
+      ],
+    );
   }
 }
 

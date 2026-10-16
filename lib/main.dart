@@ -15,6 +15,7 @@ import 'services/zip_backup_service.dart';
 import 'services/media_storage_service.dart';
 import 'services/auth_service.dart';
 import 'database/database_helper.dart';
+import 'database/migration_v29.dart';
 import 'screens/auth_gate.dart';
 
 void main() {
@@ -32,6 +33,10 @@ void main() {
       final renames = await MediaStorageService.migrateLegacyStorage();
       await DatabaseHelper.instance
           .migrateMediaPaths(mediaDir.path, renames);
+      // Bound the sync-queue change log: keep only the latest event per
+      // record until a sync consumer exists.
+      final db = await DatabaseHelper.instance.systemDatabase;
+      await MigrationV29.compactSyncQueue(db);
     } catch (_) {}
   }());
   // Initialise Supabase auth (no-op when credentials are not supplied via
