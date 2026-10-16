@@ -45,22 +45,26 @@ class ZipBackupService {
       final snapshotPath = path.join(tempDir.path, _databaseFileName);
       await DatabaseHelper.instance.createSnapshot(snapshotPath);
       
-      onProgress?.call('Normalizing media paths...');
-      
-      // Step 2: Normalize paths in temporary database
-      await _normalizeMediaPaths(snapshotPath);
-      
       onProgress?.call('Collecting media files...');
-      
-      // Step 3: Collect media files and statistics
+
+      // Step 2: Collect media files and rewrite every snapshot reference
+      // to the exact archive-relative path the file is stored under.
+      // Collection and normalisation are one pass so the snapshot can
+      // never reference a name that is absent from the archive.
       final mediaResult = await _collectMediaFiles(snapshotPath, tempDir);
       
       onProgress?.call('Creating manifest...');
       
       // Step 4: Create manifest
-      final packageInfo = await PackageInfo.fromPlatform();
+      String bragmatVersion = 'unknown';
+      try {
+        final packageInfo = await PackageInfo.fromPlatform();
+        bragmatVersion = '${packageInfo.version}+${packageInfo.buildNumber}';
+      } catch (_) {
+        // Package info is unavailable in unit tests; keep creating backups.
+      }
       final manifest = BackupManifest.create(
-        bragmatVersion: '${packageInfo.version}+${packageInfo.buildNumber}',
+        bragmatVersion: bragmatVersion,
         databaseSchemaVersion: 28,
         platform: _getPlatform(),
         contents: BackupContents(
@@ -111,167 +115,151 @@ class ZipBackupService {
     return filePath.replaceAll('\\', '/');
   }
 
-  /// Normalize media paths in the temporary database to relative paths.
-  static Future<void> _normalizeMediaPaths(String databasePath) async {
-    final db = await openDatabase(databasePath);
-    
-    try {
-      // Normalize catch_media paths
-      final catchMedia = await db.query('catch_media');
-      for (final media in catchMedia) {
-        final absolutePath = media['file_path'] as String;
-        final relativePath = _toPortablePath(await MediaStorageService.toRelativePath(absolutePath));
-        
-        // Only update if path was successfully converted to relative
-        if (relativePath != absolutePath && path.isRelative(relativePath)) {
-          await db.update(
-            'catch_media',
-            {'file_path': relativePath},
-            where: 'id = ?',
-            whereArgs: [media['id']],
-          );
-        }
-      }
-      
-      // Normalize trip_media paths
-      final tripMedia = await db.query('trip_media');
-      for (final media in tripMedia) {
-        final absolutePath = media['file_path'] as String;
-        final relativePath = _toPortablePath(await MediaStorageService.toRelativePath(absolutePath));
-        
-        if (relativePath != absolutePath && path.isRelative(relativePath)) {
-          await db.update(
-            'trip_media',
-            {'file_path': relativePath},
-            where: 'id = ?',
-            whereArgs: [media['id']],
-          );
-        }
-      }
-      
-      // Normalize journal_media paths
-      final journalMedia = await db.query('journal_media');
-      for (final media in journalMedia) {
-        final absolutePath = media['file_path'] as String;
-        final relativePath = _toPortablePath(await MediaStorageService.toRelativePath(absolutePath));
-        
-        if (relativePath != absolutePath && path.isRelative(relativePath)) {
-          await db.update(
-            'journal_media',
-            {'file_path': relativePath},
-            where: 'id = ?',
-            whereArgs: [media['id']],
-          );
-        }
-      }
-      
-      // Normalize lure_photo_path in catches
-      final catches = await db.query('catches', columns: ['id', 'lure_photo_path']);
-      for (final catch_ in catches) {
-        final absolutePath = catch_['lure_photo_path'] as String?;
-        if (absolutePath != null && absolutePath.isNotEmpty) {
-          final relativePath = _toPortablePath(await MediaStorageService.toRelativePath(absolutePath));
-          
-          if (relativePath != absolutePath && path.isRelative(relativePath)) {
-            await db.update(
-              'catches',
-              {'lure_photo_path': relativePath},
-              where: 'id = ?',
-              whereArgs: [catch_['id']],
-            );
-          }
-        }
-      }
-    } finally {
-      await db.close();
-    }
-  }
-  
-  /// Collect media files referenced by the database.
-  /// 
-  /// Returns media counts and statistics, and copies files to the temp directory.
+  /// Media reference columns backed by the archive: (table, column,
+  /// archive subdirectory).
+  static const List<(String, String, String)> _mediaSources = [
+    ('catch_media', 'file_path', 'catches'),
+    ('trip_media', 'file_path', 'trips'),
+    ('journal_media', 'file_path', 'journals'),
+    ('catches', 'lure_photo_path', 'lures'),
+    ('catches', 'image_path', 'catches'),
+  ];
+
+  /// Collect media files referenced by the snapshot database into
+  /// `<tempDir>/media/` and rewrite each stored reference to the exact
+  /// archive-relative path the file is copied under.
+  ///
+  /// Collection and path normalisation are deliberately a single pass so
+  /// the snapshot can only reference names that exist in the archive:
+  /// - relative paths resolve against the media directory, with legacy
+  ///   singular subdirs (`catch/`) canonicalised
+  /// - absolute paths resolve wherever readable, with a unique-basename
+  ///   fallback inside the media directory
+  /// - distinct source files sharing a basename are archived under a
+  ///   `_cN` suffix instead of overwriting each other; byte-identical
+  ///   duplicates share one archive entry
   static Future<_MediaCollectionResult> _collectMediaFiles(
     String databasePath,
     Directory tempDir,
   ) async {
     final db = await openDatabase(databasePath);
-    
-    final mediaDir = Directory(path.join(tempDir.path, _mediaDirectoryName));
-    if (!await mediaDir.exists()) {
-      await mediaDir.create(recursive: true);
+    final mediaDir = await MediaStorageService.getMediaDirectory();
+
+    final backupMediaDir =
+        Directory(path.join(tempDir.path, _mediaDirectoryName));
+    if (!await backupMediaDir.exists()) {
+      await backupMediaDir.create(recursive: true);
     }
-    
-    int catchCount = 0;
-    int tripCount = 0;
-    int journalCount = 0;
-    int lureCount = 0;
-    int missingPhotos = 0;
+
+    // Archive-relative name → staged file, for collision detection.
+    final staged = <String, File>{};
+    final collected = <String, int>{
+      'catches': 0,
+      'trips': 0,
+      'journals': 0,
+      'lures': 0,
+    };
+    final unresolvedRows = <String>{};
     int totalPhotos = 0;
-    
+
     try {
-      // Collect catch media
-      final catchMedia = await db.query('catch_media');
-      for (final media in catchMedia) {
-        final relativePath = media['file_path'] as String;
-        if (await _copyMediaFile(relativePath, mediaDir, 'catches')) {
-          catchCount++;
+      for (final (table, column, subdir) in _mediaSources) {
+        List<Map<String, Object?>> rows;
+        try {
+          rows = await db.query(
+            table,
+            columns: ['id', column],
+            where: '$column IS NOT NULL AND $column != \'\'',
+          );
+        } catch (_) {
+          continue; // Table/column may not exist in older schemas.
+        }
+        for (final row in rows) {
+          final ref = row[column] as String;
+          final source = _resolveBackupSourceFile(ref, mediaDir);
+          if (source == null) {
+            unresolvedRows.add('$table:${row['id']}');
+            continue;
+          }
+          var archiveRel = '$subdir/${path.basename(source.path)}';
+          var write = true;
+          final existing = staged[archiveRel];
+          if (existing != null) {
+            if (await _filesEqual(existing, source)) {
+              // Identical content already archived — share the entry.
+              write = false;
+            } else {
+              // Same basename, different content: archive under a
+              // collision-safe name rather than overwriting.
+              final ext = path.extension(archiveRel);
+              final stem =
+                  archiveRel.substring(0, archiveRel.length - ext.length);
+              var n = 1;
+              do {
+                archiveRel = '${stem}_c$n$ext';
+                n++;
+              } while (staged.containsKey(archiveRel));
+            }
+          }
+          if (write) {
+            final dest = File(path.joinAll(
+                [backupMediaDir.path, ...archiveRel.split('/')]));
+            await dest.parent.create(recursive: true);
+            await source.copy(dest.path);
+            staged[archiveRel] = dest;
+          }
+          final portableRef = _toPortablePath(ref);
+          if (archiveRel != portableRef) {
+            await db.update(
+              table,
+              {column: archiveRel},
+              where: 'id = ?',
+              whereArgs: [row['id']],
+            );
+          }
+          collected[subdir] = collected[subdir]! + 1;
           totalPhotos++;
-        } else {
-          missingPhotos++;
         }
       }
-      
-      // Collect trip media
-      final tripMedia = await db.query('trip_media');
-      for (final media in tripMedia) {
-        final relativePath = media['file_path'] as String;
-        if (await _copyMediaFile(relativePath, mediaDir, 'trips')) {
-          tripCount++;
-          totalPhotos++;
-        } else {
-          missingPhotos++;
+
+      // Verify: every stored reference must resolve to a staged archive
+      // entry. Rows already counted as unresolved stay untouched.
+      int missingPhotos = unresolvedRows.length;
+      for (final (table, column, _) in _mediaSources) {
+        List<Map<String, Object?>> rows;
+        try {
+          rows = await db.query(
+            table,
+            columns: ['id', column],
+            where: '$column IS NOT NULL AND $column != \'\'',
+          );
+        } catch (_) {
+          continue;
         }
-      }
-      
-      // Collect journal media
-      final journalMedia = await db.query('journal_media');
-      for (final media in journalMedia) {
-        final relativePath = media['file_path'] as String;
-        if (await _copyMediaFile(relativePath, mediaDir, 'journals')) {
-          journalCount++;
-          totalPhotos++;
-        } else {
-          missingPhotos++;
-        }
-      }
-      
-      // Collect lure photos
-      final catches = await db.query('catches', columns: ['lure_photo_path']);
-      for (final catch_ in catches) {
-        final relativePath = catch_['lure_photo_path'] as String?;
-        if (relativePath != null && relativePath.isNotEmpty) {
-          if (await _copyMediaFile(relativePath, mediaDir, 'lures')) {
-            lureCount++;
-            totalPhotos++;
-          } else {
+        for (final row in rows) {
+          if (unresolvedRows.contains('$table:${row['id']}')) continue;
+          final ref = _toPortablePath(row[column] as String);
+          if (!staged.containsKey(ref)) {
             missingPhotos++;
           }
         }
       }
-      
+
       // Get catch and trip counts for statistics
-      final catchResult = await db.rawQuery('SELECT COUNT(*) as count FROM catches');
+      final catchResult =
+          await db.rawQuery('SELECT COUNT(*) as count FROM catches');
       final catchCountStat = Sqflite.firstIntValue(catchResult) ?? 0;
-      
-      final tripResult = await db.rawQuery('SELECT COUNT(*) as count FROM fishing_trips');
+
+      final tripResult =
+          await db.rawQuery('SELECT COUNT(*) as count FROM fishing_trips');
       final tripCountStat = Sqflite.firstIntValue(tripResult) ?? 0;
-      
+
       return _MediaCollectionResult(
         counts: BackupMediaCounts(
-          catches: catchCount,
-          trips: tripCount,
-          journals: journalCount,
-          lures: lureCount,
+          catches: collected['catches']!,
+          trips: collected['trips']!,
+          journals: collected['journals']!,
+          lures: collected['lures']!,
         ),
         statistics: BackupStatistics(
           catches: catchCountStat,
@@ -284,39 +272,36 @@ class ZipBackupService {
       await db.close();
     }
   }
-  
-  /// Copy a media file to the backup directory.
-  /// 
-  /// Returns true if successful, false if file is missing or inaccessible.
-  static Future<bool> _copyMediaFile(
-    String relativePath,
-    Directory backupMediaDir,
-    String subDir,
-  ) async {
-    try {
-      // Resolve relative path to absolute
-      final absolutePath = await MediaStorageService.resolvePath(relativePath);
-      final sourceFile = File(absolutePath);
-      
-      if (!await sourceFile.exists()) {
-        return false;
+
+  /// Resolve a stored media reference to a readable file at backup time.
+  ///
+  /// Relative paths resolve against the media directory (with legacy
+  /// singular-subdir canonicalisation). Absolute paths are tried as-is;
+  /// when unreadable (e.g. a stale image-picker cache path from an older
+  /// install) the basename is looked up inside the media directory and
+  /// used only when it matches exactly one entity subdirectory.
+  static File? _resolveBackupSourceFile(String ref, Directory mediaDir) {
+    final portable = _toPortablePath(ref);
+    if (path.isAbsolute(ref)) {
+      final direct = File(ref);
+      if (direct.existsSync()) return direct;
+      final base = path.basename(portable);
+      final matches = <File>[];
+      for (final sub in const ['catches', 'trips', 'journals', 'lures']) {
+        final candidate = File(path.join(mediaDir.path, sub, base));
+        if (candidate.existsSync()) matches.add(candidate);
       }
-      
-      // Determine destination path in backup
-      final filename = path.basename(relativePath);
-      final destDir = Directory(path.join(backupMediaDir.path, subDir));
-      if (!await destDir.exists()) {
-        await destDir.create(recursive: true);
-      }
-      final destPath = path.join(destDir.path, filename);
-      
-      // Copy file
-      await sourceFile.copy(destPath);
-      
-      return true;
-    } catch (e) {
-      return false;
+      return matches.length == 1 ? matches.single : null;
     }
+    var candidate = File(path.joinAll([mediaDir.path, ...portable.split('/')]));
+    if (candidate.existsSync()) return candidate;
+    final canonical = MediaStorageService.canonicalizeRelPath(portable);
+    if (canonical != portable) {
+      candidate =
+          File(path.joinAll([mediaDir.path, ...canonical.split('/')]));
+      if (candidate.existsSync()) return candidate;
+    }
+    return null;
   }
   
   /// Export application settings for backup.
@@ -534,14 +519,63 @@ class ZipBackupService {
       final referencedPaths = await _collectReferencedMediaPaths(sourceDbFile.path);
       stagingMediaDir = _mediaStagingDirectory(mediaDir);
       await _stageMediaFiles(extractDir, stagingMediaDir);
+
+      // Index staged files by basename so legacy absolute paths (e.g.
+      // image-picker cache paths written by old builds) and legacy
+      // subdirectory prefixes (`catch/` vs `catches/`) can be resolved
+      // to the file the archive actually contains. Basenames that occur
+      // under more than one staged path are ambiguous and are never
+      // silently attached to a reference.
+      final stagedByBasename = <String, String>{};
+      final ambiguousBasenames = <String>{};
+      if (await stagingMediaDir.exists()) {
+        await for (final entity in stagingMediaDir.list(recursive: true)) {
+          if (entity is! File) continue;
+          final rel = _toPortablePath(
+              path.relative(entity.path, from: stagingMediaDir.path));
+          final base = path.posix.basename(rel);
+          if (stagedByBasename.containsKey(base)) {
+            ambiguousBasenames.add(base);
+          } else {
+            stagedByBasename[base] = rel;
+          }
+        }
+      }
+
       final missingReferenced = <String>[];
+      final ambiguousReferenced = <String>[];
+      final repairs = <String, String>{};
       for (final relPath in referencedPaths) {
-        if (path.isAbsolute(relPath)) {
-          missingReferenced.add(relPath);
+        var candidate = _toPortablePath(relPath);
+        var staged = File(
+            path.joinAll([stagingMediaDir.path, ...candidate.split('/')]));
+        if (!await staged.exists() && !path.isAbsolute(relPath)) {
+          // Legacy singular subdir prefix (catch/x → catches/x).
+          final canonical =
+              MediaStorageService.canonicalizeRelPath(candidate);
+          if (canonical != candidate) {
+            candidate = canonical;
+            staged = File(path.joinAll(
+                [stagingMediaDir.path, ...candidate.split('/')]));
+          }
+        }
+        if (await staged.exists()) {
+          if (candidate != relPath) {
+            repairs[relPath] = candidate;
+          }
           continue;
         }
-        final staged = File(path.joinAll([stagingMediaDir.path, ...relPath.split('/')]));
-        if (!await staged.exists()) {
+        // No direct match — resolve by basename (absolute cache paths
+        // and foreign prefixes). Unique match → repair; ambiguous or
+        // absent → report missing without attaching the wrong file.
+        final base = path.posix.basename(candidate);
+        final stagedRel = stagedByBasename[base];
+        if (stagedRel != null && !ambiguousBasenames.contains(base)) {
+          repairs[relPath] = stagedRel;
+        } else if (stagedRel != null) {
+          ambiguousReferenced.add(relPath);
+          missingReferenced.add(relPath);
+        } else {
           missingReferenced.add(relPath);
         }
       }
@@ -604,8 +638,16 @@ class ZipBackupService {
       await _reportStage('swapped', onProgress, 'Database replaced');
 
       final mediaResult = await _moveMediaTree(stagingMediaDir, mediaDir);
+      // Persist corrected paths: legacy repairs (original ref → staged
+      // path) are composed with collision remaps (staged path → final
+      // path) so every stored reference ends at its promoted file.
+      final pathUpdates = <String, String>{};
+      repairs.forEach((ref, stagedRel) {
+        pathUpdates[ref] = mediaResult.remapped[stagedRel] ?? stagedRel;
+      });
+      pathUpdates.addAll(mediaResult.remapped);
       await _remapMediaPathsInDatabase(
-          targetDbPath, liveMode, mediaResult.remapped);
+          targetDbPath, liveMode, pathUpdates);
       if (mediaResult.skipped == 0 && await stagingMediaDir.exists()) {
         await stagingMediaDir.delete(recursive: true);
       }
@@ -642,6 +684,8 @@ class ZipBackupService {
         mediaFilesSkipped: mediaResult.skipped,
         referencedMediaMissing: missingReferenced.length,
         mediaPathConflicts: mediaResult.remapped.length,
+        mediaPathsRepaired: repairs.length,
+        ambiguousMediaRefs: ambiguousReferenced.length,
       );
     } catch (e) {
       // Discard leftovers. The recovery copy is only dropped when the live
@@ -762,22 +806,26 @@ class ZipBackupService {
           for (final row in rows) {
             final filePath = row['file_path'] as String?;
             if (filePath != null && filePath.isNotEmpty) {
-              paths.add(_toPortablePath(filePath));
+              // Keep the reference exactly as stored — it is the key used
+              // when persisting corrected paths back into the database.
+              paths.add(filePath);
             }
           }
         } catch (_) {
           // Table may not exist in older-schema backups.
         }
       }
-      try {
-        final rows = await db.query('catches', columns: ['lure_photo_path']);
-        for (final row in rows) {
-          final filePath = row['lure_photo_path'] as String?;
-          if (filePath != null && filePath.isNotEmpty) {
-            paths.add(_toPortablePath(filePath));
+      for (final column in const ['lure_photo_path', 'image_path']) {
+        try {
+          final rows = await db.query('catches', columns: [column]);
+          for (final row in rows) {
+            final filePath = row[column] as String?;
+            if (filePath != null && filePath.isNotEmpty) {
+              paths.add(filePath);
+            }
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
     } finally {
       await db?.close();
     }
@@ -938,15 +986,17 @@ class ZipBackupService {
           }
         }
       }
-      for (final entry in remaps.entries) {
-        try {
-          await db.update(
-            'catches',
-            {'lure_photo_path': entry.value},
-            where: 'lure_photo_path = ?',
-            whereArgs: [entry.key],
-          );
-        } catch (_) {}
+      for (final column in const ['lure_photo_path', 'image_path']) {
+        for (final entry in remaps.entries) {
+          try {
+            await db.update(
+              'catches',
+              {column: entry.value},
+              where: '$column = ?',
+              whereArgs: [entry.key],
+            );
+          } catch (_) {}
+        }
       }
     } finally {
       if (ownDb) {
@@ -1239,11 +1289,22 @@ class BackupRestoreResult {
   /// database paths were remapped to the backup's copy.
   final int mediaPathConflicts;
 
+  /// Number of legacy references (absolute cache paths, `catch/` prefix,
+  /// foreign prefixes) resolved to staged archive files and persisted
+  /// into the restored database.
+  final int mediaPathsRepaired;
+
+  /// Number of references whose basename matched more than one staged
+  /// file — reported rather than silently attached to the wrong photo.
+  final int ambiguousMediaRefs;
+
   BackupRestoreResult({
     required this.manifest,
     required this.mediaFilesRestored,
     required this.mediaFilesSkipped,
     this.referencedMediaMissing = 0,
     this.mediaPathConflicts = 0,
+    this.mediaPathsRepaired = 0,
+    this.ambiguousMediaRefs = 0,
   });
 }
