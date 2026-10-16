@@ -25,10 +25,17 @@ Flutter fishing log app. Primary dev/test device: Moto G15 (Android).
 - `flutter build apk --debug` — Android debug build
 - Auth-enabled builds MUST be built with
   `flutter build apk --debug --dart-define-from-file=.env` —
-  Supabase credentials are compile-time `String.fromEnvironment` values;
-  a build without them silently disables the auth gate and the
-  Settings → Account section (`SupabaseConfig.isConfigured` returns
-  false). Never commit `.env`; it is gitignored.
+  Supabase credentials are compile-time `String.fromEnvironment` values.
+  A build without them **fails closed**: AuthGate shows a "Configuration
+  Error" screen and the app cannot be entered unauthenticated
+  (`SupabaseConfig.isConfigured` returns false). The only exception is a
+  deliberate dev build with `--dart-define=DEV_AUTH_BYPASS=true`, which
+  AuthGate honours in debug mode only. Never commit `.env`; it is
+  gitignored.
+- `tool/safe_install.sh` refuses to install an APK that lacks baked-in
+  Supabase configuration (it scans the package for the compiled-in
+  `supabase.co` host; values are never printed). Pass
+  `--allow-dev-bypass` only for a deliberate `DEV_AUTH_BYPASS` dev build.
 - Manual backup/restore verification on the Moto G15 before tagging a
   validated baseline
 
