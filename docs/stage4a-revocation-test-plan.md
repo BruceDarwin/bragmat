@@ -139,6 +139,32 @@ up to 1 hour — not instantly. This is the documented limitation.*
   device but cannot be reached without a valid session — acceptable for
   beta, worth reviewing before public release.
 
+## Approved decisions (2026-10-16)
+
+1. **Detection**: the 1-hour throttle is accepted for this validation.
+   Pre-beta work (recorded, not yet implemented): entitlement recheck
+   on return-to-foreground plus periodic online recheck every ~5–15
+   min; confirmed revocation denies immediately; transient network
+   failure is never treated as revocation.
+2. **Local access after revocation**: current behaviour retained —
+   approved users keep offline access; offline revocation is
+   undetectable; a confirmed revocation denies app access; all local
+   records/photos preserved; reinstatement restores access without
+   touching data. No local-only bypass mode.
+3. **`everApproved`**: confirmed device-wide. **Hole exists** — the
+   flag set by an approved account persists on the device (it survives
+   ungraceful session loss and reinstalls). When a *different* account
+   later holds a session and the entitlement check is **unresolvable**
+   (offline, or the `isApprovedBeta` RPC fails/times out mid-sign-in),
+   the offline branch reads the *stale device flag* → `signedIn` for an
+   account that was never approved → reaches the app. The ownership
+   gate still blocks it on a claimed install, but on an **unclaimed**
+   install it would browse freely — compounding the unclaimed-data
+   issue. Pre-beta correction: key approval history per Supabase user
+   ID + account-switching regression tests.
+4. **This test**: second account only; primary `beta_testers` row is
+   never modified.
+
 ## Post-test state
 
 - `beta_testers` restored: main `active`, second `active`.
