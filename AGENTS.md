@@ -23,6 +23,12 @@ Flutter fishing log app. Primary dev/test device: Moto G15 (Android).
 - `flutter test` — full unit test suite (sqflite tests use sqflite_common_ffi)
 - `flutter analyze` — ~145 pre-existing lint issues; don't add new ones
 - `flutter build apk --debug` — Android debug build
+- Auth-enabled builds MUST be built with
+  `flutter build apk --debug --dart-define-from-file=.env` —
+  Supabase credentials are compile-time `String.fromEnvironment` values;
+  a build without them silently disables the auth gate and the
+  Settings → Account section (`SupabaseConfig.isConfigured` returns
+  false). Never commit `.env`; it is gitignored.
 - Manual backup/restore verification on the Moto G15 before tagging a
   validated baseline
 
