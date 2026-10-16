@@ -77,13 +77,16 @@ void main() {
         123,
         'primary',
       );
-      
+
       expect(result, isNotNull);
-      expect(await File(result!).exists(), isTrue);
-      
+      // copyPhotoToStorage returns a portable relative path
+      expect(path.isAbsolute(result!), isFalse);
+      final resolved = await MediaStorageService.resolvePath(result);
+      expect(await File(resolved).exists(), isTrue);
+
       // Verify file size matches
       final originalSize = await testFile.length();
-      final copiedSize = await File(result).length();
+      final copiedSize = await File(resolved).length();
       expect(copiedSize, equals(originalSize));
     });
 
@@ -112,9 +115,10 @@ void main() {
       );
       
       expect(result, isNotNull);
-      
+
       // Read copied file and verify bytes match
-      final copiedFile = File(result!);
+      final copiedFile =
+          File(await MediaStorageService.resolvePath(result!));
       final copiedBytes = await copiedFile.readAsBytes();
       
       expect(copiedBytes.length, equals(testBytes.length));
@@ -136,7 +140,7 @@ void main() {
       expect(result, isNotNull);
       // Should default to .jpg extension
       expect(result, endsWith('.jpg'));
-      expect(await File(result!).exists(), isTrue);
+      expect(await MediaStorageService.fileExists(result!), isTrue);
     });
 
     test('fileExists returns true for existing file', () async {
@@ -159,23 +163,25 @@ void main() {
     });
 
     test('resolvePath handles relative paths', () async {
-      // First copy a file to get a relative path
+      // copyPhotoToStorage already returns a portable relative path
       final copiedPath = await MediaStorageService.copyPhotoToStorage(
         testFile.path,
         'catch',
         123,
         'primary',
       );
-      
+
       expect(copiedPath, isNotNull);
-      
-      // Convert to relative path
-      final relativePath = await MediaStorageService.toRelativePath(copiedPath!);
-      expect(relativePath, isNot(equals(copiedPath)));
-      
-      // Resolve back to absolute
+      expect(path.isAbsolute(copiedPath!), isFalse);
+
+      // toRelativePath leaves relative paths unchanged
+      final relativePath = await MediaStorageService.toRelativePath(copiedPath);
+      expect(relativePath, equals(copiedPath));
+
+      // Resolve back to the actual file on disk
       final resolved = await MediaStorageService.resolvePath(relativePath);
-      expect(resolved, equals(copiedPath));
+      expect(path.isAbsolute(resolved), isTrue);
+      expect(await File(resolved).exists(), isTrue);
     });
 
     test('toRelativePath converts paths within media directory', () async {
@@ -199,12 +205,12 @@ void main() {
       );
       
       expect(copiedPath, isNotNull);
-      expect(await File(copiedPath!).exists(), isTrue);
-      
+      expect(await MediaStorageService.fileExists(copiedPath!), isTrue);
+
       // Delete the file
       final deleted = await MediaStorageService.deletePhoto(copiedPath);
       expect(deleted, isTrue);
-      expect(await File(copiedPath).exists(), isFalse);
+      expect(await MediaStorageService.fileExists(copiedPath), isFalse);
     });
 
     test('deletePhoto returns false for non-existent file', () async {
@@ -241,8 +247,8 @@ void main() {
       expect(uniquePaths.length, equals(paths.length));
       
       // All files should exist
-      for (final path in paths) {
-        expect(await File(path).exists(), isTrue);
+      for (final storedPath in paths) {
+        expect(await MediaStorageService.fileExists(storedPath), isTrue);
       }
     });
   });
