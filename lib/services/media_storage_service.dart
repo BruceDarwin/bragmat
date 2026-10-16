@@ -14,6 +14,28 @@ import 'package:path/path.dart' as path;
 class MediaStorageService {
   static const String _mediaDirName = 'bragmat';
   static const String _photosDirName = 'media';
+
+  /// Canonical per-entity subdirectories inside the media directory.
+  /// These names match the `media/<subdir>/` layout inside ZIP backups so
+  /// database references are identical on disk and in archives.
+  static const Map<String, String> _entitySubdirs = {
+    'catch': 'catches',
+    'trip': 'trips',
+    'journal': 'journals',
+    'lure': 'lures',
+  };
+
+  /// Legacy singular directory names used by older app versions.
+  static const Map<String, String> _legacySubdirs = {
+    'catch': 'catches',
+    'trip': 'trips',
+    'journal': 'journals',
+    'lure': 'lures',
+  };
+
+  /// Canonical storage subdirectory for an entity type.
+  static String entitySubdir(String entityType) =>
+      _entitySubdirs[entityType] ?? entityType;
   
   static Directory? _mediaDirectory;
   static Directory? _testDirectory; // For testing only
@@ -60,12 +82,13 @@ class MediaStorageService {
   /// Get the directory for a specific entity type.
   static Future<Directory> getEntityDirectory(String entityType) async {
     final mediaDir = await getMediaDirectory();
-    final entityDir = Directory(path.join(mediaDir.path, entityType));
-    
+    final entityDir =
+        Directory(path.join(mediaDir.path, entitySubdir(entityType)));
+
     if (!await entityDir.exists()) {
       await entityDir.create(recursive: true);
     }
-    
+
     return entityDir;
   }
   
@@ -149,8 +172,11 @@ class MediaStorageService {
         await targetFile.delete();
         return null;
       }
-      
-      return targetFile.path;
+
+      // Store the portable relative path (<subdir>/<filename>) — absolute
+      // paths break when the app-private directory changes (reinstall,
+      // iOS container moves) and inside backups.
+      return '${entitySubdir(entityType)}/$filename';
     } catch (e) {
       // Log error for debugging (throttled in release builds)
       debugPrint('MediaStorageService: Error copying photo');
@@ -170,8 +196,19 @@ class MediaStorageService {
       } else {
         // Relative path - resolve against media directory
         final mediaDir = await getMediaDirectory();
-        final fullPath = path.join(mediaDir.path, filePath);
-        return File(fullPath).exists();
+        final portable = filePath.replaceAll('\\', '/');
+        final fullPath =
+            path.joinAll([mediaDir.path, ...portable.split('/')]);
+        if (await File(fullPath).exists()) {
+          return true;
+        }
+        // Legacy singular subdirs (catch/, lure/, ...) → canonical plural
+        final canonical = canonicalizeRelPath(portable);
+        if (canonical != portable) {
+          return File(path.joinAll([mediaDir.path, ...canonical.split('/')]))
+              .exists();
+        }
+        return false;
       }
     } catch (e) {
       return false;
@@ -186,9 +223,96 @@ class MediaStorageService {
     if (path.isAbsolute(filePath)) {
       return filePath;
     }
-    
+
     final mediaDir = await getMediaDirectory();
-    return path.join(mediaDir.path, filePath);
+    final portable = filePath.replaceAll('\\', '/');
+    final resolved = path.joinAll([mediaDir.path, ...portable.split('/')]);
+    if (await File(resolved).exists()) {
+      return resolved;
+    }
+    // Legacy singular subdirs (catch/, lure/, ...) → canonical plural
+    final canonical = canonicalizeRelPath(portable);
+    if (canonical != portable) {
+      return path.joinAll([mediaDir.path, ...canonical.split('/')]);
+    }
+    return resolved;
+  }
+
+  /// Map a legacy singular subdirectory prefix to the canonical one.
+  /// `catch/x.jpg` → `catches/x.jpg`. Returns the input unchanged when it
+  /// does not start with a legacy prefix.
+  static String canonicalizeRelPath(String relPath) {
+    final portable = relPath.replaceAll('\\', '/');
+    final slash = portable.indexOf('/');
+    if (slash <= 0) return relPath;
+    final first = portable.substring(0, slash);
+    final canonical = _legacySubdirs[first];
+    if (canonical == null) return relPath;
+    return '$canonical/${portable.substring(slash + 1)}';
+  }
+
+  /// One-time storage migration: move files out of legacy singular
+  /// entity directories (`catch/`, `trip/`, `journal/`, `lure/`) into the
+  /// canonical plural ones. Identical content collisions are dropped;
+  /// different-content collisions are kept under an `_mN` suffix.
+  ///
+  /// Returns a map of old relative path → new relative path so database
+  /// references can be updated by the caller.
+  static Future<Map<String, String>> migrateLegacyStorage() async {
+    final renames = <String, String>{};
+    try {
+      final mediaDir = await getMediaDirectory();
+      for (final entry in _legacySubdirs.entries) {
+        final legacyDir = Directory(path.join(mediaDir.path, entry.key));
+        if (!await legacyDir.exists()) continue;
+        await for (final entity in legacyDir.list(recursive: true)) {
+          if (entity is! File) continue;
+          final rel = path
+              .relative(entity.path, from: legacyDir.path)
+              .replaceAll('\\', '/');
+          var destRel = '${entry.value}/$rel';
+          var dest =
+              File(path.joinAll([mediaDir.path, ...destRel.split('/')]));
+          await dest.parent.create(recursive: true);
+          if (await dest.exists()) {
+            final sameBytes = await entity.length() ==
+                    await dest.length() &&
+                await _filesIdentical(entity, dest);
+            if (sameBytes) {
+              await entity.delete();
+            } else {
+              var n = 1;
+              final ext = path.extension(rel);
+              final stem = rel.substring(0, rel.length - ext.length);
+              do {
+                destRel = '${entry.value}/${stem}_m$n$ext';
+                dest = File(
+                    path.joinAll([mediaDir.path, ...destRel.split('/')]));
+                n++;
+              } while (await dest.exists());
+              await entity.rename(dest.path);
+            }
+          } else {
+            await entity.rename(dest.path);
+          }
+          renames['${entry.key}/$rel'] = destRel;
+        }
+        try {
+          await legacyDir.delete(recursive: true);
+        } catch (_) {}
+      }
+    } catch (_) {}
+    return renames;
+  }
+
+  static Future<bool> _filesIdentical(File a, File b) async {
+    final aBytes = await a.readAsBytes();
+    final bBytes = await b.readAsBytes();
+    if (aBytes.length != bBytes.length) return false;
+    for (var i = 0; i < aBytes.length; i++) {
+      if (aBytes[i] != bBytes[i]) return false;
+    }
+    return true;
   }
   
   /// Convert an absolute path to a relative path if it's within the media directory.

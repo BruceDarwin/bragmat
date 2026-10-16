@@ -112,6 +112,87 @@ class DatabaseHelper {
     return _database!;
   }
 
+  /// Migrate stored media references to the canonical portable form.
+  ///
+  /// - applies [renames] (old relative path → new) reported by
+  ///   MediaStorageService.migrateLegacyStorage after moving files
+  /// - rewrites legacy singular subdirectory prefixes (`catch/` →
+  ///   `catches/`, `lure/` → `lures/`, ...)
+  /// - relativizes absolute paths that live under [mediaDirPath]
+  ///
+  /// Absolute paths outside the media directory (e.g. image-picker
+  /// cache paths) are left untouched — they cannot be resolved here and
+  /// are repaired at backup/restore time instead.
+  ///
+  /// Returns the number of database rows updated.
+  Future<int> migrateMediaPaths(
+      String mediaDirPath, Map<String, String> renames) async {
+    final db = await database;
+    var updated = 0;
+    const sources = [
+      ('catch_media', 'file_path'),
+      ('trip_media', 'file_path'),
+      ('journal_media', 'file_path'),
+      ('catches', 'lure_photo_path'),
+      ('catches', 'image_path'),
+    ];
+    for (final (table, column) in sources) {
+      List<Map<String, Object?>> rows;
+      try {
+        rows = await db.query(
+          table,
+          columns: ['id', column],
+          where: '$column IS NOT NULL AND $column != \'\'',
+        );
+      } catch (_) {
+        continue; // Table/column may not exist in older schemas.
+      }
+      for (final row in rows) {
+        final ref = row[column] as String;
+        final fixed = _migrateStoredMediaPath(ref, mediaDirPath, renames);
+        if (fixed != ref) {
+          await db.update(
+            table,
+            {column: fixed},
+            where: 'id = ?',
+            whereArgs: [row['id']],
+          );
+          updated++;
+        }
+      }
+    }
+    return updated;
+  }
+
+  static const Map<String, String> _legacyMediaSubdirs = {
+    'catch': 'catches',
+    'trip': 'trips',
+    'journal': 'journals',
+    'lure': 'lures',
+  };
+
+  String _migrateStoredMediaPath(
+      String ref, String mediaDirPath, Map<String, String> renames) {
+    final renamed = renames[ref];
+    if (renamed != null) return renamed;
+    final portable = ref.replaceAll('\\', '/');
+    if (isAbsolute(ref)) {
+      final normMedia = mediaDirPath.replaceAll('\\', '/');
+      if (portable.startsWith('$normMedia/')) {
+        return portable.substring(normMedia.length + 1);
+      }
+      return ref;
+    }
+    final slash = portable.indexOf('/');
+    if (slash > 0) {
+      final canonical = _legacyMediaSubdirs[portable.substring(0, slash)];
+      if (canonical != null) {
+        return '$canonical/${portable.substring(slash + 1)}';
+      }
+    }
+    return ref;
+  }
+
   /// Recover the database file after an interrupted restore.
   ///
   /// A restore leaves two marker files next to the database:
@@ -217,7 +298,12 @@ class DatabaseHelper {
         location TEXT,
         fishing_buddy_id INTEGER,
         trip_id INTEGER,
-        coordinate_source TEXT
+        coordinate_source TEXT,
+        lure_id INTEGER,
+        bait_id INTEGER,
+        lure_size TEXT,
+        lure_colour TEXT,
+        lure_photo_path TEXT
       )
     ''');
 

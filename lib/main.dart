@@ -12,7 +12,9 @@ import 'services/connectivity_service.dart';
 import 'services/notification_service.dart';
 import 'services/achievement_service.dart';
 import 'services/zip_backup_service.dart';
+import 'services/media_storage_service.dart';
 import 'services/auth_service.dart';
+import 'database/database_helper.dart';
 import 'screens/auth_gate.dart';
 
 void main() {
@@ -21,6 +23,17 @@ void main() {
   // Database-level recovery also runs on first database access, so this is
   // safe to run unawaited in the background.
   unawaited(ZipBackupService.recoverInterruptedRestore());
+  // Migrate legacy media storage (singular entity dirs, absolute paths in
+  // DB refs) to canonical relative paths. Runs in the background; failed
+  // items are retried on the next launch.
+  unawaited(() async {
+    try {
+      final mediaDir = await MediaStorageService.getMediaDirectory();
+      final renames = await MediaStorageService.migrateLegacyStorage();
+      await DatabaseHelper.instance
+          .migrateMediaPaths(mediaDir.path, renames);
+    } catch (_) {}
+  }());
   // Initialise Supabase auth (no-op when credentials are not supplied via
   // --dart-define) and resolve the initial auth/beta state.
   unawaited(() async {
