@@ -16,6 +16,7 @@ import '../models/lure.dart';
 import '../models/bait.dart';
 import '../models/tide_reference.dart';
 import '../services/backup_service.dart';
+import '../services/backup_file_service.dart';
 import '../services/media_storage_service.dart';
 import '../services/zip_backup_service.dart';
 import '../services/auth_service.dart';
@@ -2514,6 +2515,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
               TextButton(
                 onPressed: () async {
                   Navigator.pop(context);
+                  // System "save as" picker — lets the user store the
+                  // backup in shared Downloads, Drive, etc.
+                  final saved = await BackupFileService.exportBackup(
+                      filePath, fileName);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(saved
+                            ? 'Backup saved to the selected location'
+                            : 'Export cancelled'),
+                      ),
+                    );
+                  }
+                },
+                child: const Text('Save a Copy…'),
+              ),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(context);
                   await Share.shareXFiles(
                     [XFile(filePath)],
                     subject: 'Bragmat Backup',
@@ -2720,11 +2740,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
           children: [
             Text('To restore a backup:'),
             SizedBox(height: 8),
-            Text('1. Copy your backup file to the Downloads folder'),
+            Text('1. Pick a listed backup or use Browse to choose a '
+                'bragmat_backup_*.zip from Downloads or another app'),
             SizedBox(height: 4),
-            Text('2. The file must be named: bragmat_backup_*.zip'),
-            SizedBox(height: 4),
-            Text('3. You will be able to preview the backup before restoring'),
+            Text('2. You will be able to preview the backup before restoring'),
             SizedBox(height: 16),
             Text('Warning: This will replace your current data if it exists.',
               style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
@@ -2749,62 +2768,63 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     try {
-      // Find backup files in downloads
+      // Backups inside the app's own external files dir are listed
+      // directly; backups in shared Downloads or other document providers
+      // are reached through the system file picker (scoped storage means
+      // the app cannot list shared directories itself).
+      final backupFiles = <File>[];
       final directory = await getDownloadsDirectory();
-      if (directory == null) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Could not access downloads directory')),
-          );
-        }
-        return;
+      if (directory != null && await directory.exists()) {
+        backupFiles.addAll(
+          directory.listSync().whereType<File>().where(
+                (f) =>
+                    f.path.contains('bragmat_backup_') &&
+                    (f.path.endsWith('.zip') || f.path.endsWith('.json')),
+              ),
+        );
+        // Most recent first
+        backupFiles.sort(
+            (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
       }
-
-      final files = directory.listSync().whereType<File>().toList();
-      final backupFiles = files
-          .where((f) =>
-              f.path.contains('bragmat_backup_') &&
-              (f.path.endsWith('.zip') || f.path.endsWith('.json')))
-          .toList();
-
-      if (backupFiles.isEmpty) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No backup file found in Downloads folder')),
-          );
-        }
-        return;
-      }
-
-      // Sort by last modified, most recent first
-      backupFiles.sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
 
       if (!mounted) return;
 
-      // Let the user pick which backup to restore
-      final selected = await showDialog<File>(
+      const browseAction = '__browse__';
+      final selected = await showDialog<String>(
         context: context,
         builder: (context) => SimpleDialog(
           title: const Text('Select Backup'),
-          children: backupFiles.map((file) {
-            final fileName = file.path.split(RegExp(r'[/\\]')).last;
-            final modified = file.lastModifiedSync();
-            final isZip = file.path.endsWith('.zip');
-            return SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, file),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ...backupFiles.map((file) {
+              final fileName = file.path.split(RegExp(r'[/\\]')).last;
+              final modified = file.lastModifiedSync();
+              final isZip = file.path.endsWith('.zip');
+              return SimpleDialogOption(
+                onPressed: () => Navigator.pop(context, file.path),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(fileName),
+                    Text(
+                      '${isZip ? 'Portable backup' : 'Legacy JSON backup'} • '
+                      '${modified.toLocal().toString().split('.').first}',
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                  ],
+                ),
+              );
+            }),
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, browseAction),
+              child: const Row(
                 children: [
-                  Text(fileName),
-                  Text(
-                    '${isZip ? 'Portable backup' : 'Legacy JSON backup'} • '
-                    '${modified.toLocal().toString().split('.').first}',
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
+                  Icon(Icons.folder_open),
+                  SizedBox(width: 12),
+                  Text('Browse for a backup file…'),
                 ],
               ),
-            );
-          }).toList(),
+            ),
+          ],
         ),
       );
 
@@ -2812,10 +2832,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return;
       }
 
-      if (selected.path.endsWith('.json')) {
-        await _restoreLegacyJsonBackup(selected);
+      String? filePath = selected;
+      if (selected == browseAction) {
+        // System document picker (Storage Access Framework) — covers
+        // shared Downloads, Google Drive and other providers.
+        filePath = await BackupFileService.pickBackupZip();
+        if (filePath == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('No file selected')),
+            );
+          }
+          return;
+        }
+      }
+
+      final backupFile = File(filePath);
+      if (filePath.endsWith('.json')) {
+        await _restoreLegacyJsonBackup(backupFile);
       } else {
-        await _restoreZipBackup(selected);
+        await _restoreZipBackup(backupFile);
       }
     } catch (e) {
       if (mounted) {
@@ -2941,7 +2977,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             'Backup restored successfully'
             '${result.mediaFilesSkipped > 0 ? ' (${result.mediaFilesSkipped} media file(s) could not be copied)' : ''}'
             '${result.referencedMediaMissing > 0 ? ' (${result.referencedMediaMissing} referenced photo(s) were not in the backup)' : ''}'
-            '${result.mediaPathConflicts > 0 ? ' (${result.mediaPathConflicts} photo name conflict(s) — both copies kept)' : ''}',
+            '${result.mediaPathConflicts > 0 ? ' (${result.mediaPathConflicts} photo name conflict(s) — both copies kept)' : ''}'
+            '${result.mediaPathsRepaired > 0 ? ' (${result.mediaPathsRepaired} legacy photo path(s) repaired)' : ''}'
+            '${result.ambiguousMediaRefs > 0 ? ' (${result.ambiguousMediaRefs} ambiguous photo reference(s) left unresolved)' : ''}',
           ),
         ),
       );
