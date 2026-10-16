@@ -18,10 +18,21 @@ import '../models/environmental_condition.dart';
 import '../models/lure.dart';
 import '../models/bait.dart';
 import '../services/achievement_service.dart';
+import 'migration_v29.dart';
 
 class DatabaseHelper {
   static final DatabaseHelper instance = DatabaseHelper._init();
   static Database? _database;
+
+  /// When true, public [database] access throws — set by
+  /// OwnershipService when the signed-in account does not own this
+  /// installation's data. Defense-in-depth beneath the UI gate so
+  /// background services and direct navigation cannot reach records.
+  static bool _dataAccessDenied = false;
+
+  static void setDataAccessDenied(bool denied) {
+    _dataAccessDenied = denied;
+  }
 
   /// Test hook: overrides the database file location.
   static String? _testDatabasePath;
@@ -49,6 +60,16 @@ class DatabaseHelper {
   bool get restoreInProgress => _restoreLock != null;
 
   Future<Database> get database async {
+    if (_dataAccessDenied) {
+      throw StateError(
+          'Local data is owned by a different account and cannot be accessed');
+    }
+    return systemDatabase;
+  }
+
+  /// Unguarded database access for system internals (ownership checks,
+  /// restore, migration). Never used by user-facing data paths.
+  Future<Database> get systemDatabase async {
     // Wait for any in-progress restore to finish before handing out a handle.
     while (_restoreLock != null) {
       await _restoreLock!.future;
@@ -276,11 +297,17 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 28,
+      version: 29,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
   }
+
+  /// Public wrapper for [_onUpgrade] — used by the restore pipeline to
+  /// upgrade a staged backup file in place before it is promoted.
+  Future<void> upgradeDatabase(
+          Database db, int oldVersion, int newVersion) =>
+      _onUpgrade(db, oldVersion, newVersion);
 
   Future _createDB(Database db, int version) async {
     await db.execute('''
@@ -303,7 +330,10 @@ class DatabaseHelper {
         bait_id INTEGER,
         lure_size TEXT,
         lure_colour TEXT,
-        lure_photo_path TEXT
+        lure_photo_path TEXT,
+        uuid TEXT,
+        owner_id TEXT,
+        updated_at TEXT
       )
     ''');
 
@@ -317,21 +347,30 @@ class DatabaseHelper {
     await db.execute('''
       CREATE TABLE fishing_buddies (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL
+        name TEXT UNIQUE NOT NULL,
+        uuid TEXT,
+        owner_id TEXT,
+        updated_at TEXT
       )
     ''');
 
     await db.execute('''
       CREATE TABLE lures (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL
+        name TEXT UNIQUE NOT NULL,
+        uuid TEXT,
+        owner_id TEXT,
+        updated_at TEXT
       )
     ''');
 
     await db.execute('''
       CREATE TABLE baits (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
-        name TEXT UNIQUE NOT NULL
+        name TEXT UNIQUE NOT NULL,
+        uuid TEXT,
+        owner_id TEXT,
+        updated_at TEXT
       )
     ''');
 
@@ -346,6 +385,9 @@ class DatabaseHelper {
         latitude REAL,
         longitude REAL,
         created_at TEXT NOT NULL,
+        uuid TEXT,
+        owner_id TEXT,
+        updated_at TEXT,
         FOREIGN KEY (catch_id) REFERENCES catches (id) ON DELETE CASCADE
       )
     ''');
@@ -358,7 +400,10 @@ class DatabaseHelper {
         end_date TEXT,
         location TEXT,
         notes TEXT,
-        created_at TEXT NOT NULL
+        created_at TEXT NOT NULL,
+        uuid TEXT,
+        owner_id TEXT,
+        updated_at TEXT
       )
     ''');
 
@@ -373,6 +418,9 @@ class DatabaseHelper {
         latitude REAL,
         longitude REAL,
         created_at TEXT NOT NULL,
+        uuid TEXT,
+        owner_id TEXT,
+        updated_at TEXT,
         FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
       )
     ''');
@@ -387,6 +435,8 @@ class DatabaseHelper {
         entry_text TEXT NOT NULL,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+        uuid TEXT,
+        owner_id TEXT,
         FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
       )
     ''');
@@ -402,6 +452,9 @@ class DatabaseHelper {
         latitude REAL,
         longitude REAL,
         created_at TEXT NOT NULL,
+        uuid TEXT,
+        owner_id TEXT,
+        updated_at TEXT,
         FOREIGN KEY (journal_entry_id) REFERENCES trip_journal (id) ON DELETE CASCADE
       )
     ''');
@@ -412,7 +465,10 @@ class DatabaseHelper {
         name TEXT NOT NULL,
         latitude REAL NOT NULL,
         longitude REAL NOT NULL,
-        notes TEXT
+        notes TEXT,
+        uuid TEXT,
+        owner_id TEXT,
+        updated_at TEXT
       )
     ''');
 
@@ -433,6 +489,9 @@ class DatabaseHelper {
         achievement_id TEXT NOT NULL,
         unlocked_date TEXT NOT NULL,
         progress_value INTEGER,
+        uuid TEXT,
+        owner_id TEXT,
+        updated_at TEXT,
         FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE
       )
     ''');
@@ -489,10 +548,33 @@ class DatabaseHelper {
         data_source TEXT,
         created_at TEXT NOT NULL,
         updated_at TEXT NOT NULL,
+        uuid TEXT,
+        owner_id TEXT,
         FOREIGN KEY (catch_id) REFERENCES catches (id) ON DELETE CASCADE,
         FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
       )
     ''');
+
+    await db.execute('''
+      CREATE TABLE tide_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        date TEXT NOT NULL,
+        datum TEXT NOT NULL DEFAULT 'CD',
+        extremes_json TEXT NOT NULL,
+        cached_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        UNIQUE(latitude, longitude, date, datum)
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tide_cache_location_date ON tide_cache(latitude, longitude, date)');
+
+    // v29 ownership tables, indexes and triggers.
+    await MigrationV29.createOwnershipTables(db);
+    await MigrationV29.createIndexes(db);
+    await MigrationV29.createTriggers(db);
 
     // Insert default fish types
     await db.insert('fish_types', {'name': 'Barramundi'});
@@ -1124,6 +1206,12 @@ class DatabaseHelper {
       } catch (e) {
         // Ignore errors during safety check
       }
+    }
+
+    if (oldVersion < 29) {
+      // Schema v29 — user data ownership & sync preparation.
+      // Idempotent; runs inside sqflite's upgrade transaction.
+      await MigrationV29.migrate(db);
     }
   }
 
