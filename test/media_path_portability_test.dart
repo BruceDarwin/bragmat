@@ -213,6 +213,33 @@ void main() {
       // legacy prefix, abs-under-media, lure + image refs = 4 updates
       expect(updated, 4);
     });
+
+    test('absolute path under a legacy subdir becomes canonical',
+        () async {
+      final db = await DatabaseHelper.instance.database;
+      await db.insert('catch_media', {
+        'catch_id': 1,
+        // Real-world case: absolute path inside the legacy catch/ dir
+        'file_path': path.join(mediaDir.path, 'catch', 'photo.jpg'),
+        'created_at': 'x',
+      });
+      await db.insert('catch_media', {
+        'catch_id': 1,
+        // Storage-migrated file renamed under _mN must map via renames
+        'file_path': path.join(mediaDir.path, 'catch', 'dup.jpg'),
+        'created_at': 'x',
+      });
+
+      await DatabaseHelper.instance.migrateMediaPaths(
+        mediaDir.path,
+        {'catch/dup.jpg': 'catches/dup_m1.jpg'},
+      );
+
+      final refs = (await db.query('catch_media', columns: ['file_path']))
+          .map((r) => r['file_path'] as String)
+          .toList();
+      expect(refs, containsAll(['catches/photo.jpg', 'catches/dup_m1.jpg']));
+    });
   });
 
   group('Backup creation - path correctness', () {

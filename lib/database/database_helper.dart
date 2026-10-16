@@ -173,16 +173,16 @@ class DatabaseHelper {
 
   String _migrateStoredMediaPath(
       String ref, String mediaDirPath, Map<String, String> renames) {
-    final renamed = renames[ref];
-    if (renamed != null) return renamed;
-    final portable = ref.replaceAll('\\', '/');
+    var portable = ref.replaceAll('\\', '/');
     if (isAbsolute(ref)) {
       final normMedia = mediaDirPath.replaceAll('\\', '/');
-      if (portable.startsWith('$normMedia/')) {
-        return portable.substring(normMedia.length + 1);
-      }
-      return ref;
+      if (!portable.startsWith('$normMedia/')) return ref;
+      // Relativize, then fall through — the result may still carry a
+      // legacy singular subdir prefix or a file moved under an _mN name.
+      portable = portable.substring(normMedia.length + 1);
     }
+    final renamed = renames[portable];
+    if (renamed != null) return renamed;
     final slash = portable.indexOf('/');
     if (slash > 0) {
       final canonical = _legacyMediaSubdirs[portable.substring(0, slash)];
@@ -190,7 +190,7 @@ class DatabaseHelper {
         return '$canonical/${portable.substring(slash + 1)}';
       }
     }
-    return ref;
+    return portable;
   }
 
   /// Recover the database file after an interrupted restore.
