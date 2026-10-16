@@ -247,6 +247,14 @@ account denial; sign-out/sign-in; create backup on v29.
 "Access Removed" → reinstatement via `beta_testers.status` (recorded
 open; unchanged by this stage).
 
+**Outstanding security requirement (pre-beta gate, recorded 2026-10-16)**:
+unclaimed local records are currently browsable by any account that signs
+in on the device — including after restoring a legacy unowned backup,
+which returns a claimed install to the unclaimed state. Before external
+beta testing, an ownership-resolution process must prevent unauthorised
+browsing of unclaimed data (e.g. a claim-pinning or lock-out mechanism)
+without silently assigning ownership to the first sign-in.
+
 ## 10. Explicitly out of scope
 
 Cloud upload/sync execution, cloud media, PowerSync, schema v30+,
