@@ -20,8 +20,10 @@ Flutter fishing log app. Primary dev/test device: Moto G15 (Android).
 
 ## Verification
 
-- `flutter test` — full unit test suite (sqflite tests use sqflite_common_ffi)
-- `flutter analyze` — ~145 pre-existing lint issues; don't add new ones
+- `flutter test` — full unit test suite, 219 tests
+  (sqflite tests use sqflite_common_ffi)
+- `flutter analyze` — ~181 issues, all pre-existing/baseline
+  (lib ~138 + tool/ script `avoid_print` infos); don't add new ones
 - `flutter build apk --debug` — Android debug build
 - Auth-enabled builds MUST be built with
   `flutter build apk --debug --dart-define-from-file=.env` —
