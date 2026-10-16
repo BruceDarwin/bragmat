@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 
 import '../services/auth_service.dart';
@@ -7,9 +8,11 @@ import 'reset_password_screen.dart';
 
 /// Routes between the app and auth screens based on [AuthService] status.
 ///
-/// When Supabase is not configured (dev/test builds without credentials)
-/// the gate is transparent and the app runs unauthenticated — beta builds
-/// always ship configured.
+/// Missing Supabase credentials fail closed: the app shows a
+/// configuration-error screen rather than opening unauthenticated, so a
+/// mis-built beta/release APK can never expose data. The only exception
+/// is an explicitly enabled debug bypass (`--dart-define
+/// =DEV_AUTH_BYPASS=true`), which is inert in release builds.
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key, required this.child});
 
@@ -41,7 +44,12 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     if (!SupabaseConfig.isConfigured) {
-      return widget.child;
+      // Fail closed — see class doc. Debug-only bypass must be
+      // explicitly requested at build time.
+      if (kDebugMode && SupabaseConfig.devAuthBypass) {
+        return widget.child;
+      }
+      return const _MissingConfigScreen();
     }
     final auth = AuthService.instance;
     // A recovery-session deep link takes precedence over everything else:
@@ -177,6 +185,25 @@ class RevokedScreen extends StatelessWidget {
           child: const Text('Back to Sign In'),
         ),
       ],
+    );
+  }
+}
+
+/// Shown when the build lacks Supabase credentials. Fails closed: there
+/// is intentionally no way past this screen.
+class _MissingConfigScreen extends StatelessWidget {
+  const _MissingConfigScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return const _AuthMessageScreen(
+      icon: Icons.lock_outline,
+      title: 'Configuration Error',
+      message:
+          'This build was made without authentication credentials and '
+          'cannot be used.\n\n'
+          'Please install a properly configured build.',
+      actions: [],
     );
   }
 }

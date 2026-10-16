@@ -22,6 +22,17 @@ class SupabaseConfig {
   static const String authRedirectUrl = 'bragmat://auth-callback';
 
   /// Whether Supabase credentials were supplied at build time.
-  /// Dev/test builds without credentials bypass the auth gate entirely.
-  static bool get isConfigured => url.isNotEmpty && anonKey.isNotEmpty;
+  static bool get isConfigured =>
+      debugIsConfigured ?? (url.isNotEmpty && anonKey.isNotEmpty);
+
+  /// Explicit development-only authentication bypass, enabled via
+  /// `--dart-define=DEV_AUTH_BYPASS=true`. AuthGate honours it only in
+  /// debug builds — release/beta builds always fail closed when
+  /// credentials are missing.
+  static bool get devAuthBypass =>
+      debugAuthBypass ?? const bool.fromEnvironment('DEV_AUTH_BYPASS');
+
+  /// Test seams — set only from unit tests, never in app code.
+  static bool? debugIsConfigured;
+  static bool? debugAuthBypass;
 }
