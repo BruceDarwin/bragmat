@@ -75,3 +75,12 @@ App data (SQLite DB + photos) lives in the app's private storage and is
   validated on Android, Phase 1+2 complete
 - `feature/restore-hardening` — Stage 3 restore hardening, awaiting manual
   device validation
+- `v1.0.0-prebeta-security-validated` — Stage 4A/4B local auth, beta
+  entitlement, schema-v29 ownership, unclaimed-data protection and safe
+  restore. Validated on Moto G15 (2026-10-17): adb install -r preserved all
+  data; sign-in persistence, offline access, second-account isolation,
+  entitlement recheck and revoke/reinstate all passed. 250/250 tests.
+  Verified backup: `Documents\Bragmat Backups\
+  bragmat_backup_2026-10-17T15-09-06-925344.zip` (v29, 78 catches).
+- `feature/cloud-backup` — Stage 4C cloud backup work in progress, kept
+  independent; not merged, not deployed to device
