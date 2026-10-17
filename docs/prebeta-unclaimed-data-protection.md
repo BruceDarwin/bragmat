@@ -1,6 +1,6 @@
 # Pre-Beta — Unclaimed-Data Protection Design
 
-Status: **proposal for review — not implemented**
+Status: **implemented** (`d303008`, `4d3f67e`, `ba07834`)
 Branch: `feature/pre-beta-security`
 Scope: block ordinary browsing of unclaimed local records; preserve the
 explicit claim flow and all Stage 4B semantics. No schema changes, no ZIP
