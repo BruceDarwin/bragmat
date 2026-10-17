@@ -55,4 +55,13 @@ class TideReference {
       isUserCreated: (map['isUserCreated'] as int?) == 1,
     );
   }
+
+  @override
+  bool operator ==(Object other) {
+    if (identical(this, other)) return true;
+    return other is TideReference && other.id == id;
+  }
+
+  @override
+  int get hashCode => id.hashCode;
 }

@@ -130,6 +130,157 @@ void main() {
     });
   });
 
+  group('Equality', () {
+    // Regression: DropdownButton asserts when its value is a different
+    // instance than every menu item — equality must be by stable id.
+    test('Separate Automatic instances with same ID compare as equal', () {
+      final auto1 = TideReference(
+        id: 'automatic',
+        displayName: 'Automatic',
+        latitude: 0.0,
+        longitude: 0.0,
+      );
+      final auto2 = TideReference(
+        id: 'automatic',
+        displayName: 'Automatic (catch location)',
+        latitude: 0.0,
+        longitude: 0.0,
+      );
+
+      expect(auto1, equals(auto2));
+      expect(auto1.hashCode, equals(auto2.hashCode));
+    });
+
+    test('Separate Darwin instances with same ID compare as equal', () {
+      final darwin1 = TideReference(
+        id: 'darwin',
+        displayName: 'Darwin',
+        latitude: -12.4667,
+        longitude: 130.8500,
+      );
+      final darwin2 = TideReference(
+        id: 'darwin',
+        displayName: 'Darwin',
+        latitude: -12.4667,
+        longitude: 130.8500,
+      );
+
+      expect(darwin1, equals(darwin2));
+      expect(darwin1.hashCode, equals(darwin2.hashCode));
+    });
+
+    test('Automatic and Darwin compare as different', () {
+      final auto = TideReference(
+        id: 'automatic',
+        displayName: 'Automatic',
+        latitude: 0.0,
+        longitude: 0.0,
+      );
+      final darwin = TideReference(
+        id: 'darwin',
+        displayName: 'Darwin',
+        latitude: -12.4667,
+        longitude: 130.8500,
+      );
+
+      expect(auto, isNot(equals(darwin)));
+      expect(auto.hashCode, isNot(equals(darwin.hashCode)));
+    });
+
+    test('Reference deserialized from database matches dropdown item', () {
+      final dbMap = {
+        'id': 'darwin',
+        'displayName': 'Darwin',
+        'latitude': -12.4667,
+        'longitude': 130.8500,
+        'isUserCreated': 0,
+      };
+      final dbReference = TideReference.fromMap(dbMap);
+      final dropdownReference =
+          TideReferenceService.getReferenceById('darwin');
+
+      expect(dbReference, equals(dropdownReference));
+    });
+
+    test('Changes to non-identity metadata do not affect reference identity',
+        () {
+      final original = TideReference(
+        id: 'darwin',
+        displayName: 'Darwin',
+        latitude: -12.4667,
+        longitude: 130.8500,
+      );
+      final modified = original.copyWith(
+        displayName: 'Darwin NT',
+        latitude: -12.5,
+        longitude: 131.0,
+      );
+
+      expect(original, equals(modified));
+      expect(original.hashCode, equals(modified.hashCode));
+    });
+
+    test('Fresh install: current reference matches a dropdown item', () async {
+      // A fresh install defaults to automatic mode; getCurrentReference()
+      // builds a new instance, so identity equality would fail the
+      // DropdownButton assertion — this is the emulator-reported defect.
+      SharedPreferences.setMockInitialValues({});
+      final current = await TideReferenceService.getCurrentReference();
+      final options = TideReferenceService.getAllReferences();
+
+      expect(options.any((ref) => ref == current), isTrue,
+          reason: 'Selected reference must equal exactly one dropdown item');
+      expect(options.where((ref) => ref == current).length, 1);
+    });
+
+    test('Fixed mode: stored reference matches a dropdown item', () async {
+      SharedPreferences.setMockInitialValues({
+        'tide_reference_mode': 'fixed',
+        'tide_reference_id': 'darwin',
+      });
+      final current = await TideReferenceService.getCurrentReference();
+      final options = TideReferenceService.getAllReferences();
+
+      expect(options.where((ref) => ref == current).length, 1);
+    });
+
+    test('No duplicate reference IDs in dropdown', () {
+      final references = TideReferenceService.getAllReferences();
+      final ids = references.map((ref) => ref.id).toList();
+      final uniqueIds = ids.toSet();
+
+      expect(ids.length, equals(uniqueIds.length),
+          reason: 'Dropdown should not contain duplicate reference IDs');
+    });
+
+    test('Historical reference with unavailable ID can be added to dropdown',
+        () {
+      final historical = TideReference(
+        id: 'historical_station',
+        displayName: 'Historical Station',
+        latitude: -10.0,
+        longitude: 130.0,
+      );
+
+      final references = TideReferenceService.getAllReferences();
+      final hasHistoricalId =
+          references.any((ref) => ref.id == historical.id);
+      expect(hasHistoricalId, false,
+          reason: 'Historical reference should not be in predefined list');
+
+      // Mirror the dropdown guard in add_catch_screen.
+      final dropdownItems = <TideReference?>[...references];
+      if (!dropdownItems.any((ref) => ref?.id == historical.id)) {
+        dropdownItems.add(historical);
+      }
+
+      final hasHistoricalAfterAdd =
+          dropdownItems.any((ref) => ref?.id == historical.id);
+      expect(hasHistoricalAfterAdd, true,
+          reason: 'Historical reference should be addable to dropdown');
+    });
+  });
+
   group('Distance Calculation', () {
     test('Distance calculation under 0.5 km', () {
       // Very close points (approximately 100 meters apart)

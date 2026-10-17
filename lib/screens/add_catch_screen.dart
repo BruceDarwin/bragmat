@@ -2309,7 +2309,18 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                               dropdownItems.add(null); // Represents "Not recorded"
                             }
                             dropdownItems.addAll(references);
-                            
+
+                            // Handle historical references with IDs no
+                            // longer in the available list — include the
+                            // recorded option so the dropdown can show it.
+                            if (_selectedTideReference != null) {
+                              final selectedId = _selectedTideReference!.id;
+                              final hasSelectedId = references.any((ref) => ref.id == selectedId);
+                              if (!hasSelectedId) {
+                                dropdownItems.add(_selectedTideReference);
+                              }
+                            }
+
                             return DropdownButtonFormField<TideReference?>(
                               value: _selectedTideReference,
                               decoration: const InputDecoration(
