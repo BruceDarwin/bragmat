@@ -424,11 +424,11 @@ class AuthService extends ChangeNotifier {
     final uid = _backend.userId;
     final approvalKey = uid == null ? null : '$_kApprovalStatePrefix$uid';
 
-    // One-time migration: attribute the legacy device-wide flag to the
-    // session that first refreshes after the upgrade, then drop it so no
-    // other account can inherit it.
-    if (approvalKey != null && prefs.getBool(_kEverApproved) == true) {
-      await prefs.setString(approvalKey, _kApproved);
+    // Legacy device-wide flag (pre per-account history): it records no
+    // identity, so it cannot be attributed to a specific account safely.
+    // Discard it — the authoritative check (or an absence of remembered
+    // state, failing closed) establishes this account's own standing.
+    if (prefs.getBool(_kEverApproved) == true) {
       await prefs.remove(_kEverApproved);
     }
     final approvalState =

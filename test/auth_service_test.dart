@@ -290,26 +290,30 @@ void main() {
       );
     });
 
-    test('legacy device-wide flag migrates to the current account only',
-        () async {
+    test('legacy device-wide flag is discarded — never attributed to '
+        'any account', () async {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool('auth_ever_approved', true);
 
-      // Offline at first refresh after upgrade: the migrated approval
-      // keeps this account's session usable...
+      // Offline at first refresh after upgrade: the ambiguous legacy
+      // flag must NOT grant this session access — it fails closed.
       backend.approved = null;
       await auth.start();
       await auth.signIn('tester@example.com', 'password');
+      expect(auth.status, AuthStatus.awaitingApproval);
+      expect(prefs.getBool('auth_ever_approved'), isNot(true));
+      expect(
+          prefs.getString('auth_approval_state_uid-tester@example.com'),
+          isNull);
+
+      // An authoritative online check then establishes the account's
+      // own state under its per-account key.
+      backend.approved = true;
+      await auth.refresh(forceEntitlementCheck: true);
       expect(auth.status, AuthStatus.signedIn);
       expect(
           prefs.getString('auth_approval_state_uid-tester@example.com'),
           'approved');
-      expect(prefs.getBool('auth_ever_approved'), isNot(true));
-
-      // ...but a different account cannot inherit the migrated flag.
-      await auth.signOut();
-      await auth.signIn('stranger@example.com', 'password');
-      expect(auth.status, AuthStatus.awaitingApproval);
     });
 
     test('service can be started and disposed repeatedly without '

@@ -180,9 +180,11 @@ up to 1 hour — not instantly. This is the documented limitation.*
     screen is only reachable while the revoked session is still alive.
   - **Fix implemented:** the device-wide flag is replaced by per-account
     state `auth_approval_state_<uid>` ∈ {`approved`, `revoked`}, which
-    survives sign-out and account switching. The legacy flag is
-    migrated once to whichever account holds the session at first
-    post-upgrade refresh, then removed. A remembered `revoked` denies
+    survives sign-out and account switching. The legacy flag records no
+    identity and cannot be attributed safely, so it is **discarded**
+    (fails closed) rather than migrated — an established approved user
+    re-establishes `approved` at the next authoritative check. A
+    remembered `revoked` denies
     access (Access Removed) even when the recheck can't run — including
     offline re-sign-in — so a revoked account can't regain entry on
     stale approval.
