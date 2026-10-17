@@ -89,47 +89,70 @@ Deno.serve(async (req) => {
   );
 
   // ── Resolve the target paths (always under the caller's prefix) ─────
+  // Paginated listing: the page loop continues until a short page, so
+  // prefixes holding more than one page of objects are fully covered.
+  const LIST_PAGE = 500;
+  const REMOVE_BATCH = 100;
+
+  async function listPrefix(): Promise<string[] | null> {
+    const all: string[] = [];
+    for (let offset = 0; ; offset += LIST_PAGE) {
+      const { data: page, error } = await admin.storage
+        .from('backups')
+        .list(prefix, { limit: LIST_PAGE, offset });
+      if (error) {
+        console.error('delete-backups: list failed', error.message);
+        return null;
+      }
+      for (const o of page ?? []) {
+        if (o.name && o.name.length > 0) all.push(`${prefix}${o.name}`);
+      }
+      if ((page ?? []).length < LIST_PAGE) return all;
+    }
+  }
+
   let paths: string[];
   if (singleName !== null) {
     paths = [`${prefix}${singleName}`];
   } else {
-    const { data: listed, error: listError } = await admin.storage
-      .from('backups')
-      .list(prefix, { limit: 1000 });
-    if (listError) {
-      console.error('delete-backups: list failed', listError.message);
+    const listed = await listPrefix();
+    if (listed === null) {
       return json(502, { error: 'storage list failed' });
     }
-    paths = (listed ?? [])
-      .filter((o) => o.name && o.name.length > 0)
-      .map((o) => `${prefix}${o.name}`);
+    paths = listed;
   }
   if (paths.length === 0) {
     return json(200, { deleted: 0 });
   }
 
-  // ── Delete through the Storage API ──────────────────────────────────
-  const { data: removed, error: removeError } = await admin.storage
-    .from('backups')
-    .remove(paths);
-  if (removeError) {
-    console.error('delete-backups: remove failed', removeError.message);
-    return json(502, { error: 'storage delete failed' });
+  // ── Delete through the Storage API, in batches ──────────────────────
+  let deletedCount = 0;
+  for (let i = 0; i < paths.length; i += REMOVE_BATCH) {
+    const batch = paths.slice(i, i + REMOVE_BATCH);
+    const { data: removed, error: removeError } = await admin.storage
+      .from('backups')
+      .remove(batch);
+    if (removeError) {
+      console.error('delete-backups: remove failed', removeError.message);
+      return json(502, { error: 'storage delete failed' });
+    }
+    deletedCount += removed?.length ?? batch.length;
   }
 
-  // ── Verify deletion through the API ─────────────────────────────────
-  const { data: after } = await admin.storage
-    .from('backups')
-    .list(prefix, { limit: 1000 });
-  const survivors = new Set((after ?? []).map((o) => `${prefix}${o.name}`));
-  const stillPresent = paths.filter((p) => survivors.has(p));
-  if (stillPresent.length > 0) {
+  // ── Verify deletion through the API (re-list, same pagination) ──────
+  // Only the REQUESTED paths must be gone — unrelated objects that
+  // remain (single-name delete, or a concurrent upload) are fine.
+  const after = await listPrefix();
+  if (after === null) {
+    return json(502, { error: 'deletion verification failed' });
+  }
+  const survivors = after.filter((p) => paths.includes(p));
+  if (survivors.length > 0) {
     console.error(
-      `delete-backups: ${stillPresent.length} object(s) still present after remove`,
+      `delete-backups: ${survivors.length} object(s) still present after remove`,
     );
     return json(502, { error: 'deletion verification failed' });
   }
-  const deletedCount = removed?.length ?? paths.length;
 
   // ── Audit (counts + identity only — no filenames or content) ────────
   const { error: auditError } = await admin
