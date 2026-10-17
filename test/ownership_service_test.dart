@@ -59,6 +59,26 @@ void main() {
       expect(await DatabaseHelper.instance.systemDatabase, isNotNull);
     });
 
+    test('armed guard does not block the claim path: snapshot and claim '
+        'still work', () async {
+      // Regression: createSnapshot previously used the guarded handle,
+      // so the claim screen's mandatory pre-claim backup failed under
+      // an armed guard (emulator: StateError on "Create Backup & Link").
+      expect(await OwnershipService.evaluate('user-A'),
+          OwnershipState.unclaimed);
+      expect(OwnershipService.hasUnownedData, isTrue);
+
+      final snap = await DatabaseHelper.instance
+          .createSnapshot('${testDir.path}/pre_claim.db');
+      expect(await File(snap).exists(), isTrue);
+
+      final result = await OwnershipService.claim(
+          userId: 'user-A', backupName: 'pre_claim.zip');
+      expect(result.rowsClaimed, greaterThan(0));
+      expect(await OwnershipService.evaluate('user-A'),
+          OwnershipState.owner);
+    });
+
     Future<void> drainToFreshInstallState(Database db) async {
       // A real fresh install keeps the auto-seeded 'Me' buddy — the
       // scaffold must NOT make the install look unclaimed-with-data.

@@ -1141,7 +1141,9 @@ class ZipBackupService {
     var ownDb = false;
     try {
       if (liveMode) {
-        db = await DatabaseHelper.instance.database;
+        // Restore-internal path fixup — must work while the ownership
+        // guard is armed (e.g. unowned backup onto unclaimed install).
+        db = await DatabaseHelper.instance.systemDatabase;
       } else {
         db = await openDatabase(dbPath);
         ownDb = true;
@@ -1368,7 +1370,7 @@ class ZipBackupService {
       var tripExists = false;
       try {
         db = liveMode
-            ? await DatabaseHelper.instance.database
+            ? await DatabaseHelper.instance.systemDatabase
             : await openDatabase(databasePath, readOnly: true);
         final rows = await db.query(
           'fishing_trips',

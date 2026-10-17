@@ -2468,7 +2468,11 @@ class DatabaseHelper {
   /// 
   /// Throws: Exception if the VACUUM INTO operation fails
   Future<String> createSnapshot(String destinationPath) async {
-    final db = await instance.database;
+    // System-level snapshot (VACUUM INTO) — used by backup creation,
+    // the pre-claim safety backup and restore recovery copies, all of
+    // which must work while the ownership guard is armed. Never exposed
+    // to user-browsing paths.
+    final db = await instance.systemDatabase;
     
     // Ensure destination directory exists
     final destinationFile = File(destinationPath);
