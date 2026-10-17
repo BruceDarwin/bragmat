@@ -182,6 +182,22 @@ up to 1 hour — not instantly. This is the documented limitation.*
     that (a) accounts can't inherit each other's approval state and
     (b) a returning revoked user sees "Access Removed". Regression
     tests must cover account switching and sign-out/sign-in cycles.
+- **DEFECT-2 — `revoked` status was transient (found & fixed during
+  Option B automated coverage).** Once `refresh()` sets
+  `AuthStatus.revoked`, the `signOut()` that revocation itself triggers
+  emits a session-lost auth event; the `_authSub` listener then calls
+  `refresh()`, observes `!hasSession`, and overwrote `revoked` with
+  `signedOut` — the Access Removed screen is replaced by Sign In within
+  a frame. Whether the event lands before or after
+  `_setStatus(revoked)` is ordering-dependent; with the real Supabase
+  backend the session-lost event can (and likely did, on device) arrive
+  after, another reason Access Removed was never observed. **Fixed:**
+  the no-session early return in `refresh()` now preserves
+  `AuthStatus.revoked`; the revoked user can still leave via the
+  screen's explicit Sign Out (a direct `_setStatus(signedOut)` that
+  doesn't round-trip the guarded branch). Covered by the service test
+  "a trailing signed-out event must not override revoked" and the
+  widget test "revoked status shows Access Removed and blocks the app".
 
 ## Post-test state
 

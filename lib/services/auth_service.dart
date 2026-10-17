@@ -241,6 +241,14 @@ class FakeAuthBackend implements AuthBackend {
     _recoveryController.add(null);
   }
 
+  /// Test helper: emit a bare signed-out auth event (as a real backend
+  /// may deliver after [signOut] returns or on external session loss).
+  void emitSignedOut() {
+    _userId = null;
+    _email = null;
+    _controller.add(null);
+  }
+
   @override
   Future<bool?> isApprovedBeta() async => approved;
 
@@ -353,7 +361,13 @@ class AuthService extends ChangeNotifier {
   /// app launch and foregrounding.
   Future<void> refresh({bool forceEntitlementCheck = false}) async {
     if (!_backend.hasSession) {
-      _setStatus(AuthStatus.signedOut);
+      // A confirmed revocation is terminal until the user acts: the
+      // signOut that the revocation itself triggered (or an external
+      // session loss) must not drop the status back to signedOut and
+      // hide the Access Removed screen.
+      if (_status != AuthStatus.revoked) {
+        _setStatus(AuthStatus.signedOut);
+      }
       return;
     }
     final prefs = await SharedPreferences.getInstance();
