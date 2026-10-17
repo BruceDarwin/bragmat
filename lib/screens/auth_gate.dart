@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/ownership_service.dart';
 import '../services/supabase_config.dart';
+import 'claim_data_screen.dart';
 import 'sign_in_screen.dart';
 import 'reset_password_screen.dart';
 
@@ -25,21 +26,37 @@ class AuthGate extends StatefulWidget {
   State<AuthGate> createState() => _AuthGateState();
 }
 
-class _AuthGateState extends State<AuthGate> {
+class _AuthGateState extends State<AuthGate> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     if (SupabaseConfig.isConfigured) {
       AuthService.instance.addListener(_onAuthChanged);
+      OwnershipService.changes.addListener(_onOwnershipChanged);
     }
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     if (SupabaseConfig.isConfigured) {
       AuthService.instance.removeListener(_onAuthChanged);
+      OwnershipService.changes.removeListener(_onOwnershipChanged);
     }
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Lightweight entitlement recheck when the app returns to the
+    // foreground — throttled to the foreground interval, and only a
+    // confirmed server-side revocation denies access; unresolvable
+    // checks fall back to the remembered state.
+    if (state == AppLifecycleState.resumed && SupabaseConfig.isConfigured) {
+      unawaited(AuthService.instance
+          .refresh(checkInterval: AuthService.foregroundCheckInterval));
+    }
   }
 
   void _onAuthChanged() {
@@ -48,6 +65,8 @@ class _AuthGateState extends State<AuthGate> {
     unawaited(OwnershipService.evaluate(AuthService.instance.userId));
     setState(() {});
   }
+
+  void _onOwnershipChanged() => setState(() {});
 
   @override
   Widget build(BuildContext context) {
@@ -81,9 +100,12 @@ class _AuthGateState extends State<AuthGate> {
       case AuthStatus.signedIn:
         // Ownership gate — a signed-in account that does not own this
         // installation's data is refused entry entirely (the DB-layer
-        // guard is also armed by OwnershipService.evaluate).
+        // guard is also armed by OwnershipService.evaluate). An
+        // unclaimed database holding records is blocked behind the
+        // ownership-resolution screen; an empty database is bound to
+        // this account inside evaluate() and opens normally.
         return FutureBuilder<OwnershipState>(
-          key: ValueKey(auth.userId),
+          key: ValueKey('${auth.userId}-${OwnershipService.changes.value}'),
           future: OwnershipService.evaluate(auth.userId),
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) {
@@ -93,6 +115,10 @@ class _AuthGateState extends State<AuthGate> {
             }
             if (snap.data == OwnershipState.denied) {
               return const _OwnershipDeniedScreen();
+            }
+            if (snap.data == OwnershipState.unclaimed &&
+                OwnershipService.hasUnownedData) {
+              return const ClaimDataScreen(blocking: true);
             }
             return widget.child;
           },

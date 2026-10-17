@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 
 import '../database/database_helper.dart';
@@ -7,8 +8,11 @@ import '../database/migration_v29.dart';
 
 /// Access state for the installation's local data.
 enum OwnershipState {
-  /// No owner recorded — pre-claim. Local data is open (Stage 4B keeps
-  /// the pre-auth local-first behaviour until a claim is made).
+  /// No owner recorded. Whether this is open depends on content:
+  /// an empty database is freely usable (and bound to the first
+  /// approved account that signs in), while a database holding
+  /// unclaimed historical records is gated behind the
+  /// ownership-resolution screen and the DB-layer guard.
   unclaimed,
 
   /// The signed-in account owns this installation's data.
@@ -54,29 +58,101 @@ class ClaimResult {
 class OwnershipService {
   OwnershipService._();
 
+  /// Bumped whenever the cached evaluation is dropped — [AuthGate]
+  /// listens so ownership changes that don't come through an auth
+  /// transition (claim, restore) still rebuild the gate.
+  static final ValueNotifier<int> changes = ValueNotifier(0);
+
   static String? _cachedUserId;
   static OwnershipState? _cachedState;
+  static bool _cachedHasData = false;
+
+  /// Whether the last evaluation found an unclaimed database holding
+  /// user records — the condition that gates the app behind the
+  /// ownership-resolution screen and arms the DB-layer guard.
+  static bool get hasUnownedData => _cachedHasData;
 
   /// Evaluate access for [userId] (null = signed out) and enforce the
   /// DB-layer guard. Call after auth state changes.
+  ///
+  /// Side effects:
+  /// - An unclaimed **empty** database is bound to [userId]
+  ///   (transactional, idempotent) so the first record can never turn a
+  ///   new install into an inaccessible unclaimed database. This is
+  ///   *establishment*, not a claim — nothing exists to back up or lose.
+  /// - An unclaimed database **with** records stays unclaimed and arms
+  ///   [DatabaseHelper.setDataAccessDenied] alongside the UI gate.
   static Future<OwnershipState> evaluate(String? userId) async {
     if (_cachedUserId == userId && _cachedState != null) {
       return _cachedState!;
     }
-    final owner = await currentOwnerId();
-    final state = owner == null
+    final db = await DatabaseHelper.instance.systemDatabase;
+    final owner = await ownerIdFrom(db);
+    var state = owner == null
         ? OwnershipState.unclaimed
         : (userId == owner ? OwnershipState.owner : OwnershipState.denied);
-    DatabaseHelper.setDataAccessDenied(state == OwnershipState.denied);
+
+    _cachedHasData = false;
+    if (state == OwnershipState.unclaimed) {
+      final hasData = await _hasLocalData(db);
+      if (!hasData && userId != null) {
+        state = await _establishEmptyOwnership(db, userId)
+            ? OwnershipState.owner
+            : state;
+      } else {
+        _cachedHasData = hasData;
+      }
+    }
+
+    DatabaseHelper.setDataAccessDenied(
+        state == OwnershipState.denied || _cachedHasData);
     _cachedUserId = userId;
     _cachedState = state;
     return state;
   }
 
-  /// Drop the memoized evaluation (sign-in/out, claim, restore).
+  /// Whether the database holds any user-owned records at all.
+  static Future<bool> hasLocalData() async {
+    final db = await DatabaseHelper.instance.systemDatabase;
+    return _hasLocalData(db);
+  }
+
+  static Future<bool> _hasLocalData(DatabaseExecutor db) async {
+    final counts = await MigrationV29.userTableCounts(db);
+    return counts.values.any((c) => c > 0);
+  }
+
+  /// Bind an empty database to [userId]. Transactional and idempotent:
+  /// the UPDATE is a no-op once an owner exists, and the emptiness check
+  /// re-runs inside the transaction so records that appeared meanwhile
+  /// (e.g. a restore) are never silently claimed — they fall back to
+  /// the unclaimed resolution path instead.
+  static Future<bool> _establishEmptyOwnership(
+      Database db, String userId) async {
+    var established = false;
+    await db.transaction((txn) async {
+      if (await _hasLocalData(txn)) return;
+      final now = DateTime.now().toUtc().toIso8601String();
+      final rows = await txn.rawUpdate(
+          'UPDATE local_account SET owner_id = ?, claimed_at = ?, '
+          'claim_db_counts = ? WHERE id = 1 AND owner_id IS NULL',
+          [
+            userId,
+            now,
+            jsonEncode(const {'_established_empty': true}),
+          ]);
+      established = rows > 0;
+    });
+    return established;
+  }
+
+  /// Drop the memoized evaluation (sign-in/out, claim, restore) and
+  /// notify listeners so the gate re-evaluates immediately.
   static void invalidate() {
     _cachedUserId = null;
     _cachedState = null;
+    _cachedHasData = false;
+    changes.value++;
   }
 
   /// The installation's data owner, or null when unclaimed / pre-v29.
@@ -113,6 +189,7 @@ class OwnershipService {
   static Future<ClaimResult> claim({
     required String userId,
     required String backupName,
+    String? claimantEmail,
   }) async {
     if (userId.isEmpty) {
       throw ArgumentError('Cannot claim data for an empty user id');
@@ -148,6 +225,13 @@ class OwnershipService {
           }
           return n;
         });
+        // The claimant's email is folded into the audit JSON so the
+        // human identity behind the claim survives without a schema
+        // change (claim_db_counts already carries the pre-claim counts).
+        final audit = <String, Object?>{
+          '_claimed_by': ?claimantEmail,
+          'counts': preCounts,
+        };
         await txn.rawUpdate(
             'UPDATE local_account SET owner_id = ?, claimed_at = ?, '
             'claim_backup_name = ?, claim_db_counts = ? WHERE id = 1',
@@ -155,7 +239,7 @@ class OwnershipService {
               userId,
               DateTime.now().toUtc().toIso8601String(),
               backupName,
-              jsonEncode(preCounts),
+              jsonEncode(audit),
             ]);
       });
     }

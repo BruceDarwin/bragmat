@@ -39,14 +39,61 @@ void main() {
   });
 
   group('evaluate', () {
-    test('unclaimed install allows access (any user or signed out)',
-        () async {
+    test('unclaimed install with records stays unclaimed and arms the '
+        'DB guard — no browsing before claim', () async {
+      // The fixture database holds unowned rows.
       expect(await OwnershipService.evaluate(null),
           OwnershipState.unclaimed);
+      expect(OwnershipService.hasUnownedData, isTrue);
+      expect(
+          () => DatabaseHelper.instance.database, throwsStateError);
+
       expect(await OwnershipService.evaluate('user-A'),
           OwnershipState.unclaimed);
-      // DB access is not denied.
+      expect(OwnershipService.hasUnownedData, isTrue);
+      // Guard stays armed — a different account cannot browse the
+      // unclaimed records either.
+      expect(
+          () => DatabaseHelper.instance.database, throwsStateError);
+      // System internals still work.
+      expect(await DatabaseHelper.instance.systemDatabase, isNotNull);
+    });
+
+    test('empty database is established to the first signed-in account '
+        '— establishment, not claim', () async {
+      // Drain the fixture rows so the database is genuinely empty.
+      final db = await DatabaseHelper.instance.systemDatabase;
+      for (final table in MigrationV29.userOwnedTables) {
+        await db.delete(table);
+      }
+
+      expect(await OwnershipService.evaluate('user-A'),
+          OwnershipState.owner);
+      expect(await OwnershipService.ownerIdFrom(db), 'user-A');
+      // Guard stays disarmed — this account owns the (empty) install.
       expect(await DatabaseHelper.instance.database, isNotNull);
+      // Establishment is auditable and distinct from a claim.
+      final account = (await db.query('local_account')).first;
+      expect(account['claimed_at'], isNotNull);
+      expect(account['claim_backup_name'], isNull);
+    });
+
+    test('empty-database establishment is idempotent and refuses other '
+        'accounts afterwards', () async {
+      final db = await DatabaseHelper.instance.systemDatabase;
+      for (final table in MigrationV29.userOwnedTables) {
+        await db.delete(table);
+      }
+
+      expect(await OwnershipService.evaluate('user-A'),
+          OwnershipState.owner);
+      // Re-evaluation is a no-op.
+      expect(await OwnershipService.evaluate('user-A'),
+          OwnershipState.owner);
+      // A different account is denied — an established empty install is
+      // just as owned as a claimed one.
+      expect(await OwnershipService.evaluate('user-B'),
+          OwnershipState.denied);
     });
   });
 
