@@ -98,32 +98,46 @@ entire validated restore pipeline applies verbatim after decryption.
 insert into storage.buckets (id, name, public)
   values ('backups', 'backups', false) on conflict do nothing;
 
--- Users manage objects only under their own uid prefix, and only
--- while approved for beta (revoked users lose cloud access
--- server-side, matching the profiles policy).
-create policy "backups: own prefix"
-  on storage.objects for all to authenticated
-  using (
-    bucket_id = 'backups'
-    and (storage.foldername(name))[1] = auth.uid()::text
-    and public.is_approved_beta()
-  )
-  with check (
-    bucket_id = 'backups'
-    and (storage.foldername(name))[1] = auth.uid()::text
-    and public.is_approved_beta()
-  );
+-- SELECT / INSERT / DELETE policies on storage.objects, all with the
+-- same predicate: bucket = 'backups', first path segment = caller uid,
+-- caller approved via public.is_approved_beta().
 ```
 
 Notes:
+- **No UPDATE policy** — the app uploads with `upsert: false` and never
+  renames/moves objects; least privilege. Re-add via a later migration
+  only if resumable-upload finalisation ever requires it.
 - No `anon` access; no public URLs; downloads use the authenticated
-  `download` API, not signed URLs (no reason to hand out bearer-free
-  links to private data).
+  `download` API, not signed URLs.
 - Revocation already signs the user out app-side; the
   `is_approved_beta()` clause makes the denial server-side too, matching
   the 4A profiles precedent.
-- Decision point §10.4: whether revoked/departed users' objects are
-  purged server-side (manual admin op, since service key never ships).
+- **Deletion never touches `storage.*` rows directly** (SQL metadata
+  deletion orphans physical files). Approved users delete via the
+  Storage API (`remove`) under the DELETE policy; revoked users and
+  account closure go through the `delete-backups` Edge Function
+  (§5.1a), which uses the service role server-side to call the API.
+- `public.backup_deletion_audit` records uid + count + reason for every
+  Edge Function deletion; users may read only their own rows, and no app
+  role may write it (service-role writes bypass RLS).
+
+### 3.2a Deletion path — `delete-backups` Edge Function
+
+`supabase/functions/delete-backups/index.ts`:
+
+- Authenticates the caller via the Bearer JWT against Supabase Auth —
+  identity is never taken from request parameters.
+- Builds the deletion prefix `{uid}/` server-side from the verified uid;
+  an optional `{name}` body targets one backup (bare filenames only —
+  separators/traversal rejected).
+- Deletes through the Storage API with a service-role client (the key
+  exists only in the function's environment), then **re-lists to verify
+  removal**.
+- Writes `backup_deletion_audit` (uid, count, reason); audit failure is
+  logged, not fatal.
+- Deliberately does **not** check `is_approved_beta()` — revoked users
+  keep the ability to remove their own backups for account closure.
+- Idempotent: deleting an empty prefix returns `{deleted: 0}`.
 
 ## 4. Encryption design — the core decision
 
@@ -362,7 +376,7 @@ media-split only when sync work begins or Pro-tier economics justify it.
 
 | Phase | Deliverable | Depends on |
 |---|---|---|
-| **4C-1 Server** | `supabase/migrations/0002_cloud_backup.sql`: `backups` bucket + storage RLS (+ approved-beta clause); applied via dashboard like 0001 | Approval of this doc |
+| **4C-1 Server** | `supabase/migrations/0002_cloud_backup.sql` (private bucket, owner-prefix RLS, audit table); `delete-backups` Edge Function; SQL RLS checks + API-level verification plan. Applied/deployed only on approval | Approval of this doc |
 | **4C-2 Crypto core** | `BackupEnvelope` (sodium_libs; argon2id + secretstream; header format §4.3); unit tests incl. truncation/tamper detection; passphrase strength + recovery-code helpers | — |
 | **4C-3 Upload/download service** | `CloudBackupService` behind a `CloudBackupBackend` interface (mirrors `AuthBackend`/`FakeAuthBackend` for tests): enable/consent state, create→encrypt→upload→verify, list, download→decrypt→hand to existing restore, retention keep-3, delete-all | 4C-1, 4C-2 |
 | **4C-4 Settings UI** | Cloud-backup section: enable flow + consent record, passphrase, "Back up now", remote backup list w/ size/date, restore picker, disable/delete | 4C-3 |
@@ -402,9 +416,10 @@ implementation approval):
    (launch + connectivity regain) as the later 4C-6 toggle.** True
    background jobs deferred.
 5. **Revoked/departed users' objects** — ✅ **Confirmed:** user-initiated
-   deletion via `delete_own_backups()` RPC (works even after revocation,
-   implemented in 0002), plus administrator-assisted deletion for
-   exceptional cases and account closure.
+   deletion via the Storage API (approved) or the `delete-backups` Edge
+   Function (revoked / account closure), plus administrator-assisted
+   deletion for exceptional cases. Direct `storage.*` row deletion is
+   prohibited — it orphans physical objects.
 6. **Consent text** — ✅ **Confirmed:** explicit opt-in consent required.
    Draft copy approved in principle; final user-facing wording to be
    reviewed before release.
@@ -457,9 +472,10 @@ implementation approval):
    private application storage (`getApplicationSupportDirectory` or a
    dedicated temp subdir), never shared storage, and are deleted in a
    `finally` after restore — success or failure.
-7. **Revocation-proof deletion.** `delete_own_backups()` RPC (security
-   definer, no `is_approved_beta()` requirement) guarantees a revoked
-   user can still remove their cloud backups — shipped in 0002.
+7. **Revocation-proof deletion.** The `delete-backups` Edge Function
+   (service role server-side, own-prefix scope, no `is_approved_beta()`
+   requirement) guarantees a revoked user can still remove their cloud
+   backups — `supabase/functions/delete-backups/index.ts`.
 8. **No sensitive logging.** Passphrases, recovery codes, archive keys,
    decrypted content and fishing coordinates must never reach
    `debugPrint`/logs/crash reporting — including inside error messages.

@@ -18,6 +18,11 @@
 --
 -- Users: A = invited + verified   B = verified, not invited
 --        C = invited + unverified D = invited, status='revoked'
+--
+-- NOTE: SQL-level checks exercise the RLS layer only. Real
+-- upload/download/delete behaviour (object physicality, the
+-- delete-backups Edge Function) is covered by
+-- storage_api_checks.md — the two are complementary.
 -- ────────────────────────────────────────────────────────────────────────
 
 begin;
@@ -125,7 +130,9 @@ begin
     (4,'unprefixed object insert denied','denied',outcome,(outcome='denied'));
 end $$;
 
--- ═══ CHECK 5: cannot modify or delete another user's objects ═══════════
+-- ═══ CHECK 5: cross-user modify/move/delete all denied ═════════════════
+-- update = 0 rows under RLS (no update policy at all, and the row is
+-- invisible anyway) → covers overwrite, rename and move attempts.
 do $$
 declare rc int;
 begin
@@ -138,7 +145,7 @@ begin
   get diagnostics rc = row_count;
   perform set_config('role','none',true);
   insert into rls_results values
-    (5,'cross-user update denied','0',rc::text,(rc = 0));
+    (5,'cross-user update/rename/move denied','0',rc::text,(rc = 0));
 
   perform set_config('role','authenticated',true);
   delete from storage.objects
@@ -151,7 +158,40 @@ begin
     (6,'cross-user delete denied','0',rc::text,(rc = 0));
 end $$;
 
--- ═══ CHECK 6: uninvited user denied even under own prefix ══════════════
+-- ═══ CHECK 6: own-row UPDATE is also denied (no update policy) ═════════
+-- Least privilege: upsert:false uploads need INSERT only; renames and
+-- moves are never used. Nothing may modify an existing backup row.
+do $$
+declare rc int;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  update storage.objects set name = name || '.x'
+   where bucket_id = 'backups'
+     and (storage.foldername(name))[1] =
+         'a0000000-0000-4000-8000-00000000000a';
+  get diagnostics rc = row_count;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (7,'own-row update denied (no update policy)','0',rc::text,(rc = 0));
+end $$;
+
+-- ═══ CHECK 7: approved user CAN delete own objects (API path) ══════════
+do $$
+declare rc int;
+begin
+  perform set_config('role','authenticated',true);
+  perform set_config('request.jwt.claims','{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
+  delete from storage.objects
+   where bucket_id = 'backups'
+     and name = 'a0000000-0000-4000-8000-00000000000a/backup_a2.bzp';
+  get diagnostics rc = row_count;
+  perform set_config('role','none',true);
+  insert into rls_results values
+    (8,'approved user deletes own backup','1',rc::text,(rc = 1));
+end $$;
+
+-- ═══ CHECK 8: uninvited user denied even under own prefix ══════════════
 do $$
 declare outcome text; rc int;
 begin
@@ -168,12 +208,12 @@ begin
     where bucket_id = 'backups';
   perform set_config('role','none',true);
   insert into rls_results values
-    (7,'uninvited user cannot upload','denied',outcome,(outcome='denied'));
+    (9,'uninvited user cannot upload','denied',outcome,(outcome='denied'));
   insert into rls_results values
-    (8,'uninvited user cannot even read own objects','0',rc::text,(rc = 0));
+    (10,'uninvited user cannot even read own objects','0',rc::text,(rc = 0));
 end $$;
 
--- ═══ CHECK 7: invited but unverified user denied ═══════════════════════
+-- ═══ CHECK 9: invited but unverified user denied ═══════════════════════
 do $$
 declare outcome text;
 begin
@@ -188,12 +228,14 @@ begin
   end;
   perform set_config('role','none',true);
   insert into rls_results values
-    (9,'unverified user cannot upload','denied',outcome,(outcome='denied'));
+    (11,'unverified user cannot upload','denied',outcome,(outcome='denied'));
 end $$;
 
--- ═══ CHECK 8: revoked user — ordinary access gone, RPC still works ═════
+-- ═══ CHECK 10: revoked user — all ordinary access gone ═════════════════
+-- Deletion for revoked users goes through the delete-backups Edge
+-- Function (Storage API) — covered in storage_api_checks.md.
 do $$
-declare rc int; deleted int;
+declare rc int;
 begin
   perform set_config('role','authenticated',true);
   perform set_config('request.jwt.claims','{"sub":"d0000000-0000-4000-8000-00000000000d","email":"rlstest.d@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
@@ -201,23 +243,19 @@ begin
     where bucket_id = 'backups';
   perform set_config('role','none',true);
   insert into rls_results values
-    (10,'revoked user sees no backups','0',rc::text,(rc = 0));
+    (12,'revoked user sees no backups','0',rc::text,(rc = 0));
 
   perform set_config('role','authenticated',true);
   delete from storage.objects
    where bucket_id = 'backups'
      and (storage.foldername(name))[1] = auth.uid()::text;
   get diagnostics rc = row_count;
-  select public.delete_own_backups() into deleted;
   perform set_config('role','none',true);
   insert into rls_results values
-    (11,'revoked user cannot delete via API','0',rc::text,(rc = 0));
-  insert into rls_results values
-    (12,'revoked user CAN delete via delete_own_backups()','1',
-        deleted::text,(deleted = 1));
+    (13,'revoked user cannot delete via API/RLS','0',rc::text,(rc = 0));
 end $$;
 
--- ═══ CHECK 9: anonymous access fully denied ════════════════════════════
+-- ═══ CHECK 11: anonymous access fully denied ═══════════════════════════
 do $$
 declare outcome text; rc int;
 begin
@@ -241,29 +279,35 @@ begin
   end;
   perform set_config('role','none',true);
   insert into rls_results values
-    (13,'anon cannot upload','denied',outcome,(outcome='denied'));
+    (14,'anon cannot upload','denied',outcome,(outcome='denied'));
   insert into rls_results values
-    (14,'anon sees no backups','0',rc::text,(rc = 0));
+    (15,'anon sees no backups','0',rc::text,(rc = 0));
 end $$;
 
--- ═══ CHECK 10: RPC deletes only the caller's own objects ═══════════════
+-- ═══ CHECK 12: audit table — users see only own rows, cannot write ═════
 do $$
-declare deleted int; remaining int;
+declare rc int; outcome text;
 begin
+  -- Planted audit rows for A and D (as session user — RLS bypassed).
+  insert into public.backup_deletion_audit (user_id, deleted_count) values
+    ('a0000000-0000-4000-8000-00000000000a', 2),
+    ('d0000000-0000-4000-8000-00000000000d', 1);
+
   perform set_config('role','authenticated',true);
   perform set_config('request.jwt.claims','{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
-  -- A owns 2 objects at this point (planted + check-2 insert).
-  select public.delete_own_backups() into deleted;
+  select count(*) into rc from public.backup_deletion_audit;
+  begin
+    insert into public.backup_deletion_audit (user_id, deleted_count)
+      values (auth.uid(), 9);
+    outcome := 'allowed';
+  exception when insufficient_privilege then
+    outcome := 'denied';
+  end;
   perform set_config('role','none',true);
-  -- As session user: B's object must remain; D's was already removed.
-  select count(*) into remaining from storage.objects
-    where bucket_id = 'backups';
   insert into rls_results values
-    (15,'delete_own_backups() removes caller''s objects','2',
-        deleted::text,(deleted = 2));
+    (16,'user sees only own audit rows','1',rc::text,(rc = 1));
   insert into rls_results values
-    (16,'other users'' objects untouched by RPC','1',
-        remaining::text,(remaining = 1));
+    (17,'user cannot write audit rows','denied',outcome,(outcome='denied'));
 end $$;
 
 -- ═══ RESULTS ═══════════════════════════════════════════════════════════
