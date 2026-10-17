@@ -2966,6 +2966,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         task: (report) => ZipBackupService.restoreBackup(
           zipPath: backupFile.path,
           onProgress: report,
+          currentUserId: AuthService.instance.userId,
+          confirmUnownedRestore: _confirmUnownedRestore,
+          createSafetyBackup: _createSafetyBackup,
         ),
       );
 
@@ -2981,7 +2984,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             '${result.referencedMediaMissing > 0 ? ' (${result.referencedMediaMissing} referenced photo(s) were not in the backup)' : ''}'
             '${result.mediaPathConflicts > 0 ? ' (${result.mediaPathConflicts} photo name conflict(s) — both copies kept)' : ''}'
             '${result.mediaPathsRepaired > 0 ? ' (${result.mediaPathsRepaired} legacy photo path(s) repaired)' : ''}'
-            '${result.ambiguousMediaRefs > 0 ? ' (${result.ambiguousMediaRefs} ambiguous photo reference(s) left unresolved)' : ''}',
+            '${result.ambiguousMediaRefs > 0 ? ' (${result.ambiguousMediaRefs} ambiguous photo reference(s) left unresolved)' : ''}'
+            '${result.safetyBackupName != null ? ' (safety copy: ${result.safetyBackupName})' : ''}',
           ),
         ),
       );
@@ -2994,6 +2998,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _loadBaits();
       _loadFishTypePreferences();
       _loadTideReference();
+    } on RestoreCancelledException {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Restore cancelled')),
+        );
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -3001,6 +3011,50 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
+  }
+
+  /// Shown when a restore would replace the account-owned data on this
+  /// device with records that aren't linked to any account — the owner
+  /// must explicitly confirm before anything is touched.
+  Future<bool> _confirmUnownedRestore() async {
+    if (!mounted) return false;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Backup Is Not Linked to an Account'),
+            content: const Text(
+              'This backup is not linked to any account. Restoring it '
+              'will replace the data currently linked to your account '
+              'with unclaimed records.\n\n'
+              '• A verified safety backup of your current data is '
+              'created first.\n'
+              '• The restored records stay unclaimed — you\'ll need to '
+              'link them to your account explicitly afterwards.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Restore Anyway'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  /// Creates a verified ZIP safety backup of the current data before an
+  /// unowned backup is allowed to replace it. Returns the backup's file
+  /// name, or null when it could not be created (aborts the restore).
+  Future<String?> _createSafetyBackup() async {
+    final dir = await getDownloadsDirectory();
+    if (dir == null) return null;
+    final backupPath =
+        await ZipBackupService.createBackup(outputDirectory: dir.path);
+    return path.basename(backupPath);
   }
 
   /// 1x1 transparent PNG used for seeded test photos (valid, decodable).

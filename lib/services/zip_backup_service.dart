@@ -482,6 +482,9 @@ class ZipBackupService {
     Function(String)? onProgress,
     String? databasePathOverride,
     Directory? mediaDirectoryOverride,
+    String? currentUserId,
+    Future<bool> Function()? confirmUnownedRestore,
+    Future<String?> Function()? createSafetyBackup,
   }) async {
     final tempDir = Directory.systemTemp.createTempSync('bragmat_restore_');
 
@@ -546,6 +549,34 @@ class ZipBackupService {
             'inconsistent (partial or conflicting owner records). '
             'Controlled recovery required — the file was left untouched.');
       }
+
+      // An unowned backup landing on an owned install replaces the
+      // owner's data with unowned records — an owner-only decision that
+      // requires the owning account signed in, explicit confirmation and
+      // a verified safety backup of the existing data first. The
+      // restored rows still stay unowned: they are never silently
+      // assigned, and browsing stays gated until the explicit claim.
+      String? safetyBackupName;
+      if (targetOwnership.ownerId != null &&
+          backupOwnership.ownerId == null) {
+        if (currentUserId != targetOwnership.ownerId) {
+          throw Exception(
+              'Restore refused: replacing owned data with an unowned '
+              'backup requires the owning account to be signed in.');
+        }
+        if (await confirmUnownedRestore?.call() != true) {
+          throw const RestoreCancelledException();
+        }
+        safetyBackupName = await createSafetyBackup?.call();
+        if (safetyBackupName == null || safetyBackupName.isEmpty) {
+          throw Exception(
+              'Restore aborted: a verified safety backup of the existing '
+              'data could not be created — nothing was changed.');
+        }
+        await _reportStage(
+            'safetyBackup', onProgress, 'Safety backup created');
+      }
+
       final targetDbFile = File(targetDbPath);
       final mediaDir =
           mediaDirectoryOverride ?? await MediaStorageService.getMediaDirectory();
@@ -734,6 +765,10 @@ class ZipBackupService {
 
       await _reportStage('restored', onProgress, 'Restore complete');
 
+      // Ownership may have changed with the database — drop the memoized
+      // evaluation so the next gate check reads the restored file.
+      OwnershipService.invalidate();
+
       return BackupRestoreResult(
         manifest: validation.manifest!,
         mediaFilesRestored: mediaResult.moved,
@@ -742,6 +777,7 @@ class ZipBackupService {
         mediaPathConflicts: mediaResult.remapped.length,
         mediaPathsRepaired: repairs.length,
         ambiguousMediaRefs: ambiguousReferenced.length,
+        safetyBackupName: safetyBackupName,
       );
     } catch (e) {
       // Discard leftovers. The recovery copy is only dropped when the live
@@ -1408,6 +1444,15 @@ class BackupValidationResult {
 }
 
 /// Result of a completed backup restore.
+/// The user cancelled a restore at an explicit-confirmation prompt —
+/// thrown before any staging so nothing on the device was touched.
+class RestoreCancelledException implements Exception {
+  const RestoreCancelledException();
+
+  @override
+  String toString() => 'Restore cancelled';
+}
+
 class BackupRestoreResult {
   /// The manifest from the restored backup.
   final BackupManifest manifest;
@@ -1436,6 +1481,10 @@ class BackupRestoreResult {
   /// file — reported rather than silently attached to the wrong photo.
   final int ambiguousMediaRefs;
 
+  /// Name of the verified safety backup created when an unowned backup
+  /// replaced an owned database. Null for all other restores.
+  final String? safetyBackupName;
+
   BackupRestoreResult({
     required this.manifest,
     required this.mediaFilesRestored,
@@ -1444,5 +1493,6 @@ class BackupRestoreResult {
     this.mediaPathConflicts = 0,
     this.mediaPathsRepaired = 0,
     this.ambiguousMediaRefs = 0,
+    this.safetyBackupName,
   });
 }

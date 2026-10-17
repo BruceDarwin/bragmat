@@ -150,22 +150,106 @@ void main() {
     expect(await targetOwner(), isNull);
   });
 
-  test('unowned backup restores unowned even on a claimed install — '
-      'never silently assigned, explicit claim required', () async {
+  test('unowned backup on a claimed install requires owner sign-in, '
+      'explicit confirmation and a verified safety backup — and still '
+      'restores unowned', () async {
     await writeV29File(targetDbPath,
         accountOwner: 'user-A', fish: ['Owned']);
     final src = path.join(testDir.path, 'src.db');
     await writeV28File(src, ['FromBackup']);
     final zip = await buildZip(src, 28);
 
-    await ZipBackupService.restoreBackup(
-        zipPath: zip, databasePathOverride: targetDbPath);
+    var confirmCalled = false;
+    var safetyCalled = false;
+    final result = await ZipBackupService.restoreBackup(
+      zipPath: zip,
+      databasePathOverride: targetDbPath,
+      currentUserId: 'user-A',
+      confirmUnownedRestore: () async {
+        confirmCalled = true;
+        return true;
+      },
+      createSafetyBackup: () async {
+        safetyCalled = true;
+        return 'safety_backup.zip';
+      },
+    );
 
+    expect(confirmCalled, isTrue);
+    expect(safetyCalled, isTrue);
+    expect(result.safetyBackupName, 'safety_backup.zip');
     final catches = await readTargetCatches();
     expect(catches.single['fish_type'], 'FromBackup');
     // Restored data stays unowned — claiming is always explicit.
     expect(catches.single['owner_id'], isNull);
     expect(await targetOwner(), isNull);
+  });
+
+  test('unowned backup on a claimed install is refused when a '
+      'non-owner is signed in', () async {
+    await writeV29File(targetDbPath,
+        accountOwner: 'user-A', fish: ['Mine']);
+    final src = path.join(testDir.path, 'src.db');
+    await writeV28File(src, ['FromBackup']);
+    final zip = await buildZip(src, 28);
+
+    await expectLater(
+        ZipBackupService.restoreBackup(
+          zipPath: zip,
+          databasePathOverride: targetDbPath,
+          currentUserId: 'user-B',
+          confirmUnownedRestore: () async => true,
+          createSafetyBackup: () async => 'safety.zip',
+        ),
+        throwsA(predicate(
+            (e) => e.toString().contains('owning account'))));
+
+    expect((await readTargetCatches()).single['fish_type'], 'Mine');
+    expect(await targetOwner(), 'user-A');
+  });
+
+  test('unowned backup on a claimed install cancels cleanly without '
+      'confirmation — nothing touched', () async {
+    await writeV29File(targetDbPath,
+        accountOwner: 'user-A', fish: ['Mine']);
+    final src = path.join(testDir.path, 'src.db');
+    await writeV28File(src, ['FromBackup']);
+    final zip = await buildZip(src, 28);
+
+    await expectLater(
+        ZipBackupService.restoreBackup(
+          zipPath: zip,
+          databasePathOverride: targetDbPath,
+          currentUserId: 'user-A',
+          confirmUnownedRestore: () async => false,
+        ),
+        throwsA(isA<RestoreCancelledException>()));
+
+    expect((await readTargetCatches()).single['fish_type'], 'Mine');
+    expect(await targetOwner(), 'user-A');
+  });
+
+  test('unowned backup on a claimed install aborts when the safety '
+      'backup cannot be created', () async {
+    await writeV29File(targetDbPath,
+        accountOwner: 'user-A', fish: ['Mine']);
+    final src = path.join(testDir.path, 'src.db');
+    await writeV28File(src, ['FromBackup']);
+    final zip = await buildZip(src, 28);
+
+    await expectLater(
+        ZipBackupService.restoreBackup(
+          zipPath: zip,
+          databasePathOverride: targetDbPath,
+          currentUserId: 'user-A',
+          confirmUnownedRestore: () async => true,
+          createSafetyBackup: () async => null,
+        ),
+        throwsA(predicate(
+            (e) => e.toString().contains('safety backup'))));
+
+    expect((await readTargetCatches()).single['fish_type'], 'Mine');
+    expect(await targetOwner(), 'user-A');
   });
 
   test('v29 backup with matching owner restores', () async {
