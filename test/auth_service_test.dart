@@ -316,6 +316,54 @@ void main() {
           'approved');
     });
 
+    test('foreground/periodic recheck interval detects revocation '
+        'during an active session', () async {
+      await auth.start();
+      await auth.signIn('tester@example.com', 'password');
+      expect(auth.status, AuthStatus.signedIn);
+
+      final prefs = await SharedPreferences.getInstance();
+      final now = DateTime.now().millisecondsSinceEpoch;
+
+      // 5 minutes since the last check — inside the 10-minute
+      // foreground cadence, so no RPC and no state change.
+      backend.approved = false;
+      await prefs.setInt(
+          'auth_last_entitlement_check_ms',
+          now - const Duration(minutes: 5).inMilliseconds);
+      await auth.refresh(
+          checkInterval: AuthService.foregroundCheckInterval);
+      expect(auth.status, AuthStatus.signedIn);
+
+      // 11 minutes — outside the cadence, so the recheck runs and the
+      // confirmed revocation denies access immediately.
+      await prefs.setInt(
+          'auth_last_entitlement_check_ms',
+          now - const Duration(minutes: 11).inMilliseconds);
+      await auth.refresh(
+          checkInterval: AuthService.foregroundCheckInterval);
+      expect(auth.status, AuthStatus.revoked);
+      expect(backend.hasSession, false);
+    });
+
+    test('periodic recheck treats unresolvable checks as transient, '
+        'not revocation', () async {
+      await auth.start();
+      await auth.signIn('tester@example.com', 'password');
+      expect(auth.status, AuthStatus.signedIn);
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setInt('auth_last_entitlement_check_ms', 0);
+
+      // Network failure mid-session keeps the remembered approval —
+      // it must never be mistaken for a confirmed revocation.
+      backend.approved = null;
+      await auth.refresh(
+          checkInterval: AuthService.foregroundCheckInterval);
+      expect(auth.status, AuthStatus.signedIn);
+      expect(backend.hasSession, true);
+    });
+
     test('service can be started and disposed repeatedly without '
         'leaking listeners', () async {
       for (var i = 0; i < 3; i++) {

@@ -349,6 +349,14 @@ class AuthService extends ChangeNotifier {
   static const _kRevoked = 'revoked';
   static const _entitlementCheckInterval = Duration(hours: 1);
 
+  /// Cadence for the lightweight entitlement recheck when the app
+  /// returns to the foreground and for the periodic active-use timer —
+  /// much shorter than the launch/auth-event throttle so a confirmed
+  /// revocation is detected promptly during a session. Unresolvable
+  /// checks still fall back to the remembered state (a network failure
+  /// is never treated as a confirmed revocation).
+  static const foregroundCheckInterval = Duration(minutes: 10);
+
   /// Start listening and resolve initial status. Safe to call once.
   Future<void> start() async {
     _authSub?.cancel();
@@ -358,11 +366,21 @@ class AuthService extends ChangeNotifier {
       _passwordRecoveryPending = true;
       notifyListeners();
     });
+    // Periodic recheck during active use — the interval doubles as its
+    // own throttle, so a firing timer never produces back-to-back RPCs.
+    _periodicCheck?.cancel();
+    _periodicCheck = Timer.periodic(foregroundCheckInterval, (_) {
+      refresh(checkInterval: foregroundCheckInterval);
+    });
     await refresh();
   }
 
+  Timer? _periodicCheck;
+
   @override
   Future<void> dispose() async {
+    _periodicCheck?.cancel();
+    _periodicCheck = null;
     await _authSub?.cancel();
     await _recoverySub?.cancel();
     super.dispose();
@@ -374,8 +392,12 @@ class AuthService extends ChangeNotifier {
   /// so auth events emitted mid-refresh (e.g. the sign-out a revocation
   /// triggers, or the sign-in event racing its own forced check) can
   /// never interleave and produce conflicting status transitions.
-  Future<void> refresh({bool forceEntitlementCheck = false}) {
+  Future<void> refresh({
+    bool forceEntitlementCheck = false,
+    Duration? checkInterval,
+  }) {
     _queuedForceCheck |= forceEntitlementCheck;
+    _queuedCheckInterval = checkInterval;
     if (_inFlightRefresh != null) {
       _refreshPending = true;
       return _inFlightRefresh!;
@@ -388,6 +410,7 @@ class AuthService extends ChangeNotifier {
   Future<void>? _inFlightRefresh;
   bool _refreshPending = false;
   bool _queuedForceCheck = false;
+  Duration? _queuedCheckInterval;
 
   /// Set while a fresh session is about to get a forced entitlement
   /// check (sign-in / sign-up). A remembered revocation must not kill
@@ -401,15 +424,18 @@ class AuthService extends ChangeNotifier {
       do {
         _refreshPending = false;
         final force = _queuedForceCheck;
+        final interval = _queuedCheckInterval;
         _queuedForceCheck = false;
-        await _refresh(force);
+        _queuedCheckInterval = null;
+        await _refresh(force, interval);
       } while (_refreshPending);
     } finally {
       _inFlightRefresh = null;
     }
   }
 
-  Future<void> _refresh(bool forceEntitlementCheck) async {
+  Future<void> _refresh(
+      bool forceEntitlementCheck, Duration? checkInterval) async {
     if (!_backend.hasSession) {
       // A confirmed revocation is terminal until the user acts: the
       // signOut that the revocation itself triggered (or an external
@@ -435,8 +461,9 @@ class AuthService extends ChangeNotifier {
         approvalKey == null ? null : prefs.getString(approvalKey);
 
     final last = prefs.getInt(_kLastEntitlementCheck) ?? 0;
+    final interval = checkInterval ?? _entitlementCheckInterval;
     final due = DateTime.now().millisecondsSinceEpoch - last >=
-        _entitlementCheckInterval.inMilliseconds;
+        interval.inMilliseconds;
 
     if (forceEntitlementCheck || due) {
       final result = await _checkEntitlement();
