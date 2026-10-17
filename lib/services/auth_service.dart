@@ -335,7 +335,18 @@ class AuthService extends ChangeNotifier {
   StreamSubscription<void>? _recoverySub;
 
   static const _kLastEntitlementCheck = 'auth_last_entitlement_check_ms';
+
+  /// Legacy device-wide approval flag (pre per-account history). Migrated
+  /// to the first session's per-account key on the next refresh.
   static const _kEverApproved = 'auth_ever_approved';
+
+  /// Per-account approval state: `auth_approval_state_<uid>` holds
+  /// 'approved' or 'revoked'. Persists across sign-out so account
+  /// switching can't inherit another account's entitlement and a
+  /// returning revoked account still reaches Access Removed.
+  static const _kApprovalStatePrefix = 'auth_approval_state_';
+  static const _kApproved = 'approved';
+  static const _kRevoked = 'revoked';
   static const _entitlementCheckInterval = Duration(hours: 1);
 
   /// Start listening and resolve initial status. Safe to call once.
@@ -358,8 +369,47 @@ class AuthService extends ChangeNotifier {
   }
 
   /// Re-evaluate session + beta entitlement. Called on auth changes,
-  /// app launch and foregrounding.
-  Future<void> refresh({bool forceEntitlementCheck = false}) async {
+  /// app launch and foregrounding. Calls are serialized: a refresh that
+  /// arrives while another is in flight is queued and re-runs afterwards,
+  /// so auth events emitted mid-refresh (e.g. the sign-out a revocation
+  /// triggers, or the sign-in event racing its own forced check) can
+  /// never interleave and produce conflicting status transitions.
+  Future<void> refresh({bool forceEntitlementCheck = false}) {
+    _queuedForceCheck |= forceEntitlementCheck;
+    if (_inFlightRefresh != null) {
+      _refreshPending = true;
+      return _inFlightRefresh!;
+    }
+    final future = _runRefreshes();
+    _inFlightRefresh = future;
+    return future;
+  }
+
+  Future<void>? _inFlightRefresh;
+  bool _refreshPending = false;
+  bool _queuedForceCheck = false;
+
+  /// Set while a fresh session is about to get a forced entitlement
+  /// check (sign-in / sign-up). A remembered revocation must not kill
+  /// the new session before that check runs — the check is the
+  /// authoritative verdict (a reinstated account must be able to sign
+  /// back in).
+  bool _forcedCheckPending = false;
+
+  Future<void> _runRefreshes() async {
+    try {
+      do {
+        _refreshPending = false;
+        final force = _queuedForceCheck;
+        _queuedForceCheck = false;
+        await _refresh(force);
+      } while (_refreshPending);
+    } finally {
+      _inFlightRefresh = null;
+    }
+  }
+
+  Future<void> _refresh(bool forceEntitlementCheck) async {
     if (!_backend.hasSession) {
       // A confirmed revocation is terminal until the user acts: the
       // signOut that the revocation itself triggered (or an external
@@ -371,6 +421,19 @@ class AuthService extends ChangeNotifier {
       return;
     }
     final prefs = await SharedPreferences.getInstance();
+    final uid = _backend.userId;
+    final approvalKey = uid == null ? null : '$_kApprovalStatePrefix$uid';
+
+    // One-time migration: attribute the legacy device-wide flag to the
+    // session that first refreshes after the upgrade, then drop it so no
+    // other account can inherit it.
+    if (approvalKey != null && prefs.getBool(_kEverApproved) == true) {
+      await prefs.setString(approvalKey, _kApproved);
+      await prefs.remove(_kEverApproved);
+    }
+    final approvalState =
+        approvalKey == null ? null : prefs.getString(approvalKey);
+
     final last = prefs.getInt(_kLastEntitlementCheck) ?? 0;
     final due = DateTime.now().millisecondsSinceEpoch - last >=
         _entitlementCheckInterval.inMilliseconds;
@@ -378,20 +441,19 @@ class AuthService extends ChangeNotifier {
     if (forceEntitlementCheck || due) {
       final result = await _checkEntitlement();
       if (result == BetaCheckResult.offline) {
-        // Offline: a previously approved session stays usable; a session
-        // never verified stays in awaiting-approval (fail closed for new
-        // sign-ins, never lock out an established session).
-        _setStatus(
-          prefs.getBool(_kEverApproved) == true
-              ? AuthStatus.signedIn
-              : AuthStatus.awaitingApproval,
-        );
+        // Offline: trust this account's remembered state — approved
+        // sessions stay usable, confirmed revocations stay denied, and
+        // a never-verified session fails closed. The check already ran
+        // here, so a remembered revocation may kill the session.
+        await _applyRememberedState(approvalState, revokeKillsSession: true);
         return;
       }
       await prefs.setInt(
           _kLastEntitlementCheck, DateTime.now().millisecondsSinceEpoch);
       if (result == BetaCheckResult.approved) {
-        await prefs.setBool(_kEverApproved, true);
+        if (approvalKey != null) {
+          await prefs.setString(approvalKey, _kApproved);
+        }
         try {
           await _backend.upsertProfile('');
         } catch (_) {
@@ -399,26 +461,50 @@ class AuthService extends ChangeNotifier {
           // and a transient failure must not block the app.
         }
         _setStatus(AuthStatus.signedIn);
-      } else {
-        // Not on allowlist at all, or revoked after prior approval.
-        final everApproved = prefs.getBool(_kEverApproved) == true;
-        if (everApproved) {
-          await prefs.setBool(_kEverApproved, false);
-          await _backend.signOut();
-          _setStatus(AuthStatus.revoked);
-        } else {
-          _setStatus(AuthStatus.awaitingApproval);
+      } else if (approvalState != null) {
+        // Previously approved and now denied, or already marked revoked:
+        // record it per account and surface Access Removed rather than
+        // the never-approved Awaiting Invitation screen.
+        if (approvalKey != null) {
+          await prefs.setString(approvalKey, _kRevoked);
         }
+        await _backend.signOut();
+        _setStatus(AuthStatus.revoked);
+      } else {
+        // Never approved — nothing remembered for this account.
+        _setStatus(AuthStatus.awaitingApproval);
       }
       return;
     }
 
-    // Within throttle window: trust the cached entitlement.
-    _setStatus(
-      prefs.getBool(_kEverApproved) == true
-          ? AuthStatus.signedIn
-          : AuthStatus.awaitingApproval,
-    );
+    // Within throttle window: trust this account's remembered state.
+    // While a forced check is pending (fresh sign-in/sign-up), a
+    // remembered revocation only surfaces the status — killing the new
+    // session now would also lock out a reinstated account before its
+    // check can run.
+    await _applyRememberedState(approvalState,
+        revokeKillsSession: !_forcedCheckPending);
+  }
+
+  /// Applies the locally remembered approval state for the current
+  /// account — used when the entitlement check can't run (offline or
+  /// inside the throttle window). A remembered revocation denies access
+  /// immediately rather than granting offline use on stale approval.
+  Future<void> _applyRememberedState(
+    String? approvalState, {
+    required bool revokeKillsSession,
+  }) async {
+    switch (approvalState) {
+      case _kApproved:
+        _setStatus(AuthStatus.signedIn);
+      case _kRevoked:
+        if (revokeKillsSession) {
+          await _backend.signOut();
+        }
+        _setStatus(AuthStatus.revoked);
+      default:
+        _setStatus(AuthStatus.awaitingApproval);
+    }
   }
 
   Future<BetaCheckResult> _checkEntitlement() async {
@@ -430,32 +516,43 @@ class AuthService extends ChangeNotifier {
   }
 
   Future<void> signIn(String email, String password) async {
-    await _backend.signIn(email, password);
-    _pendingEmail = null;
-    await refresh(forceEntitlementCheck: true);
+    _forcedCheckPending = true;
+    try {
+      await _backend.signIn(email, password);
+      _pendingEmail = null;
+      await refresh(forceEntitlementCheck: true);
+    } finally {
+      _forcedCheckPending = false;
+    }
   }
 
   /// Creates the account. When email confirmation is enabled no session
   /// exists yet — status moves to [AuthStatus.emailVerificationPending]
   /// and the user verifies via the emailed link before signing in.
   Future<void> signUp(String email, String password) async {
-    final sessionCreated = await _backend.signUp(
-      email,
-      password,
-      SupabaseConfig.authRedirectUrl,
-    );
-    if (!sessionCreated) {
-      _pendingEmail = email;
-      _setStatus(AuthStatus.emailVerificationPending);
-      return;
+    _forcedCheckPending = true;
+    try {
+      final sessionCreated = await _backend.signUp(
+        email,
+        password,
+        SupabaseConfig.authRedirectUrl,
+      );
+      if (!sessionCreated) {
+        _pendingEmail = email;
+        _setStatus(AuthStatus.emailVerificationPending);
+        return;
+      }
+      await refresh(forceEntitlementCheck: true);
+    } finally {
+      _forcedCheckPending = false;
     }
-    await refresh(forceEntitlementCheck: true);
   }
 
-  /// Sign out but keep all local data.
+  /// Sign out but keep all local data. Per-account approval history is
+  /// deliberately kept: it belongs to the account, not the session, so
+  /// a returning revoked account still reaches Access Removed and an
+  /// approved account keeps its offline eligibility.
   Future<void> signOut() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove(_kEverApproved);
     await _backend.signOut();
     _passwordRecoveryPending = false;
     _pendingEmail = null;

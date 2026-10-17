@@ -167,7 +167,8 @@ up to 1 hour — not instantly. This is the documented limitation.*
 
 ## Functional defects recorded during testing
 
-- **DEFECT-1 — `everApproved` is device-wide and cleared on sign-out.**
+- **DEFECT-1 — `everApproved` is device-wide and cleared on sign-out.
+  FIXED.**
   - Symptom A (insecurity): a stale flag set by an approved account can
     be read by a different account whose entitlement check is
     unresolvable (offline/RPC failure) → `signedIn` for a never-approved
@@ -177,11 +178,26 @@ up to 1 hour — not instantly. This is the documented limitation.*
     user who signs out and back in sees **"Awaiting Invitation"**
     (never-approved copy) instead of **"Access Removed"** — the revoked
     screen is only reachable while the revoked session is still alive.
-  - Required fix (pre-beta): key approval history per Supabase user ID
-    (e.g. `auth_ever_approved_<uid>`) and persist it across sign-out so
-    that (a) accounts can't inherit each other's approval state and
-    (b) a returning revoked user sees "Access Removed". Regression
-    tests must cover account switching and sign-out/sign-in cycles.
+  - **Fix implemented:** the device-wide flag is replaced by per-account
+    state `auth_approval_state_<uid>` ∈ {`approved`, `revoked`}, which
+    survives sign-out and account switching. The legacy flag is
+    migrated once to whichever account holds the session at first
+    post-upgrade refresh, then removed. A remembered `revoked` denies
+    access (Access Removed) even when the recheck can't run — including
+    offline re-sign-in — so a revoked account can't regain entry on
+    stale approval.
+  - **Race found while fixing (also fixed):** concurrent `refresh()`
+    calls interleaved — the sign-in auth event's listener refresh could
+    apply a remembered `revoked` (signing the session out) while the
+    sign-in's own forced check was still in flight, which would also
+    have locked out a *reinstated* account at sign-in. Refreshes are now
+    serialized through a queue, and a remembered revocation only
+    surfaces the status (without killing the session) while a forced
+    check is pending.
+  - Regression tests cover: no cross-account inheritance, revoked
+    return after sign-out, account switching, offline re-sign-in of a
+    revoked account, reinstatement, legacy-flag migration, and repeated
+    start/dispose cycles.
 - **DEFECT-2 — `revoked` status was transient (found & fixed during
   Option B automated coverage).** Once `refresh()` sets
   `AuthStatus.revoked`, the `signOut()` that revocation itself triggers

@@ -34,9 +34,12 @@ void main() {
       expect(auth.status, AuthStatus.signedIn);
       expect(auth.email, 'tester@example.com');
       expect(backend.profileUpserted, true);
-      // The approval is remembered for offline launches.
+      // The approval is remembered per account for offline launches.
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('auth_ever_approved'), true);
+      expect(
+        prefs.getString('auth_approval_state_uid-tester@example.com'),
+        'approved',
+      );
     });
 
     test('uninvited sign-in lands on awaitingApproval', () async {
@@ -91,15 +94,21 @@ void main() {
       expect(auth.status, AuthStatus.signedIn);
     });
 
-    test('sign out clears session and remembered approval', () async {
+    test('sign out clears the session but keeps per-account approval '
+        'history', () async {
       await auth.start();
       await auth.signIn('tester@example.com', 'password');
       await auth.signOut();
 
       expect(auth.status, AuthStatus.signedOut);
       expect(backend.hasSession, false);
+      // Approval history survives sign-out: it belongs to the account,
+      // not the session (DEFECT-1 fix).
       final prefs = await SharedPreferences.getInstance();
-      expect(prefs.getBool('auth_ever_approved'), isNot(true));
+      expect(
+        prefs.getString('auth_approval_state_uid-tester@example.com'),
+        'approved',
+      );
     });
 
     test('account deletion request is flagged server-side', () async {
@@ -170,7 +179,10 @@ void main() {
 
       expect(auth.status, AuthStatus.revoked);
       expect(backend.hasSession, false);
-      expect(prefs.getBool('auth_ever_approved'), isNot(true));
+      expect(
+        prefs.getString('auth_approval_state_uid-tester@example.com'),
+        'revoked',
+      );
     });
 
     test('a trailing signed-out event must not override revoked', () async {
@@ -189,37 +201,130 @@ void main() {
       expect(auth.status, AuthStatus.revoked);
     });
 
-    test('DEFECT-1 symptom A: stale device-wide flag lets an unapproved '
-        'account in when the check is unresolvable', () async {
-      // Another account's earlier approval left the flag set.
+    test('DEFECT-1 fixed: an unapproved account cannot inherit another '
+        'account\'s approval when the check is unresolvable', () async {
+      // Another account's earlier approval is remembered under its own
+      // per-account key.
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('auth_ever_approved', true);
+      await prefs.setString(
+          'auth_approval_state_uid-tester@example.com', 'approved');
 
       // This account was never approved; the entitlement RPC is
-      // unreachable (offline or server error) at sign-in.
+      // unreachable (offline or server error) at sign-in — it must fail
+      // closed rather than inherit the other account's flag.
       backend.approved = null;
       await auth.start();
       await auth.signIn('stranger@example.com', 'password');
 
-      // CURRENT (defective) behaviour: inherits the other account's
-      // flag. After the per-account fix this must be awaitingApproval.
-      expect(auth.status, AuthStatus.signedIn);
+      expect(auth.status, AuthStatus.awaitingApproval);
     });
 
-    test('DEFECT-1 symptom B: sign-out erases approval memory, so a '
-        'revoked user sees awaitingApproval instead of revoked',
-        () async {
+    test('DEFECT-1 fixed: sign-out keeps approval history, so a revoked '
+        'returning user sees revoked, not awaitingApproval', () async {
       await auth.start();
       await auth.signIn('tester@example.com', 'password');
-      await auth.signOut(); // clears auth_ever_approved (current)
+      await auth.signOut(); // approval history survives
 
       backend.approved = false; // admin revoked meanwhile
       await auth.signIn('tester@example.com', 'password');
 
-      // CURRENT (defective) behaviour: indistinguishable from a
-      // never-invited account. After the fix, per-account approval
-      // history should surface AuthStatus.revoked here.
+      expect(auth.status, AuthStatus.revoked);
+      expect(backend.hasSession, false);
+    });
+
+    test('account switching: approved user signs out, unapproved user '
+        'signs in — no inherited access, no approval history written',
+        () async {
+      await auth.start();
+      await auth.signIn('tester@example.com', 'password');
+      await auth.signOut();
+
+      backend.approved = false;
+      await auth.signIn('stranger@example.com', 'password');
+
       expect(auth.status, AuthStatus.awaitingApproval);
+      final prefs = await SharedPreferences.getInstance();
+      // No state may be written for a never-approved account, and the
+      // first account's history stays untouched.
+      expect(
+          prefs.getString('auth_approval_state_uid-stranger@example.com'),
+          isNull);
+      expect(
+          prefs.getString('auth_approval_state_uid-tester@example.com'),
+          'approved');
+    });
+
+    test('revoked account stays denied when signing back in offline',
+        () async {
+      await auth.start();
+      await auth.signIn('tester@example.com', 'password');
+      backend.approved = false;
+      await auth.refresh(forceEntitlementCheck: true);
+      expect(auth.status, AuthStatus.revoked);
+
+      // Reinstating connectivity fails: the remembered revocation must
+      // still deny access, not fall back to stale approval.
+      backend.approved = null;
+      await auth.signIn('tester@example.com', 'password');
+
+      expect(auth.status, AuthStatus.revoked);
+      expect(backend.hasSession, false);
+    });
+
+    test('reinstated account regains access and clears the revoked '
+        'marker', () async {
+      await auth.start();
+      await auth.signIn('tester@example.com', 'password');
+      backend.approved = false;
+      await auth.refresh(forceEntitlementCheck: true);
+      expect(auth.status, AuthStatus.revoked);
+
+      backend.approved = true; // admin reinstated
+      await auth.signIn('tester@example.com', 'password');
+
+      expect(auth.status, AuthStatus.signedIn);
+      final prefs = await SharedPreferences.getInstance();
+      expect(
+        prefs.getString('auth_approval_state_uid-tester@example.com'),
+        'approved',
+      );
+    });
+
+    test('legacy device-wide flag migrates to the current account only',
+        () async {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('auth_ever_approved', true);
+
+      // Offline at first refresh after upgrade: the migrated approval
+      // keeps this account's session usable...
+      backend.approved = null;
+      await auth.start();
+      await auth.signIn('tester@example.com', 'password');
+      expect(auth.status, AuthStatus.signedIn);
+      expect(
+          prefs.getString('auth_approval_state_uid-tester@example.com'),
+          'approved');
+      expect(prefs.getBool('auth_ever_approved'), isNot(true));
+
+      // ...but a different account cannot inherit the migrated flag.
+      await auth.signOut();
+      await auth.signIn('stranger@example.com', 'password');
+      expect(auth.status, AuthStatus.awaitingApproval);
+    });
+
+    test('service can be started and disposed repeatedly without '
+        'leaking listeners', () async {
+      for (var i = 0; i < 3; i++) {
+        await auth.start();
+        await auth.signIn('tester@example.com', 'password');
+        expect(auth.status, AuthStatus.signedIn);
+        await auth.dispose();
+        auth = AuthService.forBackend(backend);
+      }
+      // The session persists across service instances: a fresh service
+      // resolves it through the remembered approval state.
+      await auth.start();
+      expect(auth.status, AuthStatus.signedIn);
     });
   });
 }
