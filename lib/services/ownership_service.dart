@@ -119,7 +119,20 @@ class OwnershipService {
 
   static Future<bool> _hasLocalData(DatabaseExecutor db) async {
     final counts = await MigrationV29.userTableCounts(db);
-    return counts.values.any((c) => c > 0);
+    for (final entry in counts.entries) {
+      if (entry.key == 'fishing_buddies') continue;
+      if (entry.value > 0) return true;
+    }
+    // fishing_buddies auto-seeds a single 'Me' row at database creation
+    // (fresh schema and the v8 upgrade alike) — app scaffolding, not
+    // user history. It counts as data only once a second buddy exists
+    // or the seed row has been renamed.
+    final buddies = counts['fishing_buddies'] ?? 0;
+    if (buddies == 0) return false;
+    if (buddies > 1) return true;
+    final renamed = await db.query('fishing_buddies',
+        columns: ['name'], where: "name != 'Me'", limit: 1);
+    return renamed.isNotEmpty;
   }
 
   /// Bind an empty database to [userId]. Transactional and idempotent:
@@ -141,7 +154,19 @@ class OwnershipService {
             now,
             jsonEncode(const {'_established_empty': true}),
           ]);
-      established = rows > 0;
+      if (rows > 0) {
+        // Scaffolding rows (the auto-seeded 'Me' buddy) belong to the
+        // establishing account — keeps the invariant that an owned
+        // database holds no ownerless user rows. withoutTriggers avoids
+        // sync_queue churn for a row that predates ownership.
+        await MigrationV29.withoutTriggers(txn, () async {
+          for (final table in MigrationV29.userOwnedTables) {
+            await txn.update(table, {'owner_id': userId},
+                where: 'owner_id IS NULL');
+          }
+        });
+        established = true;
+      }
     });
     return established;
   }

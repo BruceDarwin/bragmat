@@ -59,13 +59,19 @@ void main() {
       expect(await DatabaseHelper.instance.systemDatabase, isNotNull);
     });
 
-    test('empty database is established to the first signed-in account '
-        '— establishment, not claim', () async {
-      // Drain the fixture rows so the database is genuinely empty.
-      final db = await DatabaseHelper.instance.systemDatabase;
+    Future<void> drainToFreshInstallState(Database db) async {
+      // A real fresh install keeps the auto-seeded 'Me' buddy — the
+      // scaffold must NOT make the install look unclaimed-with-data.
       for (final table in MigrationV29.userOwnedTables) {
         await db.delete(table);
       }
+      await db.insert('fishing_buddies', {'name': 'Me'});
+    }
+
+    test('empty database is established to the first signed-in account '
+        '— establishment, not claim', () async {
+      final db = await DatabaseHelper.instance.systemDatabase;
+      await drainToFreshInstallState(db);
 
       expect(await OwnershipService.evaluate('user-A'),
           OwnershipState.owner);
@@ -76,14 +82,44 @@ void main() {
       final account = (await db.query('local_account')).first;
       expect(account['claimed_at'], isNotNull);
       expect(account['claim_backup_name'], isNull);
+      // The seed buddy is stamped too — owned DBs hold no ownerless
+      // user rows.
+      final buddies = await db.query('fishing_buddies');
+      expect(buddies.single['owner_id'], 'user-A');
+    });
+
+    test('seed-only database with renamed Me buddy counts as data and '
+        'stays unclaimed', () async {
+      final db = await DatabaseHelper.instance.systemDatabase;
+      for (final table in MigrationV29.userOwnedTables) {
+        await db.delete(table);
+      }
+      // Renaming 'Me' is user modification — historical-looking data.
+      await db.insert('fishing_buddies', {'name': 'Bruce'});
+
+      expect(await OwnershipService.evaluate('user-A'),
+          OwnershipState.unclaimed);
+      expect(OwnershipService.hasUnownedData, isTrue);
+    });
+
+    test('seed-only database with an added buddy counts as data and '
+        'stays unclaimed', () async {
+      final db = await DatabaseHelper.instance.systemDatabase;
+      for (final table in MigrationV29.userOwnedTables) {
+        await db.delete(table);
+      }
+      await db.insert('fishing_buddies', {'name': 'Me'});
+      await db.insert('fishing_buddies', {'name': 'Dave'});
+
+      expect(await OwnershipService.evaluate('user-A'),
+          OwnershipState.unclaimed);
+      expect(OwnershipService.hasUnownedData, isTrue);
     });
 
     test('empty-database establishment is idempotent and refuses other '
         'accounts afterwards', () async {
       final db = await DatabaseHelper.instance.systemDatabase;
-      for (final table in MigrationV29.userOwnedTables) {
-        await db.delete(table);
-      }
+      await drainToFreshInstallState(db);
 
       expect(await OwnershipService.evaluate('user-A'),
           OwnershipState.owner);
