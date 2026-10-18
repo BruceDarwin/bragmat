@@ -84,6 +84,11 @@ const _candidates = <Candidate>[
   // Model-only candidate — no WorldTides gauge is expected; fishers at
   // Dundee Beach use Darwin predictions. Verify atlas behaviour.
   Candidate('dundee_beach', 'Dundee Beach', -12.705, 130.355),
+  // Nearest real gauge to Dundee Beach (found by the stations lookup
+  // during verification, id Australia:NT_TP053). Verify before deciding
+  // between a station-backed Dundee option and the model-based one.
+  Candidate('native_point', 'Native Point', -12.650, 130.2667,
+      expectedStation: 'Native Point'),
   // Unverified NT candidates.
   Candidate('melville_bay', 'Melville Bay / Gove', -12.250, 136.700,
       expectedStation: 'Melville Bay'),
