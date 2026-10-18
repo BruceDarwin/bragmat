@@ -10,8 +10,12 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:bragmat/database/database_helper.dart';
 import 'package:bragmat/models/catch.dart' as model;
+import 'package:bragmat/models/catch_media.dart';
+import 'package:bragmat/models/photo_metadata_result.dart';
 import 'package:bragmat/screens/add_catch_screen.dart';
+import 'package:bragmat/services/environmental_conditions_service.dart';
 import 'package:bragmat/services/media_storage_service.dart';
+import 'package:bragmat/services/photo_metadata_service.dart';
 
 /// Controllable ImagePicker platform fake.
 class FakeImagePicker extends ImagePickerPlatform
@@ -340,6 +344,176 @@ void main() {
           DateTime(2026, 6, 17, 21, 32, 1));
       // Deferred prompt appeared without lifecycle errors.
       expect(find.text('Photo Details Found'), findsOneWidget);
+    });
+
+    testWidgets('repeated lost-data delivery does not duplicate media',
+        (tester) async {
+      // Android can surface the same lost file again on a later
+      // lifecycle resume (initState + resumed both call
+      // retrieveLostData). The recovery path must dedupe.
+      late final String recovered;
+      await tester.runAsync(() async {
+        recovered = await copyFixtureTo(mfnrFixture, testDir);
+      });
+      // The fake returns the same lost data on every call — matching a
+      // platform that has not yet cleared its lost-data response.
+      fakePicker.lostData =
+          LostDataResponse(files: [XFile(recovered)]);
+
+      final state = await pumpScreen(tester);
+      expect(state.debugMediaItems, hasLength(1));
+      expect(find.text('Photo Details Found'), findsOneWidget);
+      // Dismiss the prompt so a second one would be distinguishable.
+      await tester.tap(find.text('Keep current catch details'));
+      await tester.pumpAndSettle();
+
+      // Simulate a later resume redelivering the same file.
+      await state.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await flushRealAsync(tester);
+      await tester.pumpAndSettle();
+
+      expect(state.debugMediaItems, hasLength(1));
+      expect(find.text('Photo Details Found'), findsNothing);
+    });
+
+    testWidgets('stored photo retains EXIF for later re-extraction',
+        (tester) async {
+      fakePicker.nextPick =
+          XFile(mfnrFixture);
+
+      final state = await pumpScreen(tester);
+      await tapAddPhoto(tester);
+      // Dismiss the auto-prompt.
+      await tester.tap(find.text('Keep current catch details'));
+      await tester.pumpAndSettle();
+
+      final media = state.debugMediaItems.first as CatchMedia;
+      late final PhotoMetadataResult reextracted;
+      await tester.runAsync(() async {
+        final resolved =
+            await MediaStorageService.resolvePath(media.filePath);
+        reextracted =
+            await PhotoMetadataService.extractFromFile(resolved);
+      });
+
+      // The stored copy is byte-for-byte — capture time, offset and GPS
+      // survive for re-extraction (explicit "Use photo details" relies
+      // on this for historical photos).
+      expect(reextracted.hasValidDateTime, isTrue);
+      expect(reextracted.dateTime, DateTime(2026, 6, 17, 21, 32, 1));
+      expect(reextracted.hasTimezone, isTrue);
+      expect(reextracted.timezoneOffset, closeTo(9.5, 0.01));
+      expect(reextracted.hasValidGps, isTrue);
+      expect(reextracted.latitude, closeTo(-12.3767, 0.001));
+    });
+
+    testWidgets('date_taken and GPS survive the database round-trip',
+        (tester) async {
+      fakePicker.nextPick =
+          XFile(mfnrFixture);
+
+      final state = await pumpScreen(tester);
+      await tapAddPhoto(tester);
+      await tester.tap(find.text('Keep current catch details'));
+      await tester.pumpAndSettle();
+
+      final media = state.debugMediaItems.first as CatchMedia;
+      late final List<CatchMedia> rows;
+      await tester.runAsync(() async {
+        final catchId =
+            await DatabaseHelper.instance.insertCatch(model.Catch(
+          lengthCm: 40,
+          createdAt: DateTime(2026, 6, 17),
+        ));
+        await DatabaseHelper.instance
+            .insertCatchMedia(media.copyWith(catchId: catchId));
+        rows =
+            await DatabaseHelper.instance.getMediaForCatch(catchId);
+      });
+
+      expect(rows, hasLength(1));
+      // Wall-clock local time round-trips byte-exactly (ISO-8601 naive).
+      expect(rows.first.dateTaken, DateTime(2026, 6, 17, 21, 32, 1));
+      expect(rows.first.latitude, closeTo(-12.3767, 0.001));
+      expect(rows.first.longitude, closeTo(130.8509, 0.001));
+    });
+
+    testWidgets('applying photo GPS to an existing catch still triggers '
+        'the environmental recalculation prompt on save',
+        (tester) async {
+      fakePicker.nextPick =
+          XFile(srFixture);
+
+      // Seed a real catch row + environmental condition so the save
+      // path has something to compare against.
+      late final int catchId;
+      await tester.runAsync(() async {
+        catchId = await DatabaseHelper.instance.insertCatch(model.Catch(
+          lengthCm: 45,
+          createdAt: DateTime(2026, 10, 1),
+          dateCaught: DateTime(2026, 10, 1, 9, 45),
+          latitude: -33.8688,
+          longitude: 151.2093,
+          location: 'Sydney Harbour',
+          coordinateSource: 'Device GPS',
+        ));
+        await EnvironmentalConditionsService()
+            .saveEnvironmentalConditionForCatch(
+          catchId,
+          DateTime(2026, 10, 1, 9, 45),
+          -33.8688,
+          151.2093,
+        );
+      });
+
+      final existing = model.Catch(
+        id: catchId,
+        lengthCm: 45,
+        createdAt: DateTime(2026, 10, 1),
+        dateCaught: DateTime(2026, 10, 1, 9, 45),
+        latitude: -33.8688,
+        longitude: 151.2093,
+        location: 'Sydney Harbour',
+        coordinateSource: 'Device GPS',
+      );
+
+      final state = await pumpScreen(tester, catchToEdit: existing);
+      await tapAddPhoto(tester);
+      expect(state.debugMediaItems, hasLength(1));
+
+      // Explicit per-photo action → apply location only.
+      await tester.tap(find.byWidgetPredicate((w) =>
+          w is Icon && w.icon == Icons.info_outline && w.size == 16));
+      await flushRealAsync(tester);
+      await tester.pumpAndSettle();
+      await selectOption(tester, 'Use photo location');
+      await tester.tap(find.text('Apply selected details'));
+      await tester.pumpAndSettle();
+
+      // Save — the photo-applied location change must surface the
+      // existing environmental recalculation safeguard.
+      final save = find.text('Save Changes');
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await flushRealAsync(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.text('Recalculate Environmental Information'),
+          findsOneWidget);
+
+      // Keep existing env data — save proceeds and persists the
+      // photo-supplied coordinates.
+      await tester.tap(find.text('Keep existing information'));
+      await flushRealAsync(tester);
+      await tester.pumpAndSettle();
+
+      late final model.Catch? saved;
+      await tester.runAsync(() async {
+        saved = await DatabaseHelper.instance.getCatch(catchId);
+      });
+      expect(saved, isNotNull);
+      expect(saved!.latitude, closeTo(-12.3767, 0.001));
+      expect(saved!.coordinateSource, 'photo_gps');
     });
   });
 }

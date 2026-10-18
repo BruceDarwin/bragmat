@@ -439,35 +439,51 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     }
   }
 
+  bool _retrievingLostData = false;
+  final Set<String> _recoveredLostPaths = {};
+
   Future<void> _retrieveLostData() async {
-    final lostData = await ImagePicker().retrieveLostData();
-    
-    if (lostData == null || lostData.isEmpty) {
-      return;
-    }
-    
-    bool recovered = false;
-    
-    if (lostData.file != null) {
-      final file = File(lostData.file!.path);
-      await _processPickedFile(file, 'lost_data');
-      recovered = true;
-    } else if (lostData.files != null && lostData.files!.isNotEmpty) {
-      for (final lostFile in lostData.files!) {
-        final file = File(lostFile.path);
-        await _processPickedFile(file, 'lost_data');
-        recovered = true;
+    // Called both from _initializeData (new catches) and on lifecycle
+    // resume. Android normally returns lost data only once, but the two
+    // call sites can overlap — a re-entry guard plus a processed-path set
+    // prevents duplicate attachments of the same recovered file.
+    if (_retrievingLostData) return;
+    _retrievingLostData = true;
+    try {
+      final lostData = await ImagePicker().retrieveLostData();
+
+      if (lostData == null || lostData.isEmpty) {
+        return;
       }
+
+      bool recovered = false;
+
+      if (lostData.file != null) {
+        recovered = await _processLostFile(File(lostData.file!.path));
+      } else if (lostData.files != null && lostData.files!.isNotEmpty) {
+        for (final lostFile in lostData.files!) {
+          recovered =
+              await _processLostFile(File(lostFile.path)) || recovered;
+        }
+      }
+
+      if (recovered && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Recovered photo from previous camera session'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      _retrievingLostData = false;
     }
-    
-    if (recovered && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Recovered photo from previous camera session'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
+  }
+
+  Future<bool> _processLostFile(File file) async {
+    if (!_recoveredLostPaths.add(file.path)) return false;
+    await _processPickedFile(file, 'lost_data');
+    return true;
   }
 
   Future<void> _loadCurrentTrip() async {
