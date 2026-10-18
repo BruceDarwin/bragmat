@@ -4,7 +4,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../database/database_helper.dart';
+import 'auth_service.dart';
 import 'backup_envelope.dart';
+import 'ownership_service.dart';
+import 'supabase_config.dart';
 import 'zip_backup_service.dart';
 
 /// Cloud backup is not enabled (no recorded consent, or disabled).
@@ -17,6 +21,15 @@ class CloudBackupNotEnabledException implements Exception {
 class CloudBackupAuthException implements Exception {
   @override
   String toString() => 'Not signed in';
+}
+
+/// The signed-in account is not the owner of this installation's data —
+/// uploading another account's (or unclaimed) records is never allowed.
+class CloudBackupOwnershipException implements Exception {
+  CloudBackupOwnershipException(this.reason);
+  final String reason;
+  @override
+  String toString() => 'Cloud backup refused: $reason';
 }
 
 /// A remote object with the same name already exists (upsert is never
@@ -275,6 +288,16 @@ class CloudBackupService {
   /// Overrides the private working directory root (unit tests).
   static Directory? debugWorkDir;
 
+  /// Overrides the effective auth status (unit tests — production reads
+  /// [AuthService.instance.status]). Ordinary cloud operations require
+  /// [AuthStatus.signedIn]: a raw JWT alone is not sufficient — revoked
+  /// and never-approved sessions with a still-valid token are denied.
+  static AuthStatus? debugAuthStatus;
+
+  /// Overrides the local-DB-owner lookup (unit tests — production reads
+  /// `local_account` via the unguarded system handle).
+  static Future<String?> Function()? debugLocalOwnerIdReader;
+
   /// Retention window — keep this many VERIFIED backups.
   static const int keepBackups = 3;
 
@@ -289,8 +312,8 @@ class CloudBackupService {
     void Function(String)? onProgress,
   }) async {
     await _requireEnabled();
-    final uid = _backend.userId;
-    if (uid == null) throw CloudBackupAuthException();
+    final uid = _requireApprovedAccess();
+    await _requireOwner(uid);
 
     final work = await _workDir();
     try {
@@ -342,7 +365,7 @@ class CloudBackupService {
   /// List the caller's remote backups, newest first.
   Future<List<RemoteBackupInfo>> listBackups() async {
     await _requireEnabled();
-    if (_backend.userId == null) throw CloudBackupAuthException();
+    _requireApprovedAccess();
     final list = await _backend.list();
     list.sort((a, b) => b.name.compareTo(a.name));
     return list;
@@ -350,15 +373,24 @@ class CloudBackupService {
 
   /// Download → digest-check → decrypt → restore through the existing
   /// staged pipeline (which applies the ownership gate unchanged).
+  ///
+  /// [confirmUnownedRestore] and [createSafetyBackup] are the same
+  /// owner-only hooks the local restore path uses: an unowned backup
+  /// landing on an owned install needs explicit confirmation plus a
+  /// verified safety backup first, and the restored records stay
+  /// unclaimed until explicitly linked. Foreign-owner backups are
+  /// refused outright by the staged pipeline.
   Future<BackupRestoreResult> restoreFromCloud({
     required String remoteName,
     String? passphrase,
     String? recoveryCode,
+    Future<bool> Function()? confirmUnownedRestore,
+    Future<String?> Function()? createSafetyBackup,
     CloudBackupCancelToken? cancellation,
     void Function(String)? onProgress,
   }) async {
     await _requireEnabled();
-    if (_backend.userId == null) throw CloudBackupAuthException();
+    _requireApprovedAccess();
 
     final work = await _workDir();
     final encFile = File('${work.path}/$remoteName');
@@ -393,7 +425,12 @@ class CloudBackupService {
       onProgress?.call('Restoring…');
       final restore = debugRestoreOverride ??
           (String path) => ZipBackupService.restoreBackup(
-              zipPath: path, onProgress: onProgress);
+                zipPath: path,
+                onProgress: onProgress,
+                currentUserId: _backend.userId,
+                confirmUnownedRestore: confirmUnownedRestore,
+                createSafetyBackup: createSafetyBackup,
+              );
       return await restore(zipFile.path);
     } finally {
       await _cleanup(work);
@@ -403,12 +440,15 @@ class CloudBackupService {
   /// Delete one remote backup (Storage API — approved accounts).
   Future<int> deleteBackup(String remoteName) async {
     await _requireEnabled();
-    if (_backend.userId == null) throw CloudBackupAuthException();
+    _requireApprovedAccess();
     return _backend.delete([remoteName]);
   }
 
-  /// Delete every remote backup via the Edge Function — the path that
-  /// still works after revocation.
+  /// Delete every remote backup via the Edge Function — the restricted
+  /// account-management exception that still works after revocation.
+  /// Gated on a live session only, deliberately NOT on the approved
+  /// status: a revoked user must retain the ability to remove their own
+  /// cloud data. RLS and the Edge Function authorise independently.
   Future<int> deleteAllBackups() async {
     if (_backend.userId == null) throw CloudBackupAuthException();
     return _backend.deleteAll();
@@ -418,6 +458,46 @@ class CloudBackupService {
 
   static Future<void> _requireEnabled() async {
     if (!await isEnabled) throw CloudBackupNotEnabledException();
+  }
+
+  /// Ordinary cloud operations require an authenticated AND approved
+  /// account — the entitlement-aware [AuthStatus], not just a JWT.
+  String _requireApprovedAccess() {
+    if (_effectiveAuthStatus() != AuthStatus.signedIn) {
+      throw CloudBackupAuthException();
+    }
+    final uid = _backend.userId;
+    if (uid == null) throw CloudBackupAuthException();
+    return uid;
+  }
+
+  static AuthStatus _effectiveAuthStatus() {
+    final override = debugAuthStatus;
+    if (override != null) return override;
+    // Without Supabase configuration there can be no approved session.
+    if (!SupabaseConfig.isConfigured) return AuthStatus.signedOut;
+    return AuthService.instance.status;
+  }
+
+  /// The local database must belong to the very account uploading it —
+  /// unclaimed data and foreign-owned data can never reach the cloud.
+  Future<void> _requireOwner(String uid) async {
+    final owner = await _localOwnerId();
+    if (owner == null) {
+      throw CloudBackupOwnershipException(
+          'local data is unclaimed — link it to your account first');
+    }
+    if (owner != uid) {
+      throw CloudBackupOwnershipException(
+          'local data belongs to a different account');
+    }
+  }
+
+  static Future<String?> _localOwnerId() async {
+    final reader = debugLocalOwnerIdReader;
+    if (reader != null) return reader();
+    final db = await DatabaseHelper.instance.systemDatabase;
+    return OwnershipService.ownerIdFrom(db);
   }
 
   static String _remoteNameFor(File zip) {

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:path/path.dart' as path;
+import 'package:path_provider/path_provider.dart';
 
 import '../services/backup_envelope.dart';
 import '../services/cloud_backup_service.dart';
 import '../services/secure_storage_service.dart';
+import '../services/zip_backup_service.dart';
 
 /// Stage 4C-4 — Cloud Backup settings.
 ///
@@ -337,6 +340,8 @@ You can disable Cloud Backup at any time. Disabling future backups does not auto
         remoteName: backup.name,
         passphrase: useRecovery ? null : credential,
         recoveryCode: useRecovery ? credential : null,
+        confirmUnownedRestore: _confirmUnownedRestore,
+        createSafetyBackup: _createSafetyBackup,
         cancellation: token,
         onProgress: (m) => setState(() => _busy = m),
       );
@@ -359,6 +364,8 @@ You can disable Cloud Backup at any time. Disabling future backups does not auto
       );
     } on IncorrectSecretException {
       _showError('Incorrect passphrase or recovery code.');
+    } on RestoreCancelledException {
+      _showError('Restore cancelled — your existing data is unchanged.');
     } on CloudBackupCancelledException {
       _showError('Restore cancelled.');
     } on CloudIntegrityException {
@@ -370,6 +377,50 @@ You can disable Cloud Backup at any time. Disabling future backups does not auto
     } finally {
       if (mounted) setState(() { _busy = null; _token = null; });
     }
+  }
+
+  /// Shown when a cloud backup whose records aren't linked to an account
+  /// would replace the account-owned data on this device — identical to
+  /// the local-restore confirmation in Settings.
+  Future<bool> _confirmUnownedRestore() async {
+    if (!mounted) return false;
+    return await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('Backup Is Not Linked to an Account'),
+            content: const Text(
+              'This backup is not linked to any account. Restoring it '
+              'will replace the data currently linked to your account '
+              'with unclaimed records.\n\n'
+              '• A verified safety backup of your current data is '
+              'created first.\n'
+              '• The restored records stay unclaimed — you\'ll need to '
+              'link them to your account explicitly afterwards.',
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context, false),
+                child: const Text('Cancel'),
+              ),
+              TextButton(
+                onPressed: () => Navigator.pop(context, true),
+                child: const Text('Restore Anyway'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+  }
+
+  /// Verified ZIP safety backup of the current data, created before an
+  /// unowned cloud backup is allowed to replace it. Returns the backup's
+  /// file name, or null when it could not be created (aborts restore).
+  Future<String?> _createSafetyBackup() async {
+    final dir = await getDownloadsDirectory();
+    if (dir == null) return null;
+    final backupPath =
+        await ZipBackupService.createBackup(outputDirectory: dir.path);
+    return path.basename(backupPath);
   }
 
   // ── Delete / disable ──────────────────────────────────────────────────

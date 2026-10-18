@@ -2,6 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:bragmat/models/backup_manifest.dart';
+import 'package:bragmat/services/auth_service.dart';
 import 'package:bragmat/services/backup_envelope.dart';
 import 'package:bragmat/services/cloud_backup_service.dart';
 import 'package:bragmat/services/zip_backup_service.dart';
@@ -38,6 +39,11 @@ void main() {
     workRoot =
         await Directory.systemTemp.createTemp('cloud_backup_test_');
     CloudBackupService.debugWorkDir = workRoot;
+    // Approved owner by default — the fake backend's uid doubles as the
+    // local DB owner so every production gate passes unless a test
+    // explicitly overrides a seam.
+    CloudBackupService.debugAuthStatus = AuthStatus.signedIn;
+    CloudBackupService.debugLocalOwnerIdReader = () async => backend.uid;
 
     zipCounter = 0;
     CloudBackupService.debugCreateBackup = (dir) async {
@@ -69,6 +75,8 @@ void main() {
     CloudBackupService.debugCreateBackup = null;
     CloudBackupService.debugRestoreOverride = null;
     CloudBackupService.debugWorkDir = null;
+    CloudBackupService.debugAuthStatus = null;
+    CloudBackupService.debugLocalOwnerIdReader = null;
     if (await workRoot.exists()) await workRoot.delete(recursive: true);
   });
 
@@ -378,4 +386,97 @@ void main() {
       expect(backend.objects, isEmpty);
     });
   });
+
+  group('entitlement gating (AuthStatus, not just a JWT)', () {
+    setUp(() => CloudBackupService.grantConsent());
+
+    test('revoked account with a still-valid JWT is denied ordinary ops',
+        () async {
+      // backend.uid stays non-null — the token is still technically
+      // valid; the entitlement-aware status is what must deny access.
+      CloudBackupService.debugAuthStatus = AuthStatus.revoked;
+      await expectLater(service.uploadNow(passphrase: 'pw'),
+          throwsA(isA<CloudBackupAuthException>()));
+      await expectLater(service.listBackups(),
+          throwsA(isA<CloudBackupAuthException>()));
+      await expectLater(
+          service.restoreFromCloud(remoteName: 'x.bzp', passphrase: 'p'),
+          throwsA(isA<CloudBackupAuthException>()));
+      await expectLater(service.deleteBackup('x.bzp'),
+          throwsA(isA<CloudBackupAuthException>()));
+      expect(backend.objects, isEmpty);
+      expect(zipCounter, 0); // never reached the backup stage
+    });
+
+    test('revoked session retains the account-management deleteAll path',
+        () async {
+      CloudBackupService.debugAuthStatus = AuthStatus.signedIn;
+      await service.uploadNow(passphrase: 'pw');
+      CloudBackupService.debugAuthStatus = AuthStatus.revoked;
+      // Edge Function deletion is deliberately allowed for a revoked
+      // session — the user must be able to remove their own cloud data.
+      expect(await service.deleteAllBackups(), 1);
+      expect(backend.deleteAllCalls, 1);
+      expect(backend.objects, isEmpty);
+    });
+
+    test('never-approved account with a JWT is denied', () async {
+      CloudBackupService.debugAuthStatus = AuthStatus.awaitingApproval;
+      await expectLater(service.uploadNow(passphrase: 'pw'),
+          throwsA(isA<CloudBackupAuthException>()));
+      await expectLater(service.listBackups(),
+          throwsA(isA<CloudBackupAuthException>()));
+      expect(backend.objects, isEmpty);
+    });
+
+    test('signedOut status is denied even when a JWT lingers', () async {
+      CloudBackupService.debugAuthStatus = AuthStatus.signedOut;
+      await expectLater(service.uploadNow(passphrase: 'pw'),
+          throwsA(isA<CloudBackupAuthException>()));
+      await expectLater(service.listBackups(),
+          throwsA(isA<CloudBackupAuthException>()));
+      expect(backend.objects, isEmpty);
+    });
+
+    test('unresolved (unknown) status fails closed', () async {
+      CloudBackupService.debugAuthStatus = AuthStatus.unknown;
+      await expectLater(service.uploadNow(passphrase: 'pw'),
+          throwsA(isA<CloudBackupAuthException>()));
+      expect(backend.objects, isEmpty);
+    });
+  });
+
+  group('upload ownership', () {
+    setUp(() => CloudBackupService.grantConsent());
+
+    test('approved owner matching the DB owner uploads', () async {
+      // Default seams: status signedIn, owner reader returns the fake
+      // backend's uid — identical account.
+      final result = await service.uploadNow(passphrase: 'pw');
+      expect(backend.objects.keys.single, result.remoteName);
+    });
+
+    test('unclaimed local data can never be uploaded', () async {
+      CloudBackupService.debugLocalOwnerIdReader = () async => null;
+      await expectLater(
+          service.uploadNow(passphrase: 'pw'),
+          throwsA(predicate((e) =>
+              e is CloudBackupOwnershipException &&
+              e.reason.contains('unclaimed'))));
+      expect(backend.objects, isEmpty);
+      expect(zipCounter, 0); // refused before the backup ran
+    });
+
+    test('a different owner\'s data can never be uploaded', () async {
+      CloudBackupService.debugLocalOwnerIdReader = () async => 'user-B';
+      await expectLater(
+          service.uploadNow(passphrase: 'pw'),
+          throwsA(predicate((e) =>
+              e is CloudBackupOwnershipException &&
+              e.reason.contains('different account'))));
+      expect(backend.objects, isEmpty);
+      expect(zipCounter, 0);
+    });
+  });
+
 }

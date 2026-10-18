@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:bragmat/models/backup_manifest.dart';
 import 'package:bragmat/screens/cloud_backup_screen.dart';
+import 'package:bragmat/services/auth_service.dart';
 import 'package:bragmat/services/backup_envelope.dart';
 import 'package:bragmat/services/cloud_backup_service.dart';
 import 'package:bragmat/services/zip_backup_service.dart';
@@ -53,6 +54,9 @@ void main() {
     service = CloudBackupService.forBackend(backend);
     workRoot = await Directory.systemTemp.createTemp('cloud_ui_test_');
     CloudBackupService.debugWorkDir = workRoot;
+    // Approved owner — the fake backend's uid doubles as the local owner.
+    CloudBackupService.debugAuthStatus = AuthStatus.signedIn;
+    CloudBackupService.debugLocalOwnerIdReader = () async => backend.uid;
     CloudBackupService.debugCreateBackup = (dir) async {
       final f = File('$dir/bragmat_backup_2026-10-17T12-00-01.zip');
       await f.writeAsBytes(List.generate(3000, (i) => i % 251));
@@ -65,6 +69,8 @@ void main() {
     CloudBackupService.debugCreateBackup = null;
     CloudBackupService.debugRestoreOverride = null;
     CloudBackupService.debugWorkDir = null;
+    CloudBackupService.debugAuthStatus = null;
+    CloudBackupService.debugLocalOwnerIdReader = null;
     if (await workRoot.exists()) await workRoot.delete(recursive: true);
   });
 
