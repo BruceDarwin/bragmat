@@ -1002,9 +1002,18 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
     return details;
   }
 
+  static const Map<String, String> _coordinateSourceLabels = {
+    'manual': 'Manual',
+    'device_gps': 'Device GPS',
+    'photo_gps': 'Photo GPS',
+    'favourite_spot': 'Favourite Spot',
+    'map_selected': 'Map Selected',
+  };
+
   String _getCoordinateSource() {
     if (_catchItem.coordinateSource != null && _catchItem.coordinateSource!.isNotEmpty) {
-      return _catchItem.coordinateSource!;
+      return _coordinateSourceLabels[_catchItem.coordinateSource!] ??
+          _catchItem.coordinateSource!;
     }
     
     if (_mediaItems.isNotEmpty) {

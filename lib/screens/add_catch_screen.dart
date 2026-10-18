@@ -21,10 +21,13 @@ import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
 import '../services/tide_reference_service.dart';
 import '../services/media_storage_service.dart';
+import '../services/photo_metadata_service.dart';
+import '../services/photo_details_applier.dart';
 import '../helpers/tide_context_helper.dart';
 import '../widgets/bragmat_section_card.dart';
 import '../widgets/resolved_image.dart';
 import '../widgets/location_action_buttons.dart';
+import '../widgets/photo_details_dialog.dart';
 import 'location_picker_screen.dart';
 
 class AddCatchScreen extends StatefulWidget {
@@ -51,6 +54,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   int? _selectedTripId;
   List<FishingTrip> _fishingTrips = [];
   String? _coordinateSource;
+  // Photo metadata: distinguishes the auto-seeded "now" date/time from a
+  // value the user deliberately set — the photo-details dialog only shows
+  // a "Current:" conflict line for authoritative values.
+  bool _dateTimeEditedByUser = false;
   int? _selectedFavouriteSpotId;
   List<FavouriteSpot> _favouriteSpots = [];
   int? _selectedLureId;
@@ -771,6 +778,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           existingTime?.hour ?? DateTime.now().hour,
           existingTime?.minute ?? DateTime.now().minute,
         );
+        _dateTimeEditedByUser = true;
         _onFieldChanged();
       });
     }
@@ -792,6 +800,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           picked.hour,
           picked.minute,
         );
+        _dateTimeEditedByUser = true;
         _onFieldChanged();
       });
     }
@@ -999,6 +1008,66 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       return -decimal;
     }
     return decimal;
+  }
+
+  /// Explicit "Use photo details" action for any attached photo.
+  ///
+  /// Re-reads the stored photo (byte-exact copy retains EXIF), extracts
+  /// metadata and offers it via the confirmation dialog. Available for
+  /// any photo, in both Add and Edit modes — the only path by which a
+  /// non-first photo or an existing catch receives photo metadata.
+  Future<void> _usePhotoDetails(CatchMedia media) async {
+    try {
+      final resolvedPath = await MediaStorageService.resolvePath(media.filePath);
+      final metadata = await PhotoMetadataService.extractFromFile(resolvedPath);
+      if (!mounted) return;
+
+      final decision = await showDialog<PhotoDetailsDecision>(
+        context: context,
+        builder: (_) => PhotoDetailsFoundDialog(
+          metadata: metadata,
+          currentDateCaught: _dateCaught,
+          currentDateTimeAuthoritative:
+              widget.catchToEdit != null || _dateTimeEditedByUser,
+          currentLatitude: double.tryParse(_latitudeController.text),
+          currentLongitude: double.tryParse(_longitudeController.text),
+          currentLocationName: _locationController.text.trim().isEmpty
+              ? null
+              : _locationController.text.trim(),
+        ),
+      );
+      if (decision == null || !mounted) return;
+
+      final updates = PhotoDetailsApplier.buildUpdates(
+        metadata: metadata,
+        decision: decision,
+        currentDateCaught: _dateCaught,
+      );
+      if (updates.isEmpty) return;
+
+      setState(() {
+        if (updates.dateCaught != null) {
+          _dateCaught = updates.dateCaught;
+          _dateTimeEditedByUser = true;
+        }
+        if (updates.latitude != null && updates.longitude != null) {
+          _latitudeController.text = updates.latitude!.toString();
+          _longitudeController.text = updates.longitude!.toString();
+          _coordinateSource = updates.coordinateSource;
+          if (updates.clearFavouriteSpot) _selectedFavouriteSpotId = null;
+        }
+        _onFieldChanged();
+      });
+    } catch (e) {
+      debugPrint('Photo details action failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not read details from this photo'),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _getCurrentLocation() async {
@@ -1896,6 +1965,25 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                                   ),
                                 ),
                               ),
+                            Positioned(
+                              bottom: 4,
+                              right: 4,
+                              child: GestureDetector(
+                                onTap: () => _usePhotoDetails(media),
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.info_outline,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
                             Positioned(
                               top: 4,
                               right: 4,
