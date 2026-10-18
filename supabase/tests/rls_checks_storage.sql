@@ -57,11 +57,16 @@ insert into public.beta_testers (email, status) values
 -- Planted backup objects: one each for A, B and D under their uid
 -- prefixes, plus one in a NON-backups bucket to prove the policies are
 -- bucket-scoped. Inserted as the session user — RLS does not apply here.
+-- The control bucket is created inside this same transaction (the dev
+-- project has no `avatars` bucket) and disappears with the ROLLBACK.
+insert into storage.buckets (id, name, public)
+values ('rls_nonbackup', 'rls_nonbackup', false);
+
 insert into storage.objects (bucket_id, name) values
   ('backups', 'a0000000-0000-4000-8000-00000000000a/backup_a.bzp'),
   ('backups', 'b0000000-0000-4000-8000-00000000000b/backup_b.bzp'),
   ('backups', 'd0000000-0000-4000-8000-00000000000d/backup_d.bzp'),
-  ('avatars', 'a0000000-0000-4000-8000-00000000000a/not_a_backup.jpg');
+  ('rls_nonbackup', 'a0000000-0000-4000-8000-00000000000a/not_a_backup.jpg');
 
 create temp table rls_results(
   n int, check_name text, expected text, actual text, pass boolean
