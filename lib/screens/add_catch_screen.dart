@@ -21,6 +21,7 @@ import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
 import '../services/tide_reference_service.dart';
+import '../services/gallery_photo_picker.dart';
 import '../services/media_storage_service.dart';
 import '../services/photo_metadata_service.dart';
 import '../services/photo_details_applier.dart';
@@ -459,18 +460,34 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     try {
       final lostData = await ImagePicker().retrieveLostData();
 
-      if (lostData == null || lostData.isEmpty) {
-        return;
-      }
-
       bool recovered = false;
 
-      if (lostData.file != null) {
-        recovered = await _processLostFile(File(lostData.file!.path));
-      } else if (lostData.files != null && lostData.files!.isNotEmpty) {
-        for (final lostFile in lostData.files!) {
-          recovered =
-              await _processLostFile(File(lostFile.path)) || recovered;
+      if (lostData != null && !lostData.isEmpty) {
+        if (lostData.file != null) {
+          recovered = await _processLostFile(File(lostData.file!.path));
+        } else if (lostData.files != null && lostData.files!.isNotEmpty) {
+          for (final lostFile in lostData.files!) {
+            recovered =
+                await _processLostFile(File(lostFile.path)) || recovered;
+          }
+        }
+      }
+
+      // The platform gallery picker keeps its own persistent recovery
+      // record (it survives process death and later picker calls). Only
+      // attach a pending pick whose recorded context matches this screen
+      // — a pick started while editing catch N must never land on a
+      // different catch.
+      final pending = await GalleryPhotoPicker.instance.retrievePending();
+      if (pending != null) {
+        if (pending.context == _galleryPickContext) {
+          if (!File(pending.path).existsSync()) {
+            // Nothing recoverable — discard the dead record.
+            await GalleryPhotoPicker.instance.acknowledgePending(pending.path);
+          } else if (await _processLostFile(File(pending.path))) {
+            await GalleryPhotoPicker.instance.acknowledgePending(pending.path);
+            recovered = true;
+          }
         }
       }
 
@@ -487,10 +504,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     }
   }
 
+  /// Context token recorded with each platform-channel gallery pick so a
+  /// recovered result can only attach to the catch it was started from.
+  String get _galleryPickContext =>
+      widget.catchToEdit?.id != null ? 'edit:${widget.catchToEdit!.id}' : 'new';
+
   Future<bool> _processLostFile(File file) async {
     if (!_recoveredLostPaths.add(file.path)) return false;
-    await _processPickedFile(file, 'lost_data');
-    return true;
+    return _processPickedFile(file, 'lost_data');
   }
 
   Future<void> _loadCurrentTrip() async {
@@ -848,6 +869,50 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
 
   Future<void> _pickImage() async {
     try {
+      // Android: use the system Photo Picker via platform channel so the
+      // user can consent to sharing EXIF location metadata. Unsupported
+      // platforms (and iOS) fall through to the existing image_picker
+      // flow unchanged.
+      final outcome = await GalleryPhotoPicker.instance
+          .pickFromGallery(context: _galleryPickContext);
+
+      if (outcome.status == GalleryPickStatus.picked &&
+          outcome.path != null) {
+        if (await _processPickedFile(File(outcome.path!), 'gallery')) {
+          await GalleryPhotoPicker.instance
+              .acknowledgePending(outcome.path!);
+        }
+        return;
+      }
+      if (outcome.status == GalleryPickStatus.pending &&
+          outcome.path != null) {
+        // A recovered pick surfaces here instead of launching the picker.
+        // Attach only when it belongs to this catch.
+        if (outcome.context == _galleryPickContext) {
+          if (!File(outcome.path!).existsSync()) {
+            await GalleryPhotoPicker.instance
+                .acknowledgePending(outcome.path!);
+          } else if (await _processLostFile(File(outcome.path!))) {
+            await GalleryPhotoPicker.instance
+                .acknowledgePending(outcome.path!);
+          }
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'A photo from a previous session is waiting to be '
+                'recovered for another catch',
+              ),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      if (outcome.status == GalleryPickStatus.cancelled) return;
+      if (outcome.status != GalleryPickStatus.unsupported) return;
+
+      // Unsupported platform — existing image_picker flow.
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
@@ -942,7 +1007,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     }
   }
 
-  Future<void> _processPickedFile(File file, String source) async {
+  /// Processes a picked/recovered photo: EXIF extraction, compressed
+  /// storage and media staging. Returns true when the photo was staged
+  /// into [_mediaItems] — callers use this to acknowledge recovery state.
+  Future<bool> _processPickedFile(File file, String source) async {
     final originalPath = file.path;
 
     // Extract metadata offline from the picker-produced copy. The picker's
@@ -974,10 +1042,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           ),
         );
       }
-      return;
+      return false;
     }
 
-    if (!mounted) return;
+    if (!mounted) return false;
 
     // Store the photo's own metadata on the media row. date_taken is only
     // set from genuine EXIF capture times — never attachment time, and
@@ -1012,6 +1080,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         }
       });
     }
+    return true;
   }
 
   /// Explicit "Use photo details" action for any attached photo.

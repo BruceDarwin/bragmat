@@ -14,6 +14,7 @@ import 'package:bragmat/models/catch_media.dart';
 import 'package:bragmat/models/photo_metadata_result.dart';
 import 'package:bragmat/screens/add_catch_screen.dart';
 import 'package:bragmat/services/environmental_conditions_service.dart';
+import 'package:bragmat/services/gallery_photo_picker.dart';
 import 'package:bragmat/services/media_storage_service.dart';
 import 'package:bragmat/services/photo_metadata_service.dart';
 
@@ -37,6 +38,34 @@ class FakeImagePicker extends ImagePickerPlatform
   Future<LostDataResponse> getLostData() async => lostData;
 }
 
+/// Controllable fake for the Android gallery-picker channel. Defaults to
+/// `unsupported` so tests that don't configure it exercise the existing
+/// image_picker fallback unchanged.
+class FakeGalleryPicker extends GalleryPhotoPicker {
+  GalleryPickOutcome nextOutcome =
+      const GalleryPickOutcome(GalleryPickStatus.unsupported);
+  RecoveredGalleryPick? pendingPick;
+  int pickCalls = 0;
+  String? lastContext;
+  final List<String> acknowledged = [];
+
+  @override
+  Future<GalleryPickOutcome> pickFromGallery(
+      {required String context}) async {
+    pickCalls++;
+    lastContext = context;
+    return nextOutcome;
+  }
+
+  @override
+  Future<RecoveredGalleryPick?> retrievePending() async => pendingPick;
+
+  @override
+  Future<void> acknowledgePending(String path) async {
+    acknowledged.add(path);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   sqfliteFfiInit();
@@ -44,6 +73,7 @@ void main() {
 
   late Directory testDir;
   late FakeImagePicker fakePicker;
+  late FakeGalleryPicker fakeGallery;
 
   // Real Moto G15 fixtures checked into the repo:
   //  - MFNR (repo root): full EXIF (DateTimeOriginal +09:30,
@@ -65,6 +95,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     fakePicker = FakeImagePicker();
     ImagePickerPlatform.instance = fakePicker;
+    fakeGallery = FakeGalleryPicker();
+    GalleryPhotoPicker.instance = fakeGallery;
   });
 
   tearDown(() async {
@@ -102,6 +134,26 @@ void main() {
     await flushRealAsync(tester);
     await tester.pumpAndSettle();
     return tester.state(find.byType(AddCatchScreen)) as dynamic;
+  }
+
+  /// Seeds an existing catch with one stored photo on disk.
+  Future<int> seedCatchWithPhoto(Directory dir) async {
+    final stored = File(
+        path.join(dir.path, 'bragmat', 'media', 'catches', 'existing.jpg'));
+    await stored.parent.create(recursive: true);
+    await File(mfnrFixture).copy(stored.path);
+    final catchId = await DatabaseHelper.instance.insertCatch(model.Catch(
+      lengthCm: 45,
+      createdAt: DateTime(2026, 10, 1),
+      dateCaught: DateTime(2026, 10, 1, 9, 45),
+    ));
+    await DatabaseHelper.instance.insertCatchMedia(CatchMedia(
+      catchId: catchId,
+      filePath: 'catches/existing.jpg',
+      mediaType: 'photo',
+      role: 'primary',
+    ));
+    return catchId;
   }
 
   Future<void> tapAddPhoto(WidgetTester tester) async {
@@ -516,26 +568,6 @@ void main() {
       expect(saved!.coordinateSource, 'photo_gps');
     });
 
-    /// Seeds an existing catch with one stored photo on disk.
-    Future<int> seedCatchWithPhoto(Directory dir) async {
-      final stored = File(
-          path.join(dir.path, 'bragmat', 'media', 'catches', 'existing.jpg'));
-      await stored.parent.create(recursive: true);
-      await File(mfnrFixture).copy(stored.path);
-      final catchId = await DatabaseHelper.instance.insertCatch(model.Catch(
-        lengthCm: 45,
-        createdAt: DateTime(2026, 10, 1),
-        dateCaught: DateTime(2026, 10, 1, 9, 45),
-      ));
-      await DatabaseHelper.instance.insertCatchMedia(CatchMedia(
-        catchId: catchId,
-        filePath: 'catches/existing.jpg',
-        mediaType: 'photo',
-        role: 'primary',
-      ));
-      return catchId;
-    }
-
     testWidgets('edit-mode lost-camera-data recovery attaches to the '
         'existing catch without auto-prompting', (tester) async {
       late final int catchId;
@@ -656,6 +688,238 @@ void main() {
       final state = await pumpScreen(tester);
       expect(state.debugMediaItems, isEmpty);
       expect(find.text('Photo Details Found'), findsNothing);
+    });
+  });
+
+  group('Platform gallery picker channel', () {
+    /// Writes a minimal valid PNG (no EXIF) — models a photo delivered
+    /// after the user denied location-metadata consent.
+    Future<File> writeNoExifPng(Directory dir) async {
+      final f = File(path.join(dir.path, 'no_exif_gallery.png'));
+      await f.writeAsBytes(const [
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, 0x89,
+        0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, 0x54,
+        0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, 0x05,
+        0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4,
+        0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44,
+        0xAE, 0x42, 0x60, 0x82,
+      ]);
+      return f;
+    }
+
+    testWidgets('consent-granted pick: GPS offered as independent '
+        'suggestion, provenance photo_gps, record acknowledged',
+        (tester) async {
+      late final String picked;
+      await tester.runAsync(() async {
+        picked = await copyFixtureTo(srFixture, testDir);
+      });
+      fakeGallery.nextOutcome = GalleryPickOutcome(
+          GalleryPickStatus.picked, path: picked, context: 'new');
+
+      final state = await pumpScreen(tester);
+      await tapAddPhoto(tester);
+
+      // Channel used with the correct new-catch context.
+      expect(fakeGallery.pickCalls, 1);
+      expect(fakeGallery.lastContext, 'new');
+      expect(state.debugMediaItems, hasLength(1));
+      // Staged successfully -> recovery record acknowledged.
+      expect(fakeGallery.acknowledged, [picked]);
+
+      // GPS-only photo: location offered, explicit acceptance required.
+      expect(find.text('Photo Details Found'), findsOneWidget);
+      expect(find.text('Use photo location'), findsOneWidget);
+      await selectOption(tester, 'Use photo location');
+      await tester.tap(find.text('Apply selected details'));
+      await tester.pumpAndSettle();
+
+      expect(double.parse(state.debugLatitudeText),
+          closeTo(-12.3767, 0.001));
+      expect(state.debugCoordinateSource, 'photo_gps');
+      // Camera-intent-style file has no capture datetime -> stays null.
+      expect(state.debugMediaItems.first.dateTaken, isNull);
+    });
+
+    testWidgets('consent-denied pick (EXIF stripped): photo still '
+        'attaches, no coordinates invented', (tester) async {
+      late final File denied;
+      await tester.runAsync(() async {
+        denied = await writeNoExifPng(testDir);
+      });
+      fakeGallery.nextOutcome = GalleryPickOutcome(
+          GalleryPickStatus.picked, path: denied.path, context: 'new');
+
+      final state = await pumpScreen(tester);
+      await tapAddPhoto(tester);
+
+      expect(state.debugMediaItems, hasLength(1));
+      expect(state.debugMediaItems.first.latitude, isNull);
+      expect(state.debugMediaItems.first.dateTaken, isNull);
+      expect(find.text('Photo Details Found'), findsNothing);
+      expect(fakeGallery.acknowledged, [denied.path]);
+    });
+
+    testWidgets('picker cancellation attaches nothing', (tester) async {
+      fakeGallery.nextOutcome =
+          const GalleryPickOutcome(GalleryPickStatus.cancelled);
+
+      final state = await pumpScreen(tester);
+      await tapAddPhoto(tester);
+
+      expect(fakeGallery.pickCalls, 1);
+      expect(state.debugMediaItems, isEmpty);
+      expect(find.text('Photo Details Found'), findsNothing);
+    });
+
+    testWidgets('unsupported platform falls back to image_picker flow',
+        (tester) async {
+      // fakeGallery defaults to 'unsupported'.
+      late final String picked;
+      await tester.runAsync(() async {
+        picked = await copyFixtureTo(mfnrFixture, testDir);
+      });
+      fakePicker.nextPick = XFile(picked);
+
+      final state = await pumpScreen(tester);
+      await tapAddPhoto(tester);
+
+      // Channel consulted first, image_picker used after unsupported.
+      expect(fakeGallery.pickCalls, 1);
+      expect(fakePicker.pickCalls, 1);
+      expect(state.debugMediaItems, hasLength(1));
+      expect(find.text('Photo Details Found'), findsOneWidget);
+    });
+
+    testWidgets('pending gallery pick recovers into matching new-catch '
+        'context and is acknowledged once', (tester) async {
+      late final String recovered;
+      await tester.runAsync(() async {
+        recovered = await copyFixtureTo(mfnrFixture, testDir);
+      });
+      fakeGallery.pendingPick =
+          RecoveredGalleryPick(path: recovered, context: 'new');
+
+      final state = await pumpScreen(tester);
+
+      expect(state.debugMediaItems, hasLength(1));
+      expect(fakeGallery.acknowledged, [recovered]);
+      // First photo on a new catch still auto-prompts.
+      expect(find.text('Photo Details Found'), findsOneWidget);
+
+      // A later resume must not deliver it twice.
+      await tester.tap(find.text('Keep current catch details'));
+      await tester.pumpAndSettle();
+      await state.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await flushRealAsync(tester);
+      await tester.pumpAndSettle();
+      expect(state.debugMediaItems, hasLength(1));
+    });
+
+    testWidgets('pending edit-context pick attaches to that catch and '
+        'not to a different one', (tester) async {
+      late final int catchId;
+      late final String recovered;
+      await tester.runAsync(() async {
+        catchId = await seedCatchWithPhoto(testDir);
+        recovered = await copyFixtureTo(srFixture, testDir);
+      });
+      fakeGallery.pendingPick =
+          RecoveredGalleryPick(path: recovered, context: 'edit:$catchId');
+
+      final state = await pumpScreen(
+          tester,
+          catchToEdit: model.Catch(
+            id: catchId,
+            lengthCm: 45,
+            createdAt: DateTime(2026, 10, 1),
+            dateCaught: DateTime(2026, 10, 1, 9, 45),
+          ));
+
+      expect(state.debugMediaItems, hasLength(2));
+      expect(state.debugMediaItems.last.role, 'other');
+      expect(fakeGallery.acknowledged, [recovered]);
+      expect(find.text('Photo Details Found'), findsNothing);
+    });
+
+    testWidgets('pending pick for a different catch is never attached '
+        'and stays pending', (tester) async {
+      late final String recovered;
+      await tester.runAsync(() async {
+        recovered = await copyFixtureTo(mfnrFixture, testDir);
+      });
+      // Recorded against catch 99 — this screen is a new catch.
+      fakeGallery.pendingPick =
+          RecoveredGalleryPick(path: recovered, context: 'edit:99');
+
+      final state = await pumpScreen(tester);
+
+      expect(state.debugMediaItems, isEmpty);
+      expect(fakeGallery.acknowledged, isEmpty);
+      expect(find.text('Photo Details Found'), findsNothing);
+
+      // Surfaced through a pick attempt instead: still not attachable.
+      fakeGallery.nextOutcome = GalleryPickOutcome(
+          GalleryPickStatus.pending, path: recovered, context: 'edit:99');
+      await tapAddPhoto(tester);
+      expect(state.debugMediaItems, isEmpty);
+      expect(fakeGallery.acknowledged, isEmpty);
+    });
+
+    testWidgets('pending delivery through the pick path attaches and '
+        'acks when context matches', (tester) async {
+      late final String recovered;
+      await tester.runAsync(() async {
+        recovered = await copyFixtureTo(srFixture, testDir);
+      });
+      fakeGallery.nextOutcome = GalleryPickOutcome(
+          GalleryPickStatus.pending, path: recovered, context: 'new');
+
+      final state = await pumpScreen(tester);
+      await tapAddPhoto(tester);
+
+      expect(state.debugMediaItems, hasLength(1));
+      expect(fakeGallery.acknowledged, [recovered]);
+    });
+
+    testWidgets('pending record for a missing file is discarded '
+        'without attaching', (tester) async {
+      fakeGallery.pendingPick = RecoveredGalleryPick(
+          path: path.join(testDir.path, 'gone.jpg'), context: 'new');
+
+      final state = await pumpScreen(tester);
+
+      expect(state.debugMediaItems, isEmpty);
+      // Dead record is acknowledged/cleared — no infinite pending loop.
+      expect(fakeGallery.acknowledged, hasLength(1));
+    });
+
+    testWidgets('recovered pick coexists with a subsequent gallery '
+        'selection', (tester) async {
+      late final String recovered;
+      late final String picked;
+      await tester.runAsync(() async {
+        recovered = await copyFixtureTo(srFixture, testDir);
+        picked = await copyFixtureTo(mfnrFixture, testDir);
+      });
+      fakeGallery.pendingPick =
+          RecoveredGalleryPick(path: recovered, context: 'new');
+
+      final state = await pumpScreen(tester);
+      expect(state.debugMediaItems, hasLength(1));
+
+      fakeGallery.nextOutcome = GalleryPickOutcome(
+          GalleryPickStatus.picked, path: picked, context: 'new');
+      // Dismiss the recovery auto-prompt first.
+      await tester.tap(find.text('Keep current catch details'));
+      await tester.pumpAndSettle();
+      await tapAddPhoto(tester);
+
+      expect(state.debugMediaItems, hasLength(2));
+      expect(fakeGallery.acknowledged, [recovered, picked]);
     });
   });
 }
