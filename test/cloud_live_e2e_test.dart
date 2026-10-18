@@ -35,7 +35,6 @@ import 'package:bragmat/services/cloud_backup_service.dart';
 import 'package:bragmat/services/media_storage_service.dart';
 import 'package:bragmat/services/ownership_service.dart';
 import 'package:bragmat/services/supabase_config.dart';
-import 'package:bragmat/services/zip_backup_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as path;
 import 'package:shared_preferences/shared_preferences.dart';
