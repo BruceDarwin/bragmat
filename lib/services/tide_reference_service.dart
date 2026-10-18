@@ -1,4 +1,5 @@
 import 'package:shared_preferences/shared_preferences.dart';
+import '../data/tide_reference_catalogue.dart';
 import '../models/tide_reference.dart';
 
 /// Tide Reference Service
@@ -27,43 +28,12 @@ class TideReferenceService {
     longitude: 0.0,
   );
 
-  // Verified catalogue of fixed tide references.
-  //
-  // Every entry must be verified against the WorldTides API (station
-  // identity + coordinates via the `stations`/`extremes` responses)
-  // before being added here — do not add unverified candidates.
-  //
-  // - 'darwin': Darwin tide station. Verified in production: a query at
-  //   these coordinates returns `station: 'Darwin'`, `atlas: 'Australia'`
-  //   with responseLat/responseLon -12.4667/130.85.
-  static const Map<String, TideReference> _predefinedReferences = {
-    'darwin': TideReference(
-      id: 'darwin',
-      displayName: 'Darwin',
-      latitude: -12.4667,
-      longitude: 130.8500,
-      source: TideReferenceSource.station,
-    ),
-    // Model-based reference (no gauge). Verified: WorldTides `stations`
-    // finds no gauge at these coords; `extremes` returns predictions via
-    // the FES2022 atlas with responseLat/responseLon exactly as requested.
-    'dundee_beach': TideReference(
-      id: 'dundee_beach',
-      displayName: 'Dundee Beach',
-      latitude: -12.705,
-      longitude: 130.355,
-      source: TideReferenceSource.model,
-    ),
-    // Verified tide station ~10 km west of Dundee Beach: WorldTides
-    // station Australia:NT_TP053, station coords exactly as listed,
-    // `extremes` returns 'Native Point' (Australia) predictions.
-    'native_point': TideReference(
-      id: 'native_point',
-      displayName: 'Native Point',
-      latitude: -12.650,
-      longitude: 130.2667,
-      source: TideReferenceSource.station,
-    ),
+  // Verified catalogue of fixed tide references — the published tier of
+  // lib/data/tide_reference_catalogue.dart. Every entry must be verified
+  // against the WorldTides API before being added there; unverified
+  // candidates live in kTideReferenceCandidates and are never offered.
+  static final Map<String, TideReference> _predefinedReferences = {
+    for (final ref in kTideReferenceCatalogue) ref.id: ref,
   };
 
   /// Get the current tide reference based on user preferences
@@ -201,7 +171,10 @@ class TideReferenceService {
 
       final lowerName = name.toLowerCase();
       for (final ref in _predefinedReferences.values) {
-        if (ref.displayName.toLowerCase() == lowerName) return ref;
+        if (ref.displayName.toLowerCase() == lowerName ||
+            ref.altNames.any((a) => a.toLowerCase() == lowerName)) {
+          return ref;
+        }
       }
     }
 

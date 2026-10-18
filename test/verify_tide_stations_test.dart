@@ -84,6 +84,109 @@ void main() {
     });
   });
 
+  group('parseStationList (discovery)', () {
+    test('parses every station in the response', () {
+      final result = parseStationList({
+        'stations': [
+          {'id': 'a', 'name': 'A', 'lat': '-12.0', 'lon': '130.0'},
+          {'id': 'b', 'name': 'B', 'lat': -12.5, 'lon': 130.5},
+          {'id': 'c', 'name': 'C', 'lat': -13.0, 'lon': 131.0},
+        ],
+      });
+      expect(result.error, isNull);
+      expect(result.stations.map((s) => s.id), ['a', 'b', 'c']);
+      expect(result.stations.first.lat, -12.0);
+    });
+
+    test('surfaces API errors and returns no stations', () {
+      final result = parseStationList({'error': 'invalid key'});
+      expect(result.error, 'invalid key');
+      expect(result.stations, isEmpty);
+    });
+
+    test('skips malformed entries instead of throwing', () {
+      final result = parseStationList({
+        'stations': [
+          'bad entry',
+          {'id': 'ok', 'name': 'OK', 'lat': '-12.0', 'lon': '130.0'},
+        ],
+      });
+      expect(result.stations.single.id, 'ok');
+    });
+
+    test('missing stations key returns empty list', () {
+      expect(parseStationList({}).stations, isEmpty);
+    });
+  });
+
+  group('dedupeStations', () {
+    DiscoveredStation st(String id, double dist,
+            {String? name, String anchor = 'a1'}) =>
+        DiscoveredStation(
+            id: id,
+            name: name ?? id,
+            lat: -12.0,
+            lon: 130.0,
+            distanceKm: dist,
+            anchorKey: anchor);
+
+    test('deduplicates by station id, keeping the closest sighting', () {
+      final result = dedupeStations([
+        st('s1', 40.0, anchor: 'far'),
+        st('s1', 10.0, anchor: 'near'),
+        st('s2', 5.0),
+      ]);
+      expect(result.length, 2);
+      final s1 = result.firstWhere((s) => s.id == 's1');
+      expect(s1.anchorKey, 'near');
+    });
+
+    test('stations with different ids are preserved', () {
+      final result = dedupeStations([st('a', 1), st('b', 2), st('c', 3)]);
+      expect(result.length, 3);
+    });
+
+    test('null-id stations dedupe by name+coords fallback', () {
+      final result = dedupeStations([
+        const DiscoveredStation(name: 'X', lat: -12.0, lon: 130.0),
+        const DiscoveredStation(name: 'X', lat: -12.0, lon: 130.0),
+        const DiscoveredStation(name: 'Y', lat: -12.0, lon: 130.0),
+      ]);
+      expect(result.length, 2);
+    });
+  });
+
+  group('isOfficialLocation', () {
+    test('matches BoM NT location names', () {
+      expect(isOfficialLocation('Darwin'), isTrue);
+      expect(isOfficialLocation('Snake Bay'), isTrue);
+      expect(isOfficialLocation('Native Point'), isTrue);
+    });
+
+    test('is case-insensitive and substring-tolerant', () {
+      expect(isOfficialLocation('darwin'), isTrue);
+      expect(isOfficialLocation('Melville Bay (Gove)'), isTrue);
+    });
+
+    test('rejects unknown names and null', () {
+      expect(isOfficialLocation('Not A Place'), isFalse);
+      expect(isOfficialLocation(null), isFalse);
+    });
+  });
+
+  group('kmBetween', () {
+    test('computes a plausible distance', () {
+      // Darwin to Native Point ≈ 65 km
+      final d = kmBetween(-12.4667, 130.85, -12.65, 130.2667);
+      expect(d, greaterThan(50));
+      expect(d, lessThan(80));
+    });
+
+    test('zero for identical points', () {
+      expect(kmBetween(-12.0, 130.0, -12.0, 130.0), 0);
+    });
+  });
+
   group('parseExtremesResponse', () {
     test('station response resolves to station source', () {
       final result = parseExtremesResponse({

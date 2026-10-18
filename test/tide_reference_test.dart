@@ -6,6 +6,7 @@ import 'package:bragmat/models/environmental_condition.dart';
 import 'package:bragmat/models/tide_reference.dart';
 import 'package:bragmat/services/tide_reference_service.dart';
 import 'package:bragmat/services/environmental_conditions_service.dart';
+import 'package:bragmat/data/tide_reference_catalogue.dart';
 
 void main() {
   group('TideReferenceService', () {
@@ -1025,4 +1026,129 @@ void main() {
       );
     });
   });
+
+  group('NT catalogue structure', () {
+  test('all catalogue IDs unique across published and candidates', () {
+    final all = [
+      ...kTideReferenceCatalogue,
+      ...kTideReferenceCandidates,
+    ];
+    final ids = all.map((r) => r.id).toSet();
+    expect(ids.length, all.length);
+  });
+
+  test('published entries are verified; candidates are not', () {
+    for (final r in kTideReferenceCatalogue) {
+      expect(r.isPublished, isTrue,
+          reason: '${r.id} must be verified before publication');
+      expect(r.source, isNotNull,
+          reason: '${r.id} must declare station vs model');
+      expect(r.region, isNotNull,
+          reason: '${r.id} must declare a region');
+    }
+    for (final r in kTideReferenceCandidates) {
+      expect(r.isPublished, isFalse);
+      expect(r.region, isNotNull);
+    }
+  });
+
+  test('candidates are never exposed to pickers', () {
+    final published = TideReferenceService.getAllReferences();
+    for (final c in kTideReferenceCandidates) {
+      expect(published.contains(c), isFalse,
+          reason: 'unverified candidate ${c.id} must not appear in pickers');
+      expect(TideReferenceService.getReferenceById(c.id), isNull);
+    }
+  });
+
+  test('legacy IDs darwin, dundee_beach, native_point are preserved', () {
+    expect(TideReferenceService.getReferenceById('darwin'), isNotNull);
+    expect(TideReferenceService.getReferenceById('dundee_beach'), isNotNull);
+    expect(TideReferenceService.getReferenceById('native_point'), isNotNull);
+  });
+
+  test('catalogue lookup map covers published and candidate entries', () {
+    expect(tideReferenceCatalogueById['darwin']?.isPublished, isTrue);
+    expect(tideReferenceCatalogueById['snake_bay']?.isPublished, isFalse);
+  });
+});
+
+group('region classification', () {
+  test('verified entries classify into their declared region', () {
+    for (final r in kTideReferenceCatalogue) {
+      expect(tideRegionForCoordinates(r.latitude, r.longitude), r.region,
+          reason: '${r.id} (${r.latitude}, ${r.longitude})');
+    }
+  });
+
+  test('candidates classify into their declared region', () {
+    for (final r in kTideReferenceCandidates) {
+      expect(tideRegionForCoordinates(r.latitude, r.longitude), r.region,
+          reason:
+              '${r.id} at (${r.latitude}, ${r.longitude}) — if this fails, fix the bounding boxes or the candidate coords');
+    }
+  });
+
+  test('tideReferencesByRegion groups all published entries', () {
+    final grouped = tideReferencesByRegion();
+    final total = grouped.values.fold<int>(0, (n, l) => n + l.length);
+    expect(total, kTideReferenceCatalogue.length);
+  });
+});
+
+group('alternative names', () {
+  test('recorded references resolve via alt names', () {
+    final ref = TideReferenceService.resolveRecordedReference(
+      mode: 'fixed',
+      name: 'Native Pt',
+      requestLat: -12.650,
+      requestLon: 130.2667,
+    );
+    expect(ref, isNotNull);
+    expect(ref!.id, 'native_point');
+  });
+});
+
+group('toMap/fromMap round-trip', () {
+  test('new catalogue fields survive serialization', () {
+    const original = TideReference(
+      id: 'test_ref',
+      displayName: 'Test Ref',
+      latitude: -12.0,
+      longitude: 130.0,
+      source: TideReferenceSource.station,
+      state: 'NT',
+      region: TideRegion.fogBayAndDaly,
+      altNames: ['Alt One', 'Alt Two'],
+      providerStationId: 'Australia:NT_TP999',
+      verification: TideVerification.verified(
+          verifiedOn: '2026-10', provenance: 'test'),
+    );
+    final restored = TideReference.fromMap(original.toMap());
+    expect(restored.id, 'test_ref');
+    expect(restored.source, TideReferenceSource.station);
+    expect(restored.state, 'NT');
+    expect(restored.region, TideRegion.fogBayAndDaly);
+    expect(restored.altNames, ['Alt One', 'Alt Two']);
+    expect(restored.providerStationId, 'Australia:NT_TP999');
+    expect(restored.verification.status, TideVerificationStatus.verified);
+    expect(restored.verification.verifiedOn, '2026-10');
+    expect(restored.isPublished, isTrue);
+  });
+
+  test('missing new fields deserialize with safe defaults', () {
+    final ref = TideReference.fromMap(const {
+      'id': 'old_ref',
+      'displayName': 'Old Ref',
+      'latitude': -12.0,
+      'longitude': 130.0,
+      'isUserCreated': 0,
+    });
+    expect(ref.state, 'NT');
+    expect(ref.region, isNull);
+    expect(ref.altNames, isEmpty);
+    expect(ref.providerStationId, isNull);
+    expect(ref.isPublished, isFalse);
+  });
+});
 }
