@@ -286,7 +286,7 @@ class AchievementService {
     final totalCatches = catchCount.first['count'] as int;
     
     // Unique species
-    final speciesResult = await db.rawQuery('SELECT COUNT(DISTINCT fish_type) as count FROM catches WHERE fish_type IS NOT NULL AND fish_type != ""');
+    final speciesResult = await db.rawQuery("SELECT COUNT(DISTINCT fish_type) as count FROM catches WHERE fish_type IS NOT NULL AND fish_type != ''");
     final uniqueSpecies = speciesResult.first['count'] as int;
     
     // Photos
