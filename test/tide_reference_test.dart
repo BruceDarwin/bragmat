@@ -829,8 +829,8 @@ void main() {
       expect(ref!.id, 'darwin');
     });
 
-    test('fixed mode with an unknown name reconstructs from recorded '
-        'request coordinates — never substitutes automatic', () {
+    test('fixed mode resolves a catalogue display name even when the row '
+        'predates the entry', () {
       final ref = TideReferenceService.resolveRecordedReference(
         mode: 'fixed',
         name: 'Dundee Beach',
@@ -838,12 +838,25 @@ void main() {
         requestLon: 130.355,
       );
       expect(ref, isNotNull);
+      expect(ref!.id, 'dundee_beach');
+      expect(ref.isModelLocation, isTrue);
+    });
+
+    test('fixed mode with an unknown name reconstructs from recorded '
+        'request coordinates — never substitutes automatic', () {
+      final ref = TideReferenceService.resolveRecordedReference(
+        mode: 'fixed',
+        name: 'Old Jetty',
+        requestLat: -12.9,
+        requestLon: 130.7,
+      );
+      expect(ref, isNotNull);
       expect(TideReferenceService.isAutomatic(ref!), isFalse);
-      expect(ref.latitude, -12.705);
-      expect(ref.longitude, 130.355);
-      expect(ref.displayName, 'Dundee Beach');
+      expect(ref.latitude, -12.9);
+      expect(ref.longitude, 130.7);
+      expect(ref.displayName, 'Old Jetty');
       // Reconstructed ID is stable for this recorded name.
-      expect(ref.id, 'recorded_dundee_beach');
+      expect(ref.id, 'recorded_old_jetty');
     });
 
     test('fixed mode with no name and no coordinates is unresolved — '
@@ -861,6 +874,18 @@ void main() {
       expect(darwin.isStation, isTrue);
       expect(darwin.isModelLocation, isFalse);
       expect(TideReferenceService.describeSource(darwin), 'tide station');
+    });
+
+    test('Dundee Beach is a verified model-based reference', () {
+      final dundee = TideReferenceService.getReferenceById('dundee_beach')!;
+      expect(dundee.displayName, 'Dundee Beach');
+      expect(dundee.isModelLocation, isTrue);
+      expect(dundee.isStation, isFalse);
+      expect(TideReferenceService.describeSource(dundee),
+          'model prediction');
+      // Verified WorldTides extremes response coords (FES2022 atlas).
+      expect(dundee.latitude, -12.705);
+      expect(dundee.longitude, 130.355);
     });
 
     test('describeSource distinguishes model locations', () {

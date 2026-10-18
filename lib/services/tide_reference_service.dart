@@ -44,6 +44,16 @@ class TideReferenceService {
       longitude: 130.8500,
       source: TideReferenceSource.station,
     ),
+    // Model-based reference (no gauge). Verified: WorldTides `stations`
+    // finds no gauge at these coords; `extremes` returns predictions via
+    // the FES2022 atlas with responseLat/responseLon exactly as requested.
+    'dundee_beach': TideReference(
+      id: 'dundee_beach',
+      displayName: 'Dundee Beach',
+      latitude: -12.705,
+      longitude: 130.355,
+      source: TideReferenceSource.model,
+    ),
   };
 
   /// Get the current tide reference based on user preferences

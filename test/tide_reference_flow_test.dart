@@ -306,8 +306,8 @@ void main() {
   });
 
   group('D1 — recorded reference resolution', () {
-    test('legacy fixed row (name "Dundee Beach", no catalogue entry) '
-        'reconstructs from recorded request coordinates', () async {
+    test('recorded fixed row (name "Dundee Beach") resolves to the '
+        'catalogue model reference and is preserved', () async {
       await _insertDarwinCondition(
         7,
         name: 'Dundee Beach',
