@@ -16,7 +16,7 @@ void main() {
     test('Default mode is automatic', () async {
       final reference = await TideReferenceService.getCurrentReference();
       expect(reference.id, 'automatic');
-      expect(reference.displayName, 'Automatic');
+      expect(reference.displayName, 'Automatic (catch location)');
     });
 
     test('Set automatic mode', () async {
@@ -739,6 +739,255 @@ void main() {
       expect(TideRecalculationResult.invalidCoordinates, isNotNull);
       expect(TideRecalculationResult.invalidApiKey, isNotNull);
       expect(TideRecalculationResult.unexpectedFailure, isNotNull);
+    });
+
+    test('clearTideResults stamps an applied fixed reference', () {
+      final condition = EnvironmentalCondition(
+        id: 1,
+        catchId: 1,
+        observationDateTime: DateTime(2026, 8, 2),
+        latitude: -12.4634,
+        longitude: 130.8456,
+        tideReferenceMode: 'fixed',
+        tideReferenceName: 'Darwin',
+        tideRequestLat: -12.4667,
+        tideRequestLon: 130.8500,
+        worldtidesStation: 'Darwin',
+        tideContextPhrase: 'Darwin high tide',
+        tideContextDataSource: 'WorldTides',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final cleared = condition.clearTideResults(
+        appliedTideReferenceMode: 'fixed',
+        appliedTideReferenceName: 'Gove',
+        appliedTideRequestLat: -12.25,
+        appliedTideRequestLon: 136.70,
+      );
+
+      // The applied reference is recorded, not the previous one.
+      expect(cleared.tideReferenceMode, 'fixed');
+      expect(cleared.tideReferenceName, 'Gove');
+      expect(cleared.tideRequestLat, -12.25);
+      expect(cleared.tideRequestLon, 136.70);
+      // Tide results belonging to the previous request are cleared.
+      expect(cleared.worldtidesStation, isNull);
+      expect(cleared.tideContextPhrase, isNull);
+    });
+
+    test('clearTideResults stamps an applied automatic reference', () {
+      final condition = EnvironmentalCondition(
+        id: 1,
+        catchId: 1,
+        observationDateTime: DateTime(2026, 8, 2),
+        latitude: -12.4634,
+        longitude: 130.8456,
+        tideReferenceMode: 'fixed',
+        tideReferenceName: 'Darwin',
+        tideRequestLat: -12.4667,
+        tideRequestLon: 130.8500,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final cleared = condition.clearTideResults(
+        appliedTideReferenceMode: 'automatic',
+        appliedTideReferenceName: null,
+        appliedTideRequestLat: -12.4634,
+        appliedTideRequestLon: 130.8456,
+      );
+
+      expect(cleared.tideReferenceMode, 'automatic');
+      expect(cleared.tideReferenceName, isNull);
+      expect(cleared.tideRequestLat, -12.4634);
+      expect(cleared.tideRequestLon, 130.8456);
+    });
+  });
+
+  group('resolveRecordedReference (D1)', () {
+    test('null or empty mode resolves to null', () {
+      expect(TideReferenceService.resolveRecordedReference(mode: null), isNull);
+      expect(TideReferenceService.resolveRecordedReference(mode: ''), isNull);
+    });
+
+    test('automatic mode resolves to the automatic sentinel', () {
+      final ref = TideReferenceService.resolveRecordedReference(mode: 'automatic');
+      expect(ref, isNotNull);
+      expect(TideReferenceService.isAutomatic(ref!), isTrue);
+    });
+
+    test('fixed mode resolves a legacy display name via the catalogue', () {
+      // Historical rows store the display name ('Darwin'), not the ID.
+      final ref = TideReferenceService.resolveRecordedReference(
+        mode: 'fixed',
+        name: 'Darwin',
+        requestLat: -12.4667,
+        requestLon: 130.8500,
+      );
+      expect(ref, isNotNull);
+      expect(ref!.id, 'darwin');
+    });
+
+    test('fixed mode with an unknown name reconstructs from recorded '
+        'request coordinates — never substitutes automatic', () {
+      final ref = TideReferenceService.resolveRecordedReference(
+        mode: 'fixed',
+        name: 'Dundee Beach',
+        requestLat: -12.705,
+        requestLon: 130.355,
+      );
+      expect(ref, isNotNull);
+      expect(TideReferenceService.isAutomatic(ref!), isFalse);
+      expect(ref.latitude, -12.705);
+      expect(ref.longitude, 130.355);
+      expect(ref.displayName, 'Dundee Beach');
+      // Reconstructed ID is stable for this recorded name.
+      expect(ref.id, 'recorded_dundee_beach');
+    });
+
+    test('fixed mode with no name and no coordinates is unresolved — '
+        'returns null rather than substituting automatic', () {
+      final ref = TideReferenceService.resolveRecordedReference(
+        mode: 'fixed',
+      );
+      expect(ref, isNull);
+    });
+  });
+
+  group('Catalogue source kinds', () {
+    test('Darwin is a station-backed reference', () {
+      final darwin = TideReferenceService.getReferenceById('darwin')!;
+      expect(darwin.isStation, isTrue);
+      expect(darwin.isModelLocation, isFalse);
+      expect(TideReferenceService.describeSource(darwin), 'tide station');
+    });
+
+    test('describeSource distinguishes model locations', () {
+      final model = TideReference(
+        id: 'dundee_beach',
+        displayName: 'Dundee Beach',
+        latitude: -12.705,
+        longitude: 130.355,
+        source: TideReferenceSource.model,
+      );
+      expect(model.isModelLocation, isTrue);
+      expect(model.isStation, isFalse);
+      expect(TideReferenceService.describeSource(model), 'model prediction');
+    });
+
+    test('catalogue IDs are unique and coordinates are sane', () {
+      final refs = TideReferenceService.getAllReferences();
+      final ids = refs.map((r) => r.id).toSet();
+      expect(ids.length, refs.length);
+      for (final ref in refs) {
+        if (TideReferenceService.isAutomatic(ref)) continue;
+        expect(ref.latitude, inInclusiveRange(-90.0, 90.0));
+        expect(ref.longitude, inInclusiveRange(-180.0, 180.0));
+        expect(ref.source, isNotNull,
+            reason: '${ref.id} must declare station vs model');
+      }
+    });
+  });
+
+  group('tideRequestChanged gate (D2)', () {
+    EnvironmentalCondition recorded({
+      double lat = -12.4667,
+      double lon = 130.85,
+      DateTime? observedAt,
+    }) =>
+        EnvironmentalCondition(
+          id: 1,
+          catchId: 1,
+          observationDateTime: observedAt ?? DateTime(2026, 8, 2, 10, 0),
+          tideReferenceMode: 'fixed',
+          tideReferenceName: 'Darwin',
+          tideRequestLat: lat,
+          tideRequestLon: lon,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+
+    test('identical request coordinates and day → unchanged', () {
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: recorded(),
+          requestLat: -12.4667,
+          requestLon: 130.85,
+          observationDateTime: DateTime(2026, 8, 2, 14, 30),
+        ),
+        isFalse,
+      );
+    });
+
+    test('different reference coordinates → changed', () {
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: recorded(),
+          requestLat: -12.25,
+          requestLon: 136.70,
+          observationDateTime: DateTime(2026, 8, 2, 10, 0),
+        ),
+        isTrue,
+      );
+    });
+
+    test('different catch location in automatic mode → changed', () {
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: recorded(lat: -12.4634, lon: 130.8456),
+          requestLat: -12.7,
+          requestLon: 130.4,
+          observationDateTime: DateTime(2026, 8, 2, 10, 0),
+        ),
+        isTrue,
+      );
+    });
+
+    test('same coordinates but different tide date → changed', () {
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: recorded(observedAt: DateTime(2026, 8, 2, 23, 30)),
+          requestLat: -12.4667,
+          requestLon: 130.85,
+          observationDateTime: DateTime(2026, 8, 3, 0, 15),
+        ),
+        isTrue,
+      );
+    });
+
+    test('no recorded request coordinates → not "changed"', () {
+      final existing = EnvironmentalCondition(
+        id: 1,
+        catchId: 1,
+        observationDateTime: DateTime(2026, 8, 2, 10, 0),
+        tideReferenceMode: 'fixed',
+        tideReferenceName: 'Darwin',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: existing,
+          requestLat: -12.4667,
+          requestLon: 130.85,
+          observationDateTime: DateTime(2026, 8, 2, 10, 0),
+        ),
+        isFalse,
+      );
+    });
+
+    test('no existing record → not "changed" (fetch triggered by missing '
+        'context instead)', () {
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: null,
+          requestLat: -12.4667,
+          requestLon: 130.85,
+          observationDateTime: DateTime(2026, 8, 2),
+        ),
+        isFalse,
+      );
     });
   });
 }

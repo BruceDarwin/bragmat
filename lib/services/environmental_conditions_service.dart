@@ -41,8 +41,17 @@ class EnvironmentalConditionsService {
 
   final MoonPhaseService _moonPhaseService = MoonPhaseService();
   final SunTimesService _sunTimesService = SunTimesService();
-  final WeatherService _weatherService = WeatherService();
-  final WorldTidesService _worldTidesService = WorldTidesService();
+  WeatherService _weatherService = WeatherService();
+  WorldTidesService _worldTidesService = WorldTidesService();
+
+  /// Test seam: inject a fake weather service in unit tests.
+  @visibleForTesting
+  set weatherService(WeatherService service) => _weatherService = service;
+
+  /// Test seam: inject a fake WorldTides service in unit tests.
+  @visibleForTesting
+  set worldTidesService(WorldTidesService service) =>
+      _worldTidesService = service;
 
   /// Check if a string value is blank (null, empty, or whitespace only)
   bool _isBlank(String? value) {
@@ -608,22 +617,45 @@ class EnvironmentalConditionsService {
       tideHeight: tideHeight,
       tideMovement: tideMovement,
       tideStation: tideStation,
+      // Preserve automated/reference fields not owned by the manual form —
+      // a manual save must never wipe the recorded tide reference or the
+      // WorldTides source metadata it was fetched with.
+      tideReferenceMode: existing?.tideReferenceMode,
+      tideReferenceName: existing?.tideReferenceName,
+      tideRequestLat: existing?.tideRequestLat,
+      tideRequestLon: existing?.tideRequestLon,
+      worldtidesStation: existing?.worldtidesStation,
+      worldtidesAtlas: existing?.worldtidesAtlas,
+      worldtidesResponseLat: existing?.worldtidesResponseLat,
+      worldtidesResponseLon: existing?.worldtidesResponseLon,
+      tideStationDistanceKm: existing?.tideStationDistanceKm,
       // Tide context fields
-      tideStationName: tideStationName,
+      tideStationName: tideStationName ?? existing?.tideStationName,
       referenceTideEventType: referenceTideEventType,
       referenceTideEventTime: referenceTideEventTime,
       referenceTideEventHeight: referenceTideEventHeight,
       referenceTideEventRelation: referenceTideEventRelation,
-      minutesFromReferenceTideEvent: minutesFromReferenceTideEvent,
+      // API-derived; no manual form field owns it — keep the recorded value.
+      minutesFromReferenceTideEvent:
+          minutesFromReferenceTideEvent ?? existing?.minutesFromReferenceTideEvent,
       previousTideEventType: previousTideEventType,
       previousTideEventTime: previousTideEventTime,
       previousTideEventHeight: previousTideEventHeight,
       nextTideEventType: nextTideEventType,
       nextTideEventTime: nextTideEventTime,
       nextTideEventHeight: nextTideEventHeight,
-      tideContextPhrase: tideContextPhrase,
-      tideContextDataSource: tideContextDataSource,
-      tideContextConfidence: tideContextConfidence,
+      // A WorldTides-derived phrase is API data, not a manual entry —
+      // preserve it when the form produced no phrase of its own.
+      tideContextPhrase: tideContextPhrase ??
+          (existing?.tideContextDataSource == 'WorldTides'
+              ? existing?.tideContextPhrase
+              : null),
+      // Preserve the recorded source/confidence — they describe whatever
+      // context survived, and a manual save must not orphan them.
+      tideContextDataSource:
+          tideContextDataSource ?? existing?.tideContextDataSource,
+      tideContextConfidence:
+          tideContextConfidence ?? existing?.tideContextConfidence,
       weatherCondition: weatherCondition,
       temperature: temperature,
       humidity: humidity,
@@ -729,68 +761,71 @@ class EnvironmentalConditionsService {
       }
     }
     
-    // Fetch official tide context from WorldTides if available
-    // Only fetch if: no existing context, or date/time changed, or coordinates changed
-    Map<String, dynamic>? tideContext;
-    bool tideFetchSucceeded = false;
-    final shouldFetchWorldTides = await _shouldFetchWorldTidesContext(
-      existing,
-      catchItem,
-      observationDateTime,
-    );
-    
-    // Get tide reference - Stage 3: Use provided parameter, or preserve recorded reference, or use Settings default
-    TideReference reference;
-    bool isAutomatic;
-    
+    // Tide reference resolution order: explicitly provided selection →
+    // the catch's recorded reference → the Settings default.
+    //
+    // An unresolved recorded fixed reference is preserved verbatim in
+    // the stored fields — it must never be silently substituted with a
+    // different reference (e.g. automatic at the catch location).
+    TideReference? reference;
+    var unresolvedRecordedFixed = false;
     if (tideReference != null) {
       // Stage 3: Use the provided reference (per-catch selection)
       reference = tideReference;
-    } else if (existing != null && existing.tideReferenceMode != null && existing.tideReferenceMode!.isNotEmpty) {
-      // Use recorded reference for existing catches
-      if (existing.tideReferenceMode == 'automatic') {
-        reference = TideReference(
-          id: 'automatic',
-          displayName: 'Automatic',
-          latitude: 0.0,
-          longitude: 0.0,
-        );
-      } else if (existing.tideReferenceName != null) {
-        // Look up reference by name
-        final ref = TideReferenceService.getReferenceById(
-          existing.tideReferenceName!.toLowerCase(),
-        );
-        reference = ref ?? TideReference(
-          id: 'automatic',
-          displayName: 'Automatic',
-          latitude: 0.0,
-          longitude: 0.0,
-        );
-      } else {
-        // Fallback to automatic
-        reference = TideReference(
-          id: 'automatic',
-          displayName: 'Automatic',
-          latitude: 0.0,
-          longitude: 0.0,
-        );
-      }
-    } else {
-      // Use current global default for new catches or when no recorded reference
+    } else if (existing != null &&
+        existing.tideReferenceMode != null &&
+        existing.tideReferenceMode!.isNotEmpty) {
+      reference = TideReferenceService.resolveRecordedReference(
+        mode: existing.tideReferenceMode,
+        name: existing.tideReferenceName,
+        requestLat: existing.tideRequestLat,
+        requestLon: existing.tideRequestLon,
+      );
+      unresolvedRecordedFixed = reference == null;
+    }
+    if (reference == null && !unresolvedRecordedFixed) {
+      // New catches or records without a stored reference use the
+      // user's current Settings default.
       reference = await TideReferenceService.getCurrentReference();
     }
-    
-    isAutomatic = TideReferenceService.isAutomatic(reference);
-    
-    // Determine tide-request coordinates based on reference mode
-    final requestLat = isAutomatic ? catchItem.latitude : reference.latitude;
-    final requestLon = isAutomatic ? catchItem.longitude : reference.longitude;
-    
-    if (shouldFetchWorldTides && await _worldTidesService.isAvailable()) {
+
+    final isAutomatic =
+        reference != null && TideReferenceService.isAutomatic(reference);
+
+    // Determine tide-request coordinates based on reference mode.
+    // For an unresolved recorded fixed reference, fall back to the
+    // coordinates that were actually recorded with the catch.
+    final requestLat = isAutomatic
+        ? catchItem.latitude
+        : (reference?.latitude ?? existing?.tideRequestLat);
+    final requestLon = isAutomatic
+        ? catchItem.longitude
+        : (reference?.longitude ?? existing?.tideRequestLon);
+
+    // Decide whether a fresh WorldTides request is required. The request
+    // counts as changed when the effective request coordinates or the
+    // tide date differ from what the recorded context was fetched with —
+    // this is what makes a reference change actually refetch instead of
+    // silently reusing data fetched for a different location.
+    final requestChanged = tideRequestChanged(
+      existing: existing,
+      requestLat: requestLat,
+      requestLon: requestLon,
+      observationDateTime: observationDateTime,
+    );
+    final shouldFetchWorldTides =
+        !_hasValidWorldTidesContext(existing) || requestChanged;
+
+    Map<String, dynamic>? tideContext;
+    var tideFetchSucceeded = false;
+    if (shouldFetchWorldTides &&
+        requestLat != null &&
+        requestLon != null &&
+        await _worldTidesService.isAvailable()) {
       try {
         tideContext = await _worldTidesService.getTideContextForLocation(
-          requestLat!,
-          requestLon!,
+          requestLat,
+          requestLon,
           observationDateTime,
         );
         tideFetchSucceeded = tideContext != null && tideContext.isNotEmpty;
@@ -802,7 +837,20 @@ class EnvironmentalConditionsService {
         tideFetchSucceeded = false;
       }
     }
-    
+
+    // If the request changed (different reference, catch location or
+    // tide date) but the fetch failed, writing now would pair the new
+    // reference with tide data fetched for the previous request. Leave
+    // the recorded condition untouched and report the failure so the UI
+    // can offer revert / save-without-tide-data explicitly.
+    if (requestChanged &&
+        !tideFetchSucceeded &&
+        _hasValidWorldTidesContext(existing)) {
+      debugPrint(
+          'WorldTides: request changed but fetch failed — preserving recorded condition');
+      return TideRecalculationResult.unavailable;
+    }
+
     final condition = EnvironmentalCondition(
       id: existing?.id,
       catchId: catchItem.id!,
@@ -817,9 +865,15 @@ class EnvironmentalConditionsService {
       tideHeight: existing?.tideHeight,
       tideMovement: existing?.tideMovement,
       tideStation: existing?.tideStation,
-      // Tide Reference and WorldTides Source fields
-      tideReferenceMode: isAutomatic ? 'automatic' : 'fixed',
-      tideReferenceName: isAutomatic ? null : reference.displayName,
+      // Tide Reference and WorldTides Source fields.
+      // An unresolved recorded fixed reference keeps its stored values
+      // verbatim rather than being misrepresented as another reference.
+      tideReferenceMode: unresolvedRecordedFixed
+          ? existing?.tideReferenceMode
+          : (isAutomatic ? 'automatic' : 'fixed'),
+      tideReferenceName: unresolvedRecordedFixed
+          ? existing?.tideReferenceName
+          : (isAutomatic ? null : reference?.displayName),
       tideRequestLat: requestLat,
       tideRequestLon: requestLon,
       worldtidesStation: tideContext?['tideStationName'] ?? existing?.worldtidesStation,
@@ -882,34 +936,45 @@ class EnvironmentalConditionsService {
     return TideRecalculationResult.success;
   }
 
-  /// Determine if WorldTides context should be fetched
-  /// 
-  /// Returns true if:
-  /// - No existing WorldTides context exists
-  /// - No existing environmental condition exists
-  /// 
-  /// Note: Location and date/time changes are now handled via user prompts
-  /// in the Add Catch screen, so automatic recalculation is not performed here.
-  Future<bool> _shouldFetchWorldTidesContext(
-    EnvironmentalCondition? existing,
-    Catch catchItem,
-    DateTime observationDateTime,
-  ) async {
-    // No existing context - fetch
-    if (existing == null) {
+  /// Whether the stored condition holds usable WorldTides-derived context.
+  static bool _hasValidWorldTidesContext(EnvironmentalCondition? existing) =>
+      existing != null &&
+      existing.tideContextDataSource == 'WorldTides' &&
+      existing.tideContextPhrase != null &&
+      existing.tideContextPhrase!.isNotEmpty;
+
+  /// Whether the WorldTides request implied by [requestLat]/[requestLon]
+  /// and [observationDateTime] differs from the request recorded in
+  /// [existing].
+  ///
+  /// Tide predictions are per-day, so a changed observation day counts
+  /// as a changed request even when coordinates match. Records without
+  /// stored request coordinates have nothing comparable — they are not
+  /// treated as "changed" (a missing context still triggers a fetch via
+  /// [_hasValidWorldTidesContext]).
+  @visibleForTesting
+  static bool tideRequestChanged({
+    required EnvironmentalCondition? existing,
+    required double? requestLat,
+    required double? requestLon,
+    required DateTime observationDateTime,
+  }) {
+    if (existing == null) return false;
+
+    final recordedLat = existing.tideRequestLat;
+    final recordedLon = existing.tideRequestLon;
+    if (recordedLat == null || recordedLon == null) return false;
+    if (requestLat == null || requestLon == null) return false;
+
+    if ((recordedLat - requestLat).abs() > 1e-9 ||
+        (recordedLon - requestLon).abs() > 1e-9) {
       return true;
     }
-    
-    // No existing WorldTides context - fetch
-    if (existing.tideContextDataSource != 'WorldTides' ||
-        existing.tideContextPhrase == null ||
-        existing.tideContextPhrase!.isEmpty) {
-      return true;
-    }
-    
-    // Context exists - don't automatically fetch
-    // Changes are handled via user prompts in the UI
-    return false;
+
+    final d = existing.observationDateTime;
+    return d.year != observationDateTime.year ||
+        d.month != observationDateTime.month ||
+        d.day != observationDateTime.day;
   }
 
   /// Check if an environmental condition has any manual data (non-calculated fields)
@@ -966,63 +1031,69 @@ class EnvironmentalConditionsService {
       return existing;
     }
     
-    // Determine which reference to use
-    TideReference tideReference;
-    if (useRecordedReference && existing != null && existing.tideReferenceMode != null) {
-      // Use recorded reference
-      if (existing.tideReferenceMode == 'automatic') {
-        tideReference = TideReference(
-          id: 'automatic',
-          displayName: 'Automatic',
-          latitude: 0.0,
-          longitude: 0.0,
-        );
-      } else if (existing.tideReferenceName != null) {
-        // Look up reference by name
-        final ref = TideReferenceService.getReferenceById(
-          existing.tideReferenceName!.toLowerCase(),
-        );
-        tideReference = ref ?? TideReference(
-          id: 'automatic',
-          displayName: 'Automatic',
-          latitude: 0.0,
-          longitude: 0.0,
-        );
-      } else {
-        // Fallback to automatic
-        tideReference = TideReference(
-          id: 'automatic',
-          displayName: 'Automatic',
-          latitude: 0.0,
-          longitude: 0.0,
-        );
-      }
-    } else {
-      // Use current global default
+    // Resolve the reference to use: either the catch's recorded
+    // reference or the user's current Settings default. An unresolved
+    // recorded fixed reference is preserved verbatim in the stored
+    // fields — never silently substituted with automatic — and the fetch
+    // falls back to the coordinates originally recorded for the request.
+    TideReference? tideReference;
+    var unresolvedRecordedFixed = false;
+    if (useRecordedReference &&
+        existing != null &&
+        existing.tideReferenceMode != null &&
+        existing.tideReferenceMode!.isNotEmpty) {
+      tideReference = TideReferenceService.resolveRecordedReference(
+        mode: existing.tideReferenceMode,
+        name: existing.tideReferenceName,
+        requestLat: existing.tideRequestLat,
+        requestLon: existing.tideRequestLon,
+      );
+      unresolvedRecordedFixed = tideReference == null;
+    }
+    if (tideReference == null && !unresolvedRecordedFixed) {
       tideReference = await TideReferenceService.getCurrentReference();
     }
-    
-    final isAutomatic = TideReferenceService.isAutomatic(tideReference);
-    
+
+    final isAutomatic =
+        tideReference != null && TideReferenceService.isAutomatic(tideReference);
+
     // Determine tide-request coordinates based on reference mode
-    final requestLat = isAutomatic ? catchItem.latitude : tideReference.latitude;
-    final requestLon = isAutomatic ? catchItem.longitude : tideReference.longitude;
-    
+    final requestLat = isAutomatic
+        ? catchItem.latitude
+        : (tideReference?.latitude ?? existing?.tideRequestLat);
+    final requestLon = isAutomatic
+        ? catchItem.longitude
+        : (tideReference?.longitude ?? existing?.tideRequestLon);
+
     // Fetch official tide context from WorldTides
     Map<String, dynamic>? tideContext;
-    if (await _worldTidesService.isAvailable()) {
+    var tideFetchSucceeded = false;
+    if (requestLat != null &&
+        requestLon != null &&
+        await _worldTidesService.isAvailable()) {
       try {
         tideContext = await _worldTidesService.getTideContextForLocation(
-          requestLat!,
-          requestLon!,
+          requestLat,
+          requestLon,
           observationDateTime,
         );
+        tideFetchSucceeded = tideContext != null && tideContext.isNotEmpty;
       } catch (e) {
         debugPrint('WorldTides: Error fetching tide context: $e');
-        // Continue without tide context
       }
     }
-    
+
+    // The recalculation could not produce tide data — leave the recorded
+    // condition untouched so the previously recorded reference and its
+    // valid tide information are preserved, and report the failure
+    // instead of writing empty results (which would misrepresent the
+    // attempted reference change as successful).
+    if (!tideFetchSucceeded) {
+      debugPrint(
+          'WorldTides: explicit recalculation failed — recorded condition preserved');
+      return null;
+    }
+
     final condition = EnvironmentalCondition(
       id: existing?.id,
       catchId: catchItem.id!,
@@ -1037,9 +1108,15 @@ class EnvironmentalConditionsService {
       tideHeight: existing?.tideHeight,
       tideMovement: existing?.tideMovement,
       tideStation: existing?.tideStation,
-      // Tide Reference and WorldTides Source fields - update with new reference
-      tideReferenceMode: isAutomatic ? 'automatic' : 'fixed',
-      tideReferenceName: isAutomatic ? null : tideReference.displayName,
+      // Tide Reference and WorldTides Source fields - update with new
+      // reference. An unresolved recorded fixed reference keeps its
+      // stored values verbatim.
+      tideReferenceMode: unresolvedRecordedFixed
+          ? existing?.tideReferenceMode
+          : (isAutomatic ? 'automatic' : 'fixed'),
+      tideReferenceName: unresolvedRecordedFixed
+          ? existing?.tideReferenceName
+          : (isAutomatic ? null : tideReference?.displayName),
       tideRequestLat: requestLat,
       tideRequestLon: requestLon,
       worldtidesStation: tideContext?['tideStationName'],

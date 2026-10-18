@@ -395,7 +395,19 @@ class EnvironmentalCondition {
   /// Create a copy with tide-result fields cleared
   /// Used when reference changes and recalculation fails or is skipped
   /// Preserves manual tide observations and unrelated environmental data
-  EnvironmentalCondition clearTideResults() {
+  ///
+  /// When [appliedTideReferenceMode] is provided, all four recorded
+  /// reference fields are overwritten atomically with the applied values
+  /// (name may be null for automatic mode). This is used when the user
+  /// explicitly accepts a new reference without tide data — the stored
+  /// reference must reflect what was actually applied rather than the
+  /// previously recorded one.
+  EnvironmentalCondition clearTideResults({
+    String? appliedTideReferenceMode,
+    String? appliedTideReferenceName,
+    double? appliedTideRequestLat,
+    double? appliedTideRequestLon,
+  }) {
     return EnvironmentalCondition(
       id: id,
       catchId: catchId,
@@ -422,11 +434,18 @@ class EnvironmentalCondition {
       // Tide Context fields (deprecated - kept for backward compatibility)
       tideStationName: tideStationName,
       tideStationDistanceKm: tideStationDistanceKm,
-      // Tide Reference and WorldTides Source fields - preserve reference info
-      tideReferenceMode: tideReferenceMode,
-      tideReferenceName: tideReferenceName,
-      tideRequestLat: tideRequestLat,
-      tideRequestLon: tideRequestLon,
+      // Tide Reference fields — preserved unless a new reference was
+      // explicitly applied (failed recalculation accepted by the user)
+      tideReferenceMode: appliedTideReferenceMode ?? tideReferenceMode,
+      tideReferenceName: appliedTideReferenceMode != null
+          ? appliedTideReferenceName
+          : tideReferenceName,
+      tideRequestLat: appliedTideReferenceMode != null
+          ? appliedTideRequestLat
+          : tideRequestLat,
+      tideRequestLon: appliedTideReferenceMode != null
+          ? appliedTideRequestLon
+          : tideRequestLon,
       // CLEAR WorldTides metadata
       worldtidesStation: null,
       worldtidesAtlas: null,

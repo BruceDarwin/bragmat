@@ -181,11 +181,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     });
   }
 
-  Future<void> _setTideReferenceMode(String mode) async {
-    if (mode == 'automatic') {
+  Future<void> _setTideReference(String referenceId) async {
+    if (referenceId == 'automatic') {
       await TideReferenceService.setAutomaticMode();
     } else {
-      await TideReferenceService.setFixedReference('darwin');
+      await TideReferenceService.setFixedReference(referenceId);
     }
     await _loadTideReference();
   }
@@ -3497,27 +3497,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 12),
-              RadioListTile<String>(
-                title: const Text('Automatic (catch location)'),
-                subtitle: const Text('Use the catch location coordinates'),
-                value: 'automatic',
-                groupValue: _currentTideReference?.id,
+              DropdownButton<String>(
+                value: _currentTideReference?.id ?? 'automatic',
+                isExpanded: true,
+                items: TideReferenceService.getAllReferences()
+                    .map((ref) => DropdownMenuItem<String>(
+                          value: ref.id,
+                          child: Text(
+                            '${ref.displayName} — ${TideReferenceService.describeSource(ref)}',
+                          ),
+                        ))
+                    .toList(),
                 onChanged: (value) {
                   if (value != null) {
-                    _setTideReferenceMode(value);
+                    _setTideReference(value);
                   }
                 },
               ),
-              RadioListTile<String>(
-                title: const Text('Darwin'),
-                subtitle: const Text('Always use Darwin tide station'),
-                value: 'darwin',
-                groupValue: _currentTideReference?.id,
-                onChanged: (value) {
-                  if (value != null) {
-                    _setTideReferenceMode(value);
-                  }
-                },
+              const SizedBox(height: 8),
+              const Text(
+                'Applies to new catches — existing catches keep their recorded reference.',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
             ],
           ),

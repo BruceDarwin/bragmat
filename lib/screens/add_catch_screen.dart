@@ -578,25 +578,17 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     
     final condition = await envService.getEnvironmentalConditionForCatch(catchId);
     
-    // Stage 3: Load recorded tide reference
-    TideReference? recordedReference;
-    if (condition != null && 
-        condition.tideReferenceMode != null && 
-        condition.tideReferenceMode!.isNotEmpty) {
-      if (condition.tideReferenceMode == 'automatic') {
-        recordedReference = TideReference(
-          id: 'automatic',
-          displayName: 'Automatic (catch location)',
-          latitude: 0.0,
-          longitude: 0.0,
-        );
-      } else if (condition.tideReferenceName != null) {
-        final ref = TideReferenceService.getReferenceById(
-          condition.tideReferenceName!.toLowerCase(),
-        );
-        recordedReference = ref;
-      }
-    }
+    // Load the recorded tide reference via the central resolver — it
+    // handles legacy display-name rows and reconstructs a reference from
+    // the recorded request coordinates when the catalogue no longer
+    // lists it. An unresolved fixed reference stays null (shown as
+    // "Not recorded") rather than being substituted with automatic.
+    final recordedReference = TideReferenceService.resolveRecordedReference(
+      mode: condition?.tideReferenceMode,
+      name: condition?.tideReferenceName,
+      requestLat: condition?.tideRequestLat,
+      requestLon: condition?.tideRequestLon,
+    );
     
     // Store original values for change detection
     _originalDateCaught = widget.catchToEdit!.dateCaught;
@@ -1387,8 +1379,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                 }
               }
             } else if (decision == 'save') {
-              // Save without tide information - clear stale metadata
-              await _clearStaleTideMetadata(savedCatch!.id!);
+              // Save without tide information - clear stale metadata and
+              // record the reference the user actually applied
+              await _clearStaleTideMetadata(savedCatch!, _selectedTideReference);
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(
@@ -1737,13 +1730,36 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   }
   
   // Stage 3: Clear stale tide metadata from environmental condition
-  Future<void> _clearStaleTideMetadata(int catchId) async {
+  /// Clear stale tide results after the user explicitly chose to save
+  /// without tide data. Stamps the reference the user actually applied
+  /// (with its request coordinates) so the record honestly reflects which
+  /// reference now applies rather than silently keeping the previous one.
+  Future<void> _clearStaleTideMetadata(
+      Catch catchItem, TideReference? appliedReference) async {
     final envService = EnvironmentalConditionsService();
-    final existing = await envService.getEnvironmentalConditionForCatch(catchId);
-    if (existing != null) {
-      final cleared = existing.clearTideResults();
-      await envService.updateEnvironmentalCondition(cleared);
+    final existing =
+        await envService.getEnvironmentalConditionForCatch(catchItem.id!);
+    if (existing == null) return;
+
+    String? mode;
+    String? name;
+    double? reqLat;
+    double? reqLon;
+    if (appliedReference != null) {
+      final isAuto = TideReferenceService.isAutomatic(appliedReference);
+      mode = isAuto ? 'automatic' : 'fixed';
+      name = isAuto ? null : appliedReference.displayName;
+      reqLat = isAuto ? catchItem.latitude : appliedReference.latitude;
+      reqLon = isAuto ? catchItem.longitude : appliedReference.longitude;
     }
+
+    final cleared = existing.clearTideResults(
+      appliedTideReferenceMode: mode,
+      appliedTideReferenceName: name,
+      appliedTideRequestLat: reqLat,
+      appliedTideRequestLon: reqLon,
+    );
+    await envService.updateEnvironmentalCondition(cleared);
   }
   
   // Stage 3: Prompt for historical catch reference selection
@@ -1775,16 +1791,19 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     final envService = EnvironmentalConditionsService();
     
     try {
-      await envService.recalculateEnvironmentalConditionForCatch(
+      final updated = await envService.recalculateEnvironmentalConditionForCatch(
         widget.catchToEdit!,
         useRecordedReference: useRecordedReference,
       );
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Environmental data recalculated successfully'),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Text(updated == null
+                ? 'Tide information could not be retrieved. Previously recorded tide data was kept.'
+                : 'Environmental data recalculated successfully'),
+            backgroundColor: updated == null ? Colors.orange : Colors.green,
+            duration: const Duration(seconds: 5),
           ),
         );
       }
@@ -2336,7 +2355,9 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                                 }
                                 return DropdownMenuItem<TideReference?>(
                                   value: reference,
-                                  child: Text(reference.displayName),
+                                  child: Text(reference.isModelLocation
+                                      ? '${reference.displayName} (model prediction)'
+                                      : reference.displayName),
                                 );
                               }).toList(),
                               onChanged: (TideReference? newValue) {
