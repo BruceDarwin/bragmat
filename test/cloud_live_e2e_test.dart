@@ -264,8 +264,8 @@ void main() {
 
   test('E2E-3 corrupted remote object aborts; DB untouched', () async {
     await seedLiveDb(['CorruptGuard']);
-    // Plant a non-envelope blob directly — it has no sha metadata, so it
-    // reaches the decrypt stage and must fail there, not in restore.
+    // Plant a non-envelope blob directly — it has no sha metadata, so
+    // the digest check fails closed before decryption or restore.
     final garbage =
         File(path.join(workRoot.path, 'corrupt.bzp'));
     await garbage.writeAsBytes(List.generate(64, (i) => i));

@@ -325,6 +325,23 @@ void main() {
       expect(looseFiles(), 0);
     });
 
+    test('missing recorded digest aborts before decrypt/restore',
+        () async {
+      final name = await seedBackup('pw');
+      // Object exists but no sha256 was recorded — not a product of
+      // this pipeline; restore must fail closed rather than gamble on
+      // decryption rejecting it.
+      backend.metadata.remove(name);
+      var restoreCalled = false;
+      CloudBackupService.debugRestoreOverride =
+          (p) async { restoreCalled = true; throw StateError('never'); };
+      await expectLater(
+          service.restoreFromCloud(remoteName: name, passphrase: 'pw'),
+          throwsA(isA<CloudIntegrityException>()));
+      expect(restoreCalled, false);
+      expect(looseFiles(), 0);
+    });
+
     test('ownership denial propagates; temps still cleaned', () async {
       final name = await seedBackup('pw');
       CloudBackupService.debugRestoreOverride = (p) async =>

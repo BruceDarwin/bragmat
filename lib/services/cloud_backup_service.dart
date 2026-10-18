@@ -421,12 +421,13 @@ class CloudBackupService {
       await _backend.download(remoteName, encFile);
       cancellation?.throwIfCancelled();
 
-      // Digest check when the upload recorded one — a tampered or
-      // truncated object aborts BEFORE decryption/restore. Custom
-      // metadata is not in list responses; it must be fetched via the
-      // object's info endpoint.
+      // Digest check — a tampered or truncated object aborts BEFORE
+      // decryption/restore, and every upload records its digest so a
+      // missing one means the object did not come from this pipeline:
+      // fail closed. Custom metadata is not in list responses; it must
+      // be fetched via the object's info endpoint.
       final expectedSha = await _backend.recordedSha256(remoteName);
-      if (expectedSha != null &&
+      if (expectedSha == null ||
           expectedSha != await BackupEnvelope.sha256OfFile(encFile)) {
         throw CloudIntegrityException();
       }
