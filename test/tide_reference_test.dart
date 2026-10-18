@@ -1067,9 +1067,34 @@ void main() {
     expect(TideReferenceService.getReferenceById('native_point'), isNotNull);
   });
 
+  test('tier-1 verified entries are published station references with '
+      'provider ids', () {
+    const expected = {
+      'snake_bay': ('Snake Bay', 'Australia:NT_TP070', -11.4, 130.6667),
+      'melville_bay':
+          ('Melville Bay', 'Australia:NT_TP002', -12.2, 136.6667),
+      'milner_bay': ('Milner Bay', 'Australia:NT_TP003', -13.85, 136.4),
+      'centre_island':
+          ('Centre Island', 'Australia:NT_TP014', -15.7333, 136.8),
+      'port_keats': ('Port Keats', 'Australia:NT_TP042', -14.15, 129.5667),
+    };
+    expected.forEach((id, e) {
+      final ref = TideReferenceService.getReferenceById(id);
+      expect(ref, isNotNull, reason: '$id must be published');
+      expect(ref!.displayName, e.$1);
+      expect(ref.providerStationId, e.$2);
+      expect(ref.latitude, e.$3);
+      expect(ref.longitude, e.$4);
+      expect(ref.isStation, isTrue);
+      expect(ref.isPublished, isTrue);
+      expect(TideReferenceService.getAllReferences(), contains(ref));
+    });
+  });
+
   test('catalogue lookup map covers published and candidate entries', () {
     expect(tideReferenceCatalogueById['darwin']?.isPublished, isTrue);
-    expect(tideReferenceCatalogueById['snake_bay']?.isPublished, isFalse);
+    expect(tideReferenceCatalogueById['cape_wessel']?.isPublished,
+        isFalse);
   });
 });
 

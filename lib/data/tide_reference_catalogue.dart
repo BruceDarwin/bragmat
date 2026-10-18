@@ -127,6 +127,97 @@ const List<TideReference> kTideReferenceCatalogue = [
           '(tool/verify_tide_stations.dart)',
     ),
   ),
+  // Tiwi Islands — verified 2026-10: extremes at this position is
+  // served by the 'Snake Bay' station record (11 events).
+  TideReference(
+    id: 'snake_bay',
+    displayName: 'Snake Bay',
+    latitude: -11.4000,
+    longitude: 130.6667,
+    source: TideReferenceSource.station,
+    region: TideRegion.tiwiIslands,
+    altNames: ['Snake Bay (Melville Island)'],
+    providerStationId: 'Australia:NT_TP070',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
+  // Arnhem Land — verified 2026-10: extremes served by
+  // 'Melville Bay (Gove Harbour)' (11 events).
+  TideReference(
+    id: 'melville_bay',
+    displayName: 'Melville Bay',
+    latitude: -12.2000,
+    longitude: 136.6667,
+    source: TideReferenceSource.station,
+    region: TideRegion.arnhemLand,
+    altNames: [
+      'Gove', 'Gove Harbour', 'Nhulunbuy',
+      'Melville Bay (Gove Harbour)'
+    ],
+    providerStationId: 'Australia:NT_TP002',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
+  // Groote Eylandt — verified 2026-10: extremes served by
+  // 'Milner Bay (Groote Eylandt)' (5 events).
+  TideReference(
+    id: 'milner_bay',
+    displayName: 'Milner Bay',
+    latitude: -13.8500,
+    longitude: 136.4000,
+    source: TideReferenceSource.station,
+    region: TideRegion.grooteEylandt,
+    altNames: [
+      'Groote Eylandt', 'Alyangula',
+      'Milner Bay (Groote Eylandt)'
+    ],
+    providerStationId: 'Australia:NT_TP003',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 5 events',
+    ),
+  ),
+  // Gulf of Carpentaria — verified 2026-10: extremes served by
+  // 'Centre Island' (5 events).
+  TideReference(
+    id: 'centre_island',
+    displayName: 'Centre Island',
+    latitude: -15.7333,
+    longitude: 136.8000,
+    source: TideReferenceSource.station,
+    region: TideRegion.gulfOfCarpentaria,
+    altNames: ['Pellew Group', 'Sir Edward Pellew Group'],
+    providerStationId: 'Australia:NT_TP014',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 5 events',
+    ),
+  ),
+  // Joseph Bonaparte Gulf — verified 2026-10: extremes served by
+  // 'Port Keats' (11 events).
+  TideReference(
+    id: 'port_keats',
+    displayName: 'Port Keats',
+    latitude: -14.1500,
+    longitude: 129.5667,
+    source: TideReferenceSource.station,
+    region: TideRegion.josephBonaparteGulf,
+    altNames: ['Wadeye'],
+    providerStationId: 'Australia:NT_TP042',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
 ];
 
 /// Proposed NT coverage awaiting WorldTides `extremes` verification.
@@ -189,18 +280,6 @@ const List<TideReference> kTideReferenceCandidates = [
   ),
   // Tiwi Islands
   TideReference(
-    id: 'snake_bay',
-    displayName: 'Snake Bay',
-    latitude: -11.4000,
-    longitude: 130.6667,
-    region: TideRegion.tiwiIslands,
-    altNames: ['Snake Bay (Melville Island)'],
-    providerStationId: 'Australia:NT_TP070',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  TideReference(
     id: 'cape_van_diemen',
     displayName: 'Cape Van Dieman',
     latitude: -11.1500,
@@ -261,19 +340,6 @@ const List<TideReference> kTideReferenceCandidates = [
   ),
   // Arnhem Land
   TideReference(
-    id: 'melville_bay',
-    displayName: 'Melville Bay',
-    latitude: -12.2000,
-    longitude: 136.6667,
-    region: TideRegion.arnhemLand,
-    altNames: ['Gove', 'Gove Harbour', 'Nhulunbuy',
-      'Melville Bay (Gove Harbour)'],
-    providerStationId: 'Australia:NT_TP002',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  TideReference(
     id: 'cape_wessel',
     displayName: 'Cape Wessel',
     latitude: -11.0000,
@@ -310,19 +376,6 @@ const List<TideReference> kTideReferenceCandidates = [
   ),
   // Groote Eylandt
   TideReference(
-    id: 'milner_bay',
-    displayName: 'Milner Bay',
-    latitude: -13.8500,
-    longitude: 136.4000,
-    region: TideRegion.grooteEylandt,
-    altNames: ['Groote Eylandt', 'Alyangula',
-      'Milner Bay (Groote Eylandt)'],
-    providerStationId: 'Australia:NT_TP003',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  TideReference(
     id: 'port_langdon',
     displayName: 'Port Langdon',
     latitude: -13.8667,
@@ -337,18 +390,6 @@ const List<TideReference> kTideReferenceCandidates = [
   ),
   // Gulf of Carpentaria
   TideReference(
-    id: 'centre_island',
-    displayName: 'Centre Island',
-    latitude: -15.7333,
-    longitude: 136.8000,
-    region: TideRegion.gulfOfCarpentaria,
-    altNames: ['Pellew Group', 'Sir Edward Pellew Group'],
-    providerStationId: 'Australia:NT_TP014',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  TideReference(
     id: 'borroloola',
     displayName: 'Borroloola Coast',
     latitude: -15.9700,
@@ -361,19 +402,6 @@ const List<TideReference> kTideReferenceCandidates = [
     verification: TideVerification.candidate(
         provenance: 'no gauge in 2026-10 discovery — model point, '
             'coords approximate; verify atlas behaviour'),
-  ),
-  // Joseph Bonaparte Gulf
-  TideReference(
-    id: 'port_keats',
-    displayName: 'Port Keats',
-    latitude: -14.1500,
-    longitude: 129.5667,
-    region: TideRegion.josephBonaparteGulf,
-    altNames: ['Wadeye'],
-    providerStationId: 'Australia:NT_TP042',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
   ),
   // Offshore waters — real WorldTides gauge positions from discovery
   TideReference(
