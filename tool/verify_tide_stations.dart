@@ -714,11 +714,16 @@ Future<void> _runDiscovery(List<Candidate> anchors, String apiKey) async {
   _out('');
 
   // Coverage: which catalogue candidates have a real gauge nearby?
+  // `stations` results include FES2022 atlas/model pseudo-stations —
+  // only real gauges (Australia:*, UHSLC:* ids) count as stations.
+  bool isGauge(DiscoveredStation s) =>
+      s.id != null && !s.id!.startsWith('FES');
+  final gauges = unique.where(isGauge).toList();
   _out('--- Candidate coverage (nearest discovered gauge) ---');
   for (final c in kTideReferenceCandidates) {
     DiscoveredStation? nearest;
     var nearestKm = double.infinity;
-    for (final s in unique) {
+    for (final s in gauges) {
       if (s.lat == null || s.lon == null) continue;
       final d = kmBetween(c.latitude, c.longitude, s.lat!, s.lon!);
       if (d < nearestKm) {
@@ -727,7 +732,7 @@ Future<void> _runDiscovery(List<Candidate> anchors, String apiKey) async {
       }
     }
     if (nearest == null) {
-      _out('  ${c.displayName}: no stations discovered — model-only');
+      _out('  ${c.displayName}: no gauge discovered — model-only');
     } else {
       _out('  ${c.displayName}: ${nearest.name} '
           '(${nearestKm.toStringAsFixed(1)} km)'

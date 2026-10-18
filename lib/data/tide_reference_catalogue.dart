@@ -129,190 +129,274 @@ const List<TideReference> kTideReferenceCatalogue = [
   ),
 ];
 
-/// Proposed NT coverage awaiting WorldTides verification.
+/// Proposed NT coverage awaiting WorldTides `extremes` verification.
 ///
-/// Coordinates are approximations from the BoM/AHO NT tide-location
-/// lists — the verifier confirms the true request coordinates. These
-/// entries are NEVER returned by TideReferenceService pickers; promote
-/// by moving an entry to [kTideReferenceCatalogue] after verification.
+/// Station identity and coordinates were established by the 2026-10
+/// `stations` discovery sweep — coordinates here are the WorldTides
+/// station positions (not BoM approximations). What remains unverified
+/// is prediction serving: whether an `extremes` request at each point
+/// resolves to the named gauge or falls back to the FES2022 atlas.
+///
+/// These entries are NEVER returned by TideReferenceService pickers;
+/// promote by moving an entry to [kTideReferenceCatalogue] after a
+/// SUITABLE verification verdict.
 const List<TideReference> kTideReferenceCandidates = [
   // Darwin & surrounds
   TideReference(
     id: 'nightcliff',
     displayName: 'Nightcliff',
-    latitude: -12.383,
-    longitude: 130.855,
+    latitude: -12.3667,
+    longitude: 130.8167,
     region: TideRegion.darwinSurrounds,
+    providerStationId: 'Australia:NT_TP063',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   TideReference(
     id: 'charles_point_patches',
     displayName: 'Charles Point Patches',
-    latitude: -12.37,
-    longitude: 130.63,
+    latitude: -12.3167,
+    longitude: 130.6833,
     region: TideRegion.darwinSurrounds,
+    providerStationId: 'Australia:NT_TP036',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
+  ),
+  TideReference(
+    id: 'tapa_bay',
+    displayName: 'Tapa Bay',
+    latitude: -12.4333,
+    longitude: 130.5833,
+    region: TideRegion.darwinSurrounds,
+    providerStationId: 'Australia:NT_TP055',
+    verification: TideVerification.candidate(
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   // Fog Bay & Daly coast
   TideReference(
     id: 'anson_bay',
     displayName: 'Anson Bay',
-    latitude: -13.42,
-    longitude: 130.07,
+    latitude: -13.3333,
+    longitude: 130.0833,
     region: TideRegion.fogBayAndDaly,
+    providerStationId: 'Australia:NT_TP049',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
-  ),
-  TideReference(
-    id: 'tapa_bay',
-    displayName: 'Tapa Bay',
-    latitude: -12.63,
-    longitude: 130.44,
-    region: TideRegion.fogBayAndDaly,
-    verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   // Tiwi Islands
   TideReference(
     id: 'snake_bay',
     displayName: 'Snake Bay',
-    latitude: -11.42,
-    longitude: 130.60,
+    latitude: -11.4000,
+    longitude: 130.6667,
     region: TideRegion.tiwiIslands,
     altNames: ['Snake Bay (Melville Island)'],
+    providerStationId: 'Australia:NT_TP070',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   TideReference(
     id: 'cape_van_diemen',
-    displayName: 'Cape Van Diemen',
-    latitude: -11.90,
-    longitude: 130.02,
+    displayName: 'Cape Van Dieman',
+    latitude: -11.1500,
+    longitude: 130.3667,
     region: TideRegion.tiwiIslands,
+    altNames: ['Cape Van Diemen'],
+    providerStationId: 'Australia:NT_TP069',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   TideReference(
     id: 'point_fawcett',
     displayName: 'Point Fawcett',
-    latitude: -11.78,
-    longitude: 130.03,
+    latitude: -11.6833,
+    longitude: 130.0167,
     region: TideRegion.tiwiIslands,
+    altNames: ['Point Fawcett (Offshore)'],
+    providerStationId: 'Australia:NT_TP056',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   // Cobourg Peninsula & Van Diemen Gulf
   TideReference(
     id: 'port_essington',
     displayName: 'Port Essington',
-    latitude: -11.37,
-    longitude: 132.15,
+    latitude: -11.0500,
+    longitude: 132.0167,
     region: TideRegion.cobourgPeninsula,
+    providerStationId: 'Australia:NT_TP074',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   TideReference(
     id: 'cape_don',
     displayName: 'Cape Don',
-    latitude: -11.32,
-    longitude: 131.77,
+    latitude: -11.3000,
+    longitude: 131.7667,
     region: TideRegion.cobourgPeninsula,
+    providerStationId: 'Australia:NT_TP040',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
+  ),
+  TideReference(
+    id: 'cape_croker',
+    displayName: 'Cape Croker',
+    latitude: -11.0000,
+    longitude: 132.5670,
+    region: TideRegion.cobourgPeninsula,
+    // Model-based: discovery shows only a FES2022 grid point here —
+    // popular Cobourg fishing area with no gauge.
+    verification: TideVerification.candidate(
+        provenance: 'worldtides discovery 2026-10 — FES2022 point '
+            'only; verify atlas behaviour'),
   ),
   // Arnhem Land
   TideReference(
     id: 'melville_bay',
     displayName: 'Melville Bay',
-    latitude: -12.250,
-    longitude: 136.700,
+    latitude: -12.2000,
+    longitude: 136.6667,
     region: TideRegion.arnhemLand,
-    altNames: ['Gove', 'Gove Harbour', 'Nhulunbuy'],
+    altNames: ['Gove', 'Gove Harbour', 'Nhulunbuy',
+      'Melville Bay (Gove Harbour)'],
+    providerStationId: 'Australia:NT_TP002',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   TideReference(
     id: 'cape_wessel',
     displayName: 'Cape Wessel',
-    latitude: -11.00,
-    longitude: 136.75,
+    latitude: -11.0000,
+    longitude: 136.7500,
     region: TideRegion.arnhemLand,
     altNames: ['Wessel Islands'],
+    providerStationId: 'Australia:NT_TP012',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   TideReference(
     id: 'elcho_island',
     displayName: 'Elcho Island',
-    latitude: -12.02,
-    longitude: 135.57,
+    latitude: -11.9167,
+    longitude: 135.6667,
     region: TideRegion.arnhemLand,
     altNames: ['Galiwinku'],
+    providerStationId: 'Australia:NT_TP018',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   TideReference(
     id: 'north_goulburn_island',
     displayName: 'North Goulburn Island',
-    latitude: -11.55,
-    longitude: 133.42,
+    latitude: -11.5000,
+    longitude: 133.3667,
     region: TideRegion.arnhemLand,
+    providerStationId: 'Australia:NT_TP088',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   // Groote Eylandt
   TideReference(
     id: 'milner_bay',
     displayName: 'Milner Bay',
-    latitude: -13.860,
-    longitude: 136.420,
+    latitude: -13.8500,
+    longitude: 136.4000,
     region: TideRegion.grooteEylandt,
-    altNames: ['Groote Eylandt', 'Alyangula'],
+    altNames: ['Groote Eylandt', 'Alyangula',
+      'Milner Bay (Groote Eylandt)'],
+    providerStationId: 'Australia:NT_TP003',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
+  ),
+  TideReference(
+    id: 'port_langdon',
+    displayName: 'Port Langdon',
+    latitude: -13.8667,
+    longitude: 136.8330,
+    region: TideRegion.grooteEylandt,
+    altNames: ['Umbakumba'],
+    // Model-based: discovery shows only a FES2022 grid point on
+    // Groote's west coast.
+    verification: TideVerification.candidate(
+        provenance: 'worldtides discovery 2026-10 — FES2022 point '
+            'only; verify atlas behaviour'),
   ),
   // Gulf of Carpentaria
   TideReference(
     id: 'centre_island',
     displayName: 'Centre Island',
-    latitude: -15.740,
-    longitude: 136.810,
+    latitude: -15.7333,
+    longitude: 136.8000,
     region: TideRegion.gulfOfCarpentaria,
-    altNames: ['Pellew Group', 'Borroloola'],
+    altNames: ['Pellew Group', 'Sir Edward Pellew Group'],
+    providerStationId: 'Australia:NT_TP014',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
+  ),
+  TideReference(
+    id: 'borroloola',
+    displayName: 'Borroloola Coast',
+    latitude: -15.9700,
+    longitude: 136.3500,
+    region: TideRegion.gulfOfCarpentaria,
+    altNames: ['Borroloola', 'Bing Bong', 'McArthur River'],
+    // Model-based: no gauge on the mainland Gulf coast south of the
+    // Pellew Group — a named model point for fishers working the
+    // McArthur River coast.
+    verification: TideVerification.candidate(
+        provenance: 'no gauge in 2026-10 discovery — model point, '
+            'coords approximate; verify atlas behaviour'),
   ),
   // Joseph Bonaparte Gulf
   TideReference(
     id: 'port_keats',
     displayName: 'Port Keats',
-    latitude: -14.25,
-    longitude: 129.52,
+    latitude: -14.1500,
+    longitude: 129.5667,
     region: TideRegion.josephBonaparteGulf,
     altNames: ['Wadeye'],
+    providerStationId: 'Australia:NT_TP042',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
-  // Offshore waters — bluewater marks fishers actually use
+  // Offshore waters — real WorldTides gauge positions from discovery
   TideReference(
     id: 'evans_shoal',
     displayName: 'Evans Shoal',
-    latitude: -9.85,
-    longitude: 129.70,
+    latitude: -10.0667,
+    longitude: 129.5167,
     region: TideRegion.offshore,
+    providerStationId: 'Australia:NT_TP047',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
   TideReference(
     id: 'money_shoal',
     displayName: 'Money Shoal',
-    latitude: -11.93,
-    longitude: 131.00,
+    latitude: -10.3167,
+    longitude: 132.7167,
     region: TideRegion.offshore,
+    providerStationId: 'Australia:NT_TP024',
     verification: TideVerification.candidate(
-        provenance: 'bom/aho location — coords approximate'),
+        provenance: 'worldtides discovery 2026-10 — station coords; '
+            'extremes unverified'),
   ),
 ];
 
