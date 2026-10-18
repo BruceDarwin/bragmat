@@ -45,6 +45,7 @@ class FakeGalleryPicker extends GalleryPhotoPicker {
   GalleryPickOutcome nextOutcome =
       const GalleryPickOutcome(GalleryPickStatus.unsupported);
   RecoveredGalleryPick? pendingPick;
+  String? interruptedContext;
   int pickCalls = 0;
   String? lastContext;
   final List<String> acknowledged = [];
@@ -59,6 +60,14 @@ class FakeGalleryPicker extends GalleryPhotoPicker {
 
   @override
   Future<RecoveredGalleryPick?> retrievePending() async => pendingPick;
+
+  @override
+  Future<String?> takeInterruptedPick() async {
+    // Consumed once, like the native marker.
+    final ctx = interruptedContext;
+    interruptedContext = null;
+    return ctx;
+  }
 
   @override
   Future<void> acknowledgePending(String path) async {
@@ -895,6 +904,60 @@ void main() {
       expect(state.debugMediaItems, isEmpty);
       // Dead record is acknowledged/cleared — no infinite pending loop.
       expect(fakeGallery.acknowledged, hasLength(1));
+    });
+
+    testWidgets('live picked path dedupes a later redelivery of the '
+        'same result', (tester) async {
+      late final String picked;
+      await tester.runAsync(() async {
+        picked = await copyFixtureTo(srFixture, testDir);
+      });
+      fakeGallery.nextOutcome = GalleryPickOutcome(
+          GalleryPickStatus.picked, path: picked, context: 'new');
+      // Simulates an acknowledgement that never reached native: the
+      // record stays and a later resume redelivers the identical path
+      // through retrievePending — the screen must not re-attach it.
+      fakeGallery.pendingPick =
+          RecoveredGalleryPick(path: picked, context: 'new');
+
+      final state = await pumpScreen(tester);
+      await tapAddPhoto(tester);
+      expect(state.debugMediaItems, hasLength(1));
+
+      await state.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await flushRealAsync(tester);
+      await tester.pumpAndSettle();
+      expect(state.debugMediaItems, hasLength(1));
+    });
+
+    testWidgets('interrupted pick surfaces a recovery message once',
+        (tester) async {
+      fakeGallery.interruptedContext = 'new';
+      await pumpScreen(tester);
+
+      expect(find.textContaining('could not be recovered'),
+          findsOneWidget);
+
+      // Marker consumed — a later resume does not repeat the message.
+      await tester.pumpWidget(Container());
+      await tester.pumpAndSettle();
+      final state2 = await pumpScreen(tester);
+      expect(state2, isNotNull);
+      expect(find.textContaining('could not be recovered'),
+          findsNothing);
+    });
+
+    testWidgets('picked result with a missing file attaches nothing '
+        'and is not acknowledged', (tester) async {
+      final missing = path.join(testDir.path, 'phantom.jpg');
+      fakeGallery.nextOutcome = GalleryPickOutcome(
+          GalleryPickStatus.picked, path: missing, context: 'new');
+
+      final state = await pumpScreen(tester);
+      await tapAddPhoto(tester);
+
+      expect(state.debugMediaItems, isEmpty);
+      expect(fakeGallery.acknowledged, isEmpty);
     });
 
     testWidgets('recovered pick coexists with a subsequent gallery '

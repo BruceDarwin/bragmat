@@ -462,7 +462,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
 
       bool recovered = false;
 
-      if (lostData != null && !lostData.isEmpty) {
+      if (!lostData.isEmpty) {
         if (lostData.file != null) {
           recovered = await _processLostFile(File(lostData.file!.path));
         } else if (lostData.files != null && lostData.files!.isNotEmpty) {
@@ -489,6 +489,25 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
             recovered = true;
           }
         }
+      }
+
+      // A stale in-progress marker means a pick's result was never
+      // delivered (process death while the picker was open — Android does
+      // not always re-deliver Photo Picker results). Nothing is
+      // recoverable; tell the user once so the selection isn't silently
+      // lost.
+      final interrupted =
+          await GalleryPhotoPicker.instance.takeInterruptedPick();
+      if (interrupted != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Your previous photo selection could not be recovered — '
+              'please pick it again',
+            ),
+            duration: Duration(seconds: 4),
+          ),
+        );
       }
 
       if (recovered && mounted) {
@@ -878,7 +897,11 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
 
       if (outcome.status == GalleryPickStatus.picked &&
           outcome.path != null) {
-        if (await _processPickedFile(File(outcome.path!), 'gallery')) {
+        // Dedupe by path: the same result can theoretically arrive again
+        // through retrievePending if acknowledgement fails or races a
+        // lifecycle resume.
+        if (_recoveredLostPaths.add(outcome.path!) &&
+            await _processPickedFile(File(outcome.path!), 'gallery')) {
           await GalleryPhotoPicker.instance
               .acknowledgePending(outcome.path!);
         }
@@ -925,7 +948,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         final file = File(pickedFile.path);
         await _processPickedFile(file, 'gallery');
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error picking image: $e')),

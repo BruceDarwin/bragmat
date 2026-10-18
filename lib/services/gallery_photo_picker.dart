@@ -105,6 +105,21 @@ class GalleryPhotoPicker {
     }
   }
 
+  /// Returns the context of a pick that was launched but never produced
+  /// a delivered result — e.g. the process died while the picker was open
+  /// and Android did not re-deliver the selection. Consumed once: the
+  /// marker is cleared so the interruption is reported a single time.
+  Future<String?> takeInterruptedPick() async {
+    if (!Platform.isAndroid) return null;
+    try {
+      return await _channel.invokeMethod<String>('takeInterrupted');
+    } on PlatformException {
+      return null;
+    } on MissingPluginException {
+      return null;
+    }
+  }
+
   /// Clears a pending recovery record after the photo has been
   /// successfully staged (or confirmed unrecoverable — e.g. the temp
   /// file is gone).

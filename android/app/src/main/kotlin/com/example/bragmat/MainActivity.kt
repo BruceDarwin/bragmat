@@ -69,6 +69,18 @@ class MainActivity : FlutterActivity() {
                 when (call.method) {
                     "pickImage" -> handleGalleryPick(call, result)
                     "retrievePending" -> result.success(readPendingGalleryRecord())
+                    "takeInterrupted" -> {
+                        // A stale in_progress marker means a pick's result
+                        // was never delivered (e.g. process death closed the
+                        // picker without returning to the activity). Report
+                        // it once so the user can be told to re-pick.
+                        val ctx = galleryPrefs.getString("in_progress_context", null)
+                        galleryPrefs.edit()
+                            .remove("in_progress_context")
+                            .remove("in_progress_time")
+                            .apply()
+                        result.success(ctx)
+                    }
                     "acknowledge" -> {
                         val path = call.argument<String>("path")
                         acknowledgeGalleryRecord(path)
