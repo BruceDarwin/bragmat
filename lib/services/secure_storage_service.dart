@@ -77,4 +77,45 @@ class SecureStorageService {
   static Future<void> migrateApiKey() async {
     await _migrateFromSharedPreferences();
   }
+
+  // ── Cloud backup credentials (Stage 4C) ──────────────────────────────
+  // Passphrase and recovery code live ONLY in device secure storage —
+  // never transmitted, never logged. Either secret alone can restore any
+  // backup that was encrypted with it.
+
+  static const String _cloudBackupPassphraseKey = 'cloud_backup_passphrase';
+  static const String _cloudBackupRecoveryCodeKey =
+      'cloud_backup_recovery_code';
+
+  static Future<String?> getCloudBackupPassphrase() async {
+    try {
+      return await _storage.read(key: _cloudBackupPassphraseKey);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<void> setCloudBackupPassphrase(String passphrase) async {
+    await _storage.write(key: _cloudBackupPassphraseKey, value: passphrase);
+  }
+
+  static Future<String?> getCloudBackupRecoveryCode() async {
+    try {
+      return await _storage.read(key: _cloudBackupRecoveryCodeKey);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<void> setCloudBackupRecoveryCode(String code) async {
+    await _storage.write(key: _cloudBackupRecoveryCodeKey, value: code);
+  }
+
+  /// Remove both cloud-backup secrets from this device (disable flow).
+  /// Remote backups are unaffected — they still decrypt with the
+  /// credentials the user recorded at setup.
+  static Future<void> clearCloudBackupCredentials() async {
+    await _storage.delete(key: _cloudBackupPassphraseKey);
+    await _storage.delete(key: _cloudBackupRecoveryCodeKey);
+  }
 }

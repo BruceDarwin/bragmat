@@ -30,6 +30,7 @@ import '../services/tide_reference_service.dart';
 import '../widgets/bragmat_section_card.dart';
 import 'favourite_spots_screen.dart';
 import 'claim_data_screen.dart';
+import 'cloud_backup_screen.dart';
 import 'achievements_screen.dart';
 import 'photo_metadata_diagnostic_screen.dart';
 
@@ -3753,6 +3754,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: const Text('Restore from a backup file'),
                 onTap: _restoreData,
               ),
+              // Cloud backup requires a signed-in account — hidden when
+              // Supabase is not configured.
+              if (SupabaseConfig.isConfigured) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.cloud_upload),
+                  title: const Text('Cloud Backup'),
+                  subtitle: const Text('Optional encrypted cloud backup'),
+                  onTap: () {
+                    Navigator.of(context).push(MaterialPageRoute(
+                      builder: (_) => const CloudBackupScreen(),
+                    ));
+                  },
+                ),
+              ],
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.file_upload),
