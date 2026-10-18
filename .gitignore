@@ -51,3 +51,4 @@ app.*.map.json
 # Local device snapshots and verification scratch files
 device_snapshots/
 tool/verify_*_tmp.dart
+bragmat_e2e_creds.json
