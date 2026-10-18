@@ -59,3 +59,5 @@ verify_tide_stations_report.txt
 discovery_report.txt
 *_discovery_report.txt
 *_verification_report.txt
+discovery_*.txt
+verify_*.txt

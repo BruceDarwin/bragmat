@@ -127,6 +127,22 @@ const List<TideReference> kTideReferenceCatalogue = [
           '(tool/verify_tide_stations.dart)',
     ),
   ),
+  // Daly coast — verified 2026-10: extremes served by 'Anson Bay'
+  // (12 events).
+  TideReference(
+    id: 'anson_bay',
+    displayName: 'Anson Bay',
+    latitude: -13.3333,
+    longitude: 130.0833,
+    source: TideReferenceSource.station,
+    region: TideRegion.fogBayAndDaly,
+    providerStationId: 'Australia:NT_TP049',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 12 events',
+    ),
+  ),
   // Tiwi Islands — verified 2026-10: extremes at this position is
   // served by the 'Snake Bay' station record (11 events).
   TideReference(
@@ -144,8 +160,41 @@ const List<TideReference> kTideReferenceCatalogue = [
           'station-served, 11 events',
     ),
   ),
-  // Arnhem Land — verified 2026-10: extremes served by
-  // 'Melville Bay (Gove Harbour)' (11 events).
+  // Cobourg Peninsula — verified 2026-10: extremes served by
+  // 'Port Essington' (12 events).
+  TideReference(
+    id: 'port_essington',
+    displayName: 'Port Essington',
+    latitude: -11.0500,
+    longitude: 132.0167,
+    source: TideReferenceSource.station,
+    region: TideRegion.cobourgPeninsula,
+    providerStationId: 'Australia:NT_TP074',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 12 events',
+    ),
+  ),
+  // Arnhem Land — verified 2026-10: extremes served by 'Elcho Island'
+  // (12 events) and 'Cape Wessel' (11 events).
+  TideReference(
+    id: 'elcho_island',
+    displayName: 'Elcho Island',
+    latitude: -11.9167,
+    longitude: 135.6667,
+    source: TideReferenceSource.station,
+    region: TideRegion.arnhemLand,
+    altNames: ['Galiwinku'],
+    providerStationId: 'Australia:NT_TP018',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 12 events',
+    ),
+  ),
+  // Verified 2026-10: extremes served by 'Melville Bay (Gove Harbour)'
+  // (11 events).
   TideReference(
     id: 'melville_bay',
     displayName: 'Melville Bay',
@@ -158,6 +207,20 @@ const List<TideReference> kTideReferenceCatalogue = [
       'Melville Bay (Gove Harbour)'
     ],
     providerStationId: 'Australia:NT_TP002',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
+  TideReference(
+    id: 'cape_wessel',
+    displayName: 'Cape Wessel',
+    latitude: -11.0000,
+    longitude: 136.7500,
+    source: TideReferenceSource.station,
+    region: TideRegion.arnhemLand,
+    providerStationId: 'Australia:NT_TP012',
     verification: TideVerification.verified(
       verifiedOn: '2026-10',
       provenance: 'worldtides discovery + extremes-only run — '
@@ -266,18 +329,6 @@ const List<TideReference> kTideReferenceCandidates = [
         provenance: 'worldtides discovery 2026-10 — station coords; '
             'extremes unverified'),
   ),
-  // Fog Bay & Daly coast
-  TideReference(
-    id: 'anson_bay',
-    displayName: 'Anson Bay',
-    latitude: -13.3333,
-    longitude: 130.0833,
-    region: TideRegion.fogBayAndDaly,
-    providerStationId: 'Australia:NT_TP049',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
   // Tiwi Islands
   TideReference(
     id: 'cape_van_diemen',
@@ -305,17 +356,6 @@ const List<TideReference> kTideReferenceCandidates = [
   ),
   // Cobourg Peninsula & Van Diemen Gulf
   TideReference(
-    id: 'port_essington',
-    displayName: 'Port Essington',
-    latitude: -11.0500,
-    longitude: 132.0167,
-    region: TideRegion.cobourgPeninsula,
-    providerStationId: 'Australia:NT_TP074',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  TideReference(
     id: 'cape_don',
     displayName: 'Cape Don',
     latitude: -11.3000,
@@ -339,30 +379,6 @@ const List<TideReference> kTideReferenceCandidates = [
             'only; verify atlas behaviour'),
   ),
   // Arnhem Land
-  TideReference(
-    id: 'cape_wessel',
-    displayName: 'Cape Wessel',
-    latitude: -11.0000,
-    longitude: 136.7500,
-    region: TideRegion.arnhemLand,
-    altNames: ['Wessel Islands'],
-    providerStationId: 'Australia:NT_TP012',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  TideReference(
-    id: 'elcho_island',
-    displayName: 'Elcho Island',
-    latitude: -11.9167,
-    longitude: 135.6667,
-    region: TideRegion.arnhemLand,
-    altNames: ['Galiwinku'],
-    providerStationId: 'Australia:NT_TP018',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
   TideReference(
     id: 'north_goulburn_island',
     displayName: 'North Goulburn Island',

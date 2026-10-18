@@ -1067,8 +1067,8 @@ void main() {
     expect(TideReferenceService.getReferenceById('native_point'), isNotNull);
   });
 
-  test('tier-1 verified entries are published station references with '
-      'provider ids', () {
+  test('verified tier-1/tier-2 entries are published station references '
+      'with provider ids', () {
     const expected = {
       'snake_bay': ('Snake Bay', 'Australia:NT_TP070', -11.4, 130.6667),
       'melville_bay':
@@ -1077,6 +1077,13 @@ void main() {
       'centre_island':
           ('Centre Island', 'Australia:NT_TP014', -15.7333, 136.8),
       'port_keats': ('Port Keats', 'Australia:NT_TP042', -14.15, 129.5667),
+      'anson_bay': ('Anson Bay', 'Australia:NT_TP049', -13.3333, 130.0833),
+      'port_essington':
+          ('Port Essington', 'Australia:NT_TP074', -11.05, 132.0167),
+      'elcho_island':
+          ('Elcho Island', 'Australia:NT_TP018', -11.9167, 135.6667),
+      'cape_wessel':
+          ('Cape Wessel', 'Australia:NT_TP012', -11.0, 136.75),
     };
     expected.forEach((id, e) {
       final ref = TideReferenceService.getReferenceById(id);
@@ -1093,7 +1100,7 @@ void main() {
 
   test('catalogue lookup map covers published and candidate entries', () {
     expect(tideReferenceCatalogueById['darwin']?.isPublished, isTrue);
-    expect(tideReferenceCatalogueById['cape_wessel']?.isPublished,
+    expect(tideReferenceCatalogueById['borroloola']?.isPublished,
         isFalse);
   });
 });
