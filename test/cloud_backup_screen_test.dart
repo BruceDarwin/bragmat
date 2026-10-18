@@ -326,6 +326,21 @@ void main() {
     expect(backend.objects.containsKey(name), true);
   });
 
+  testWidgets('tapping the backup row opens the restore dialog',
+      (tester) async {
+    await seedEnabled();
+    await seedBackup(tester);
+    await pump(tester);
+
+    await tester.tap(find.text('backup from 2026-10-17 12:00:01'));
+    await tester.pumpAndSettle();
+    expect(find.text('Restore Cloud Backup'), findsOneWidget);
+    expect(find.textContaining('REPLACE all fishing records'),
+        findsOneWidget);
+    await tester.tap(find.widgetWithText(TextButton, 'Cancel'));
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('restore happy path reports completion', (tester) async {
     await seedEnabled();
     await seedBackup(tester);

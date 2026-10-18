@@ -692,6 +692,7 @@ You can disable Cloud Backup at any time. Disabling future backups does not auto
                     leading: const Icon(Icons.cloud),
                     title: Text(_describeBackup(b)),
                     subtitle: Text(_formatSize(b.size)),
+                    onTap: _busy == null ? () => _restore(b) : null,
                     trailing: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
