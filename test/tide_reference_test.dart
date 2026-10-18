@@ -1089,6 +1089,18 @@ group('region classification', () {
     }
   });
 
+  test('tideStateForCoordinates labels interstate stations', () {
+    // WA: west of 129°E (Wyndham ~128.7)
+    expect(tideStateForCoordinates(-15.4, 128.7), 'WA');
+    // QLD: east of 138°E (Karumba ~140.8)
+    expect(tideStateForCoordinates(-17.5, 140.8), 'QLD');
+    // NT interior/coast
+    expect(tideStateForCoordinates(-12.47, 130.85), 'NT');
+    expect(tideStateForCoordinates(-15.74, 136.81), 'NT');
+    // Other: north of NT (Indonesian waters)
+    expect(tideStateForCoordinates(-8.0, 131.0), 'other');
+  });
+
   test('tideReferencesByRegion groups all published entries', () {
     final grouped = tideReferencesByRegion();
     final total = grouped.values.fold<int>(0, (n, l) => n + l.length);

@@ -52,6 +52,10 @@ app.*.map.json
 device_snapshots/
 tool/verify_*_tmp.dart
 
-# Tide-station verification reports (may contain WorldTides metadata)
+# Tide-station verification/discovery reports (may contain WorldTides
+# metadata). Covers the defaults plus common user-chosen names.
 verify_report.txt
 verify_tide_stations_report.txt
+discovery_report.txt
+*_discovery_report.txt
+*_verification_report.txt

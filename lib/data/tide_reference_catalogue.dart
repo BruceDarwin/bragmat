@@ -32,6 +32,18 @@ const Map<TideRegion, String> tideRegionLabels = {
   TideRegion.offshore: 'Offshore waters',
 };
 
+/// Coarse Australian state classification for discovery reporting.
+/// NT borders: ~129°E with WA, ~138°E with QLD on the Gulf coast.
+/// Stations returned by wide-radius discovery sweeps can lie outside
+/// the NT — this labels them so reports distinguish interstate finds.
+/// Returns 'NT', 'WA', 'QLD' or 'other' (e.g. Indonesian waters).
+String tideStateForCoordinates(double lat, double lon) {
+  if (lon < 129.0) return 'WA';
+  if (lon > 138.0) return 'QLD';
+  if (lat > -10.0) return 'other'; // north of NT — non-Australian waters
+  return 'NT';
+}
+
 /// Approximate NT region classification for discovery reporting.
 /// Bounding boxes only — catalogue entries set their region explicitly;
 /// this exists so the verifier can bucket newly discovered stations

@@ -662,9 +662,20 @@ Future<void> _runDiscovery(List<Candidate> anchors, String apiKey) async {
   unique.sort((a, b) =>
       (a.name ?? '').compareTo(b.name ?? ''));
 
-  // Group by approximate NT region for readability.
-  final byRegion = <TideRegion, List<DiscoveredStation>>{};
+  // Separate NT stations from interstate/foreign ones — wide-radius
+  // sweeps legitimately return WA, QLD and non-Australian stations.
+  final nt = <DiscoveredStation>[];
+  final interstate = <DiscoveredStation>[];
   for (final s in unique) {
+    (tideStateForCoordinates(s.lat ?? 0, s.lon ?? 0) == 'NT'
+            ? nt
+            : interstate)
+        .add(s);
+  }
+
+  // Group NT stations by approximate region for readability.
+  final byRegion = <TideRegion, List<DiscoveredStation>>{};
+  for (final s in nt) {
     byRegion
         .putIfAbsent(
             tideRegionForCoordinates(s.lat ?? 0, s.lon ?? 0), () => [])
@@ -672,7 +683,8 @@ Future<void> _runDiscovery(List<Candidate> anchors, String apiKey) async {
   }
 
   _out('--- Deduplicated inventory: ${unique.length} unique station(s) '
-      'from ${all.length} sightings ---');
+      'from ${all.length} sightings '
+      '(${nt.length} NT, ${interstate.length} interstate/other) ---');
   for (final region in TideRegion.values) {
     final list = byRegion[region];
     if (list == null || list.isEmpty) continue;
@@ -684,6 +696,19 @@ Future<void> _runDiscovery(List<Candidate> anchors, String apiKey) async {
           '${s.id != null ? " (id: ${s.id})" : ""}'
           '  ${s.lat}, ${s.lon}'
           '  — via ${s.anchorKey}$official');
+    }
+  }
+  if (interstate.isNotEmpty) {
+    _out('');
+    _out('  Interstate / other waters (${interstate.length}) '
+        '— outside NT catalogue scope:');
+    interstate.sort((a, b) => tideStateForCoordinates(a.lat ?? 0, a.lon ?? 0)
+        .compareTo(tideStateForCoordinates(b.lat ?? 0, b.lon ?? 0)));
+    for (final s in interstate) {
+      final state = tideStateForCoordinates(s.lat ?? 0, s.lon ?? 0);
+      _out('    [$state] ${s.name ?? "?"}'
+          '${s.id != null ? " (id: ${s.id})" : ""}'
+          '  ${s.lat}, ${s.lon} — via ${s.anchorKey}');
     }
   }
   _out('');
