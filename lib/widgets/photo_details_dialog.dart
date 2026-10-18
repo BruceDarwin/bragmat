@@ -1,36 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/photo_metadata_result.dart';
-
-/// The fields the user chose to take from a photo's metadata.
-///
-/// Returned by [PhotoDetailsFoundDialog]; `null` means the user kept their
-/// current catch details (cancelled / dismissed / pressed keep).
-class PhotoDetailsDecision {
-  const PhotoDetailsDecision({
-    this.useDate = false,
-    this.useTime = false,
-    this.useLocation = false,
-  });
-
-  final bool useDate;
-  final bool useTime;
-  final bool useLocation;
-
-  bool get hasAnySelection => useDate || useTime || useLocation;
-
-  PhotoDetailsDecision copyWith({
-    bool? useDate,
-    bool? useTime,
-    bool? useLocation,
-  }) {
-    return PhotoDetailsDecision(
-      useDate: useDate ?? this.useDate,
-      useTime: useTime ?? this.useTime,
-      useLocation: useLocation ?? this.useLocation,
-    );
-  }
-}
+import '../models/photo_details_decision.dart';
 
 /// "Photo Details Found" confirmation dialog.
 ///

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bragmat/models/photo_metadata_result.dart';
+import 'package:bragmat/models/photo_details_decision.dart';
 import 'package:bragmat/widgets/photo_details_dialog.dart';
 
 void main() {

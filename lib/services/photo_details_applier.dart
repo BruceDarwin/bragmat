@@ -1,5 +1,5 @@
 import '../models/photo_metadata_result.dart';
-import '../widgets/photo_details_dialog.dart';
+import '../models/photo_details_decision.dart';
 
 /// Field updates produced by applying a confirmed [PhotoDetailsDecision]
 /// to a [PhotoMetadataResult]. Null fields mean "leave the current
@@ -44,12 +44,34 @@ class PhotoDetailsApplier {
   /// catch may auto-prompt. Subsequent photos and photos added while
   /// editing an existing catch never auto-prompt — metadata from those is
   /// applied only through the explicit "Use photo details" action.
+  ///
+  /// "Useful" means genuine EXIF content: a result whose only signal is
+  /// the filesystem modification time does not justify interrupting the
+  /// user — it remains available via the explicit action, clearly
+  /// labelled as low-confidence.
   static bool shouldAutoPrompt({
     required PhotoMetadataResult metadata,
     required bool isFirstPhoto,
     required bool isEditMode,
   }) {
-    return !isEditMode && isFirstPhoto && metadata.hasAnyMetadata;
+    final hasUsefulExif = metadata.hasValidGps ||
+        (metadata.dateTimeStatus == DateTimeStatus.valid &&
+            metadata.dateTimeSource != DateTimeSource.fileModification);
+    return !isEditMode && isFirstPhoto && hasUsefulExif;
+  }
+
+  /// The capture time to persist on `catch_media.date_taken`.
+  ///
+  /// Only genuine EXIF datetimes qualify: a filesystem modification time
+  /// is a low-confidence suggestion, not a capture time, and a missing
+  /// EXIF datetime must not be mislabelled with attachment time — so both
+  /// cases persist `null`.
+  static DateTime? captureTimeFor(PhotoMetadataResult metadata) {
+    if (metadata.dateTimeStatus != DateTimeStatus.valid) return null;
+    if (metadata.dateTimeSource == DateTimeSource.fileModification) {
+      return null;
+    }
+    return metadata.dateTime;
   }
 
   /// Build the field updates implied by a confirmed decision.

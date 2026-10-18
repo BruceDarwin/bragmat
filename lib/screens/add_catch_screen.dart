@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:exif/exif.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import '../database/database_helper.dart';
@@ -13,6 +12,8 @@ import '../models/catch_media.dart';
 import '../models/fishing_trip.dart';
 import '../models/favourite_spot.dart';
 import '../models/environmental_condition.dart';
+import '../models/photo_details_decision.dart';
+import '../models/photo_metadata_result.dart';
 import '../models/lure.dart';
 import '../models/bait.dart';
 import '../models/tide_reference.dart';
@@ -47,6 +48,22 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   final _longitudeController = TextEditingController();
   DateTime? _dateCaught;
   List<CatchMedia> _mediaItems = [];
+
+  // Test-only accessors — the photo-metadata workflow tests need to
+  // verify attach results and field state without reaching into privates.
+  @visibleForTesting
+  List<CatchMedia> get debugMediaItems => _mediaItems;
+  @visibleForTesting
+  DateTime? get debugDateCaught => _dateCaught;
+  @visibleForTesting
+  String get debugLatitudeText => _latitudeController.text;
+  @visibleForTesting
+  String get debugLongitudeText => _longitudeController.text;
+  @visibleForTesting
+  String? get debugCoordinateSource => _coordinateSource;
+  @visibleForTesting
+  bool get debugDateTimeEditedByUser => _dateTimeEditedByUser;
+
   String? _selectedFishType;
   List<String> _fishTypes = [];
   int? _selectedFishingBuddyId;
@@ -904,28 +921,25 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
 
   Future<void> _processPickedFile(File file, String source) async {
     final originalPath = file.path;
-    
-    // Extract GPS data from file
-    final gpsData = await _extractGpsData(originalPath);
-    final latitude = gpsData['latitude'];
-    final longitude = gpsData['longitude'];
-    
-    final photoDateTime = DateTime.now();
-    
-    // Copy photo to persistent storage
-    String? persistentPath;
-    final role = _mediaItems.isEmpty ? 'primary' : 'other';
-    
+
+    // Extract metadata offline from the picker-produced copy. The picker's
+    // recompression preserves the EXIF tags we need; failures yield an
+    // "absent" result — they never throw and never block attachment.
+    final metadata = await PhotoMetadataService.extractFromFile(originalPath);
+
+    final isFirstPhoto = _mediaItems.isEmpty;
+    final role = isFirstPhoto ? 'primary' : 'other';
+
     // Use temporary catch ID (0) for new catches, will be updated on save
     final tempCatchId = widget.catchToEdit?.id ?? 0;
-    
-    persistentPath = await MediaStorageService.copyPhotoToStorage(
+
+    final persistentPath = await MediaStorageService.copyPhotoToStorage(
       originalPath,
       'catch',
       tempCatchId,
       role,
     );
-    
+
     if (persistentPath == null) {
       // Copy failed, show error and do not add photo
       if (mounted) {
@@ -939,75 +953,42 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       }
       return;
     }
-    
-    // persistentPath is guaranteed non-null at this point
-    if (mounted) {
-      setState(() {
-        _mediaItems.add(CatchMedia(
-          catchId: 0, // Will be set when saving
-          filePath: persistentPath!,
-          mediaType: 'photo',
-          role: role,
-          dateTaken: photoDateTime,
-          latitude: latitude,
-          longitude: longitude,
-        ));
-        
-        // Auto-populate latitude/longitude fields if GPS data found
-        if (latitude != null && longitude != null) {
-          _latitudeController.text = latitude.toString();
-          _longitudeController.text = longitude.toString();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('GPS coordinates found in photo'),
-              duration: Duration(seconds: 2),
-            ),
-          );
+
+    if (!mounted) return;
+
+    // Store the photo's own metadata on the media row. date_taken is only
+    // set from genuine EXIF capture times — never attachment time, and
+    // never the low-confidence filesystem mtime suggestion.
+    final media = CatchMedia(
+      catchId: 0, // Will be set when saving
+      filePath: persistentPath,
+      mediaType: 'photo',
+      role: role,
+      dateTaken: PhotoDetailsApplier.captureTimeFor(metadata),
+      latitude: metadata.hasValidGps ? metadata.latitude : null,
+      longitude: metadata.hasValidGps ? metadata.longitude : null,
+    );
+    setState(() {
+      _mediaItems.add(media);
+    });
+
+    // Only the FIRST photo added to a NEW catch may auto-prompt, and only
+    // when it carries usable metadata. Subsequent photos, edit-mode
+    // attaches and metadata-free photos stay silent — the explicit
+    // per-photo "Use photo details" action is always available.
+    if (PhotoDetailsApplier.shouldAutoPrompt(
+      metadata: metadata,
+      isFirstPhoto: isFirstPhoto,
+      isEditMode: widget.catchToEdit != null,
+    )) {
+      // Defer past the current frame — required for lost-data recovery,
+      // which can reach this point during initial widget build-up.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _showPhotoDetailsDialog(metadata);
         }
       });
     }
-  }
-
-  Future<Map<String, double?>> _extractGpsData(String imagePath) async {
-    double? latitude;
-    double? longitude;
-    
-    try {
-      final file = File(imagePath);
-      final bytes = await file.readAsBytes();
-      final data = await readExifFromBytes(bytes);
-
-      if (data.containsKey('GPSLatitude') && data.containsKey('GPSLongitude')) {
-        final lat = data['GPSLatitude'];
-        final latRef = data['GPSLatitudeRef'];
-        final lon = data['GPSLongitude'];
-        final lonRef = data['GPSLongitudeRef'];
-
-        if (lat != null && latRef != null && lon != null && lonRef != null) {
-          latitude = _convertToDecimalDegrees(lat, latRef);
-          longitude = _convertToDecimalDegrees(lon, lonRef);
-        }
-      }
-    } catch (e) {
-      debugPrint('EXIF: Error reading GPS data: $e');
-    }
-    
-    return {'latitude': latitude, 'longitude': longitude};
-  }
-
-  double _convertToDecimalDegrees(dynamic value, dynamic ref) {
-    if (value is! List || value.length != 3) return 0.0;
-
-    final degrees = value[0] is num ? value[0].toDouble() : 0.0;
-    final minutes = value[1] is num ? value[1].toDouble() : 0.0;
-    final seconds = value[2] is num ? value[2].toDouble() : 0.0;
-
-    final decimal = degrees + (minutes / 60) + (seconds / 3600);
-
-    if (ref == 'S' || ref == 'W') {
-      return -decimal;
-    }
-    return decimal;
   }
 
   /// Explicit "Use photo details" action for any attached photo.
@@ -1021,7 +1002,24 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       final resolvedPath = await MediaStorageService.resolvePath(media.filePath);
       final metadata = await PhotoMetadataService.extractFromFile(resolvedPath);
       if (!mounted) return;
+      await _showPhotoDetailsDialog(metadata);
+    } catch (e) {
+      debugPrint('Photo details action failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not read details from this photo'),
+          ),
+        );
+      }
+    }
+  }
 
+  /// Present [PhotoDetailsFoundDialog] for [metadata] and apply the
+  /// confirmed selections. Nothing changes unless the user explicitly
+  /// confirms; cancelling returns `null` and leaves every field alone.
+  Future<void> _showPhotoDetailsDialog(PhotoMetadataResult metadata) async {
+    try {
       final decision = await showDialog<PhotoDetailsDecision>(
         context: context,
         builder: (_) => PhotoDetailsFoundDialog(

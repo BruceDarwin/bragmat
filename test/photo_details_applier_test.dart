@@ -2,7 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:bragmat/models/photo_metadata_result.dart';
 import 'package:bragmat/services/photo_details_applier.dart';
-import 'package:bragmat/widgets/photo_details_dialog.dart';
+import 'package:bragmat/models/photo_details_decision.dart';
 
 void main() {
   PhotoMetadataResult fullMetadata() => PhotoMetadataResult(
@@ -208,6 +208,41 @@ void main() {
           isEditMode: false,
         ),
         false,
+      );
+    });
+
+    test('file-mtime-only metadata does not auto-prompt', () {
+      // A photo whose only signal is the filesystem modification time is
+      // not "useful metadata" — the low-confidence suggestion stays
+      // available through the explicit action, but attaching such a photo
+      // must not interrupt the user.
+      expect(
+        PhotoDetailsApplier.shouldAutoPrompt(
+          metadata: PhotoMetadataResult(
+            dateTime: DateTime(2024, 5, 6, 7, 8),
+            dateTimeStatus: DateTimeStatus.valid,
+            dateTimeSource: DateTimeSource.fileModification,
+            confidence: MetadataConfidence.fileSystem,
+          ),
+          isFirstPhoto: true,
+          isEditMode: false,
+        ),
+        false,
+      );
+    });
+
+    test('EXIF datetime without GPS still auto-prompts', () {
+      expect(
+        PhotoDetailsApplier.shouldAutoPrompt(
+          metadata: PhotoMetadataResult(
+            dateTime: DateTime(2026, 6, 17, 21, 32),
+            dateTimeStatus: DateTimeStatus.valid,
+            dateTimeSource: DateTimeSource.dateTimeOriginal,
+          ),
+          isFirstPhoto: true,
+          isEditMode: false,
+        ),
+        true,
       );
     });
   });
