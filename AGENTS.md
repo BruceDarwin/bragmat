@@ -82,5 +82,15 @@ App data (SQLite DB + photos) lives in the app's private storage and is
   entitlement recheck and revoke/reinstate all passed. 250/250 tests.
   Verified backup: `Documents\Bragmat Backups\
   bragmat_backup_2026-10-17T15-09-06-925344.zip` (v29, 78 catches).
-- `feature/cloud-backup` — Stage 4C cloud backup work in progress, kept
-  independent; not merged, not deployed to device
+- Stage 4C cloud backup — **validated at commit `3874db9`** on
+  `feature/stage4-integration` (2026-10-18). Supabase `bragmat-dev`:
+  private `backups` bucket, `delete-backups` Edge Function, RLS harness
+  17/17, storage API + Edge Function batteries pass, 7/7 live E2E.
+  Restore requires the recorded sha256 digest — missing or mismatched
+  metadata fails closed before decrypt/restore. Moto G15 non-destructive
+  validation: `install -r` preserved everything (78 catches, 81 media
+  refs, 5 trips, v29, `quick_check` ok, session + ownership + offline
+  all intact). **Deliberately excluded**: real-device cloud upload and
+  cloud restore of the user's dataset — only synthetic emulator data
+  touched the cloud. Bucket left empty; cloud backup on the device
+  remains disabled/untouched. 325/325 unit tests. Not merged, no tag.
