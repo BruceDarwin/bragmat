@@ -41,6 +41,7 @@ revocation — the token stays valid; server-side state is what changes).
 | API-6 | `POST /storage/v1/object/backups/{uidT}/hijack.bzp` as A | denied (400/403) |
 | API-7 | `move` or `update` on own object as A | denied — no UPDATE policy |
 | API-8 | `remove(['{uidA}/t1.bzp'])` as A | 200; subsequent list shows it gone — **physical delete confirmed** (row + bytes, not just metadata) |
+| API-8b | `remove(['{uidT}/tT.bzp'])` as A | T's object NOT deleted — verified by a follow-up `GET`/`list` as T. The Storage API delete is still RLS-filtered, so the object survives even though A's request "succeeds" or returns empty |
 | API-9 | Any of the above as revoked T (`$JWT_R`) | all denied server-side — token still valid; `is_approved_beta()` is what fails |
 | API-10 | Any storage call with no/invalid JWT | denied |
 

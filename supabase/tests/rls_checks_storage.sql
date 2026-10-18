@@ -23,6 +23,11 @@
 -- upload/download/delete behaviour (object physicality, the
 -- delete-backups Edge Function) is covered by
 -- storage_api_checks.md — the two are complementary.
+--
+-- IMPORTANT: Supabase's storage.protect_delete trigger blocks EVERY
+-- direct SQL delete on storage.objects (SQLSTATE 42501), for any role.
+-- Delete checks therefore assert the raise ('denied'), not a row count.
+-- The positive delete path only exists through the Storage API (API-8).
 -- ────────────────────────────────────────────────────────────────────────
 
 begin;
@@ -139,7 +144,7 @@ end $$;
 -- update = 0 rows under RLS (no update policy at all, and the row is
 -- invisible anyway) → covers overwrite, rename and move attempts.
 do $$
-declare rc int;
+declare rc int; outcome text;
 begin
   perform set_config('role','authenticated',true);
   perform set_config('request.jwt.claims','{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
@@ -152,15 +157,22 @@ begin
   insert into rls_results values
     (5,'cross-user update/rename/move denied','0',rc::text,(rc = 0));
 
+  -- storage.protect_delete raises on ANY direct SQL delete (before RLS
+  -- even applies) — that raise IS the denial at this layer. Physical
+  -- cross-account deletion via the Storage API is covered by API-8b.
   perform set_config('role','authenticated',true);
-  delete from storage.objects
-   where bucket_id = 'backups'
-     and (storage.foldername(name))[1] =
-         'd0000000-0000-4000-8000-00000000000d';
-  get diagnostics rc = row_count;
+  begin
+    delete from storage.objects
+     where bucket_id = 'backups'
+       and (storage.foldername(name))[1] =
+           'd0000000-0000-4000-8000-00000000000d';
+    outcome := 'allowed';
+  exception when insufficient_privilege then
+    outcome := 'denied';
+  end;
   perform set_config('role','none',true);
   insert into rls_results values
-    (6,'cross-user delete denied','0',rc::text,(rc = 0));
+    (6,'cross-user delete denied','denied',outcome,(outcome='denied'));
 end $$;
 
 -- ═══ CHECK 6: own-row UPDATE is also denied (no update policy) ═════════
@@ -181,19 +193,27 @@ begin
     (7,'own-row update denied (no update policy)','0',rc::text,(rc = 0));
 end $$;
 
--- ═══ CHECK 7: approved user CAN delete own objects (API path) ══════════
+-- ═══ CHECK 7: own-object delete — SQL path blocked, API path only ═════
+-- storage.protect_delete raises on ANY direct SQL delete — including the
+-- owner's. The positive "approved user deletes own backup" check can
+-- only run through the real Storage API (API-8 in
+-- storage_api_checks.md). Here we assert the SQL path raises 42501.
 do $$
-declare rc int;
+declare outcome text;
 begin
   perform set_config('role','authenticated',true);
   perform set_config('request.jwt.claims','{"sub":"a0000000-0000-4000-8000-00000000000a","email":"rlstest.a@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
-  delete from storage.objects
-   where bucket_id = 'backups'
-     and name = 'a0000000-0000-4000-8000-00000000000a/backup_a2.bzp';
-  get diagnostics rc = row_count;
+  begin
+    delete from storage.objects
+     where bucket_id = 'backups'
+       and name = 'a0000000-0000-4000-8000-00000000000a/backup_a2.bzp';
+    outcome := 'allowed';
+  exception when insufficient_privilege then
+    outcome := 'denied';
+  end;
   perform set_config('role','none',true);
   insert into rls_results values
-    (8,'approved user deletes own backup','1',rc::text,(rc = 1));
+    (8,'own delete via raw SQL blocked (API-8 covers API path)','denied',outcome,(outcome='denied'));
 end $$;
 
 -- ═══ CHECK 8: uninvited user denied even under own prefix ══════════════
@@ -240,7 +260,7 @@ end $$;
 -- Deletion for revoked users goes through the delete-backups Edge
 -- Function (Storage API) — covered in storage_api_checks.md.
 do $$
-declare rc int;
+declare rc int; outcome2 text;
 begin
   perform set_config('role','authenticated',true);
   perform set_config('request.jwt.claims','{"sub":"d0000000-0000-4000-8000-00000000000d","email":"rlstest.d@bragmat.invalid","role":"authenticated","aud":"authenticated"}',true);
@@ -251,13 +271,17 @@ begin
     (12,'revoked user sees no backups','0',rc::text,(rc = 0));
 
   perform set_config('role','authenticated',true);
-  delete from storage.objects
-   where bucket_id = 'backups'
-     and (storage.foldername(name))[1] = auth.uid()::text;
-  get diagnostics rc = row_count;
+  begin
+    delete from storage.objects
+     where bucket_id = 'backups'
+       and (storage.foldername(name))[1] = auth.uid()::text;
+    outcome2 := 'allowed';
+  exception when insufficient_privilege then
+    outcome2 := 'denied';
+  end;
   perform set_config('role','none',true);
   insert into rls_results values
-    (13,'revoked user cannot delete via API/RLS','0',rc::text,(rc = 0));
+    (13,'revoked user cannot delete via API/RLS','denied',outcome2,(outcome2='denied'));
 end $$;
 
 -- ═══ CHECK 11: anonymous access fully denied ═══════════════════════════
