@@ -126,6 +126,11 @@ abstract class CloudBackupBackend {
   /// List the caller's own backups (server-scoped to their prefix).
   Future<List<RemoteBackupInfo>> list();
 
+  /// The sha256 recorded in the object's custom metadata at upload, or
+  /// null when absent. NOTE: custom metadata does not appear in list
+  /// responses — it must be fetched per object via the info endpoint.
+  Future<String?> recordedSha256(String remoteName);
+
   /// Download [remoteName] (own prefix) into [dest].
   Future<void> download(String remoteName, File dest);
 
@@ -189,6 +194,21 @@ class SupabaseCloudBackupBackend implements CloudBackupBackend {
             createdAt: DateTime.tryParse(o.createdAt ?? ''),
           ),
     ];
+  }
+
+  @override
+  Future<String?> recordedSha256(String remoteName) async {
+    try {
+      final info = await _client.storage
+          .from(bucket)
+          .info('$_prefix$remoteName');
+      return info.metadata?['sha256'] as String?;
+    } on StorageException catch (e) {
+      // Object vanished between download and lookup — no digest to
+      // verify against; the AEAD decrypt remains the hard boundary.
+      if (e.statusCode == '400' || e.statusCode == '404') return null;
+      rethrow;
+    }
   }
 
   @override
@@ -402,11 +422,10 @@ class CloudBackupService {
       cancellation?.throwIfCancelled();
 
       // Digest check when the upload recorded one — a tampered or
-      // truncated object aborts BEFORE decryption/restore.
-      final recorded =
-          (await _backend.list()).where((b) => b.name == remoteName);
-      final expectedSha =
-          recorded.isEmpty ? null : recorded.first.sha256Hex;
+      // truncated object aborts BEFORE decryption/restore. Custom
+      // metadata is not in list responses; it must be fetched via the
+      // object's info endpoint.
+      final expectedSha = await _backend.recordedSha256(remoteName);
       if (expectedSha != null &&
           expectedSha != await BackupEnvelope.sha256OfFile(encFile)) {
         throw CloudIntegrityException();

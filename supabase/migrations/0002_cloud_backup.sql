@@ -90,6 +90,11 @@ create policy "audit read own rows"
 
 grant select on public.backup_deletion_audit to authenticated;
 -- Deliberately no insert/update/delete grants for app roles.
+-- The Edge Function writes via the service role — but this project's
+-- locked-down privilege model (explicit grants only, 0001) means even
+-- service_role needs an explicit grant, otherwise the audit insert is
+-- denied at the GRANT layer (SQLSTATE 42501).
+grant insert on public.backup_deletion_audit to service_role;
 
 -- ── ROLLBACK (exact procedure — review, then execute in order) ────────────
 -- Order matters: objects must be emptied through the Storage API BEFORE

@@ -61,6 +61,10 @@ class FakeCloudBackupBackend implements CloudBackupBackend {
   }
 
   @override
+  Future<String?> recordedSha256(String remoteName) async =>
+      metadata[remoteName]?['sha256'];
+
+  @override
   Future<void> download(String remoteName, File dest) async {
     if (failDownload) throw const SocketException('offline');
     final bytes = downloadOverride ?? objects[remoteName];
