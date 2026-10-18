@@ -23,6 +23,7 @@ import '../services/tide_reference_service.dart';
 import '../services/media_storage_service.dart';
 import '../helpers/tide_context_helper.dart';
 import '../widgets/bragmat_section_card.dart';
+import '../widgets/tide_reference_picker_sheet.dart';
 import '../widgets/resolved_image.dart';
 import '../widgets/location_action_buttons.dart';
 import 'location_picker_screen.dart';
@@ -2308,65 +2309,53 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                           ),
                         ),
                         const SizedBox(height: 8),
-                        FutureBuilder<List<TideReference>>(
-                          future: Future.value(TideReferenceService.getAllReferences()),
-                          builder: (context, snapshot) {
-                            if (snapshot.connectionState == ConnectionState.waiting) {
-                              return const CircularProgressIndicator();
-                            }
-                            final references = snapshot.data ?? [];
-                            if (references.isEmpty) {
-                              return const Text('No references available');
-                            }
-                            
-                            // Stage 3: For historical catches, add "Not recorded" option
-                            final isHistorical = widget.catchToEdit != null && 
+                        Builder(
+                          builder: (context) {
+                            // Stage 3: For historical catches, offer
+                            // "Not recorded" inside the picker.
+                            final isHistorical = widget.catchToEdit != null &&
                                 _recordedTideReference == null;
-                            
-                            final dropdownItems = <TideReference?>[];
-                            if (isHistorical) {
-                              dropdownItems.add(null); // Represents "Not recorded"
-                            }
-                            dropdownItems.addAll(references);
-
-                            // Handle historical references with IDs no
-                            // longer in the available list — include the
-                            // recorded option so the dropdown can show it.
-                            if (_selectedTideReference != null) {
-                              final selectedId = _selectedTideReference!.id;
-                              final hasSelectedId = references.any((ref) => ref.id == selectedId);
-                              if (!hasSelectedId) {
-                                dropdownItems.add(_selectedTideReference);
-                              }
-                            }
-
-                            return DropdownButtonFormField<TideReference?>(
-                              value: _selectedTideReference,
-                              decoration: const InputDecoration(
-                                border: OutlineInputBorder(),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                              ),
-                              items: dropdownItems.map((reference) {
-                                if (reference == null) {
-                                  return const DropdownMenuItem<TideReference?>(
-                                    value: null,
-                                    child: Text('Not recorded'),
-                                  );
-                                }
-                                return DropdownMenuItem<TideReference?>(
-                                  value: reference,
-                                  child: Text(reference.isModelLocation
-                                      ? '${reference.displayName} (model prediction)'
-                                      : reference.displayName),
+                            final selected = _selectedTideReference;
+                            return InkWell(
+                              key: const Key('catch_tide_reference_field'),
+                              onTap: () async {
+                                final result = await showTideReferencePicker(
+                                  context,
+                                  selected: _selectedTideReference,
+                                  allowNone: isHistorical,
                                 );
-                              }).toList(),
-                              onChanged: (TideReference? newValue) {
-                                setState(() {
-                                  _selectedTideReference = newValue;
-                                  _referenceChanged = true;
-                                  _onFieldChanged();
-                                });
+                                // Null result = dismissed — leave the
+                                // selection untouched.
+                                if (result != null) {
+                                  setState(() {
+                                    _selectedTideReference = result.reference;
+                                    _referenceChanged = true;
+                                    _onFieldChanged();
+                                  });
+                                }
                               },
+                              child: InputDecorator(
+                                decoration: const InputDecoration(
+                                  border: OutlineInputBorder(),
+                                  contentPadding: EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        selected == null
+                                            ? 'Not recorded'
+                                            : selected.isModelLocation
+                                                ? '${selected.displayName} '
+                                                    '(model prediction)'
+                                                : selected.displayName,
+                                      ),
+                                    ),
+                                    const Icon(Icons.arrow_drop_down),
+                                  ],
+                                ),
+                              ),
                             );
                           },
                         ),

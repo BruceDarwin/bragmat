@@ -28,6 +28,7 @@ import '../services/worldtides_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/tide_reference_service.dart';
 import '../widgets/bragmat_section_card.dart';
+import '../widgets/tide_reference_picker_sheet.dart';
 import 'favourite_spots_screen.dart';
 import 'claim_data_screen.dart';
 import 'cloud_backup_screen.dart';
@@ -3497,22 +3498,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: TextStyle(fontSize: 12, color: Colors.grey),
               ),
               const SizedBox(height: 12),
-              DropdownButton<String>(
-                value: _currentTideReference?.id ?? 'automatic',
-                isExpanded: true,
-                items: TideReferenceService.getAllReferences()
-                    .map((ref) => DropdownMenuItem<String>(
-                          value: ref.id,
-                          child: Text(
-                            '${ref.displayName} — ${TideReferenceService.describeSource(ref)}',
-                          ),
-                        ))
-                    .toList(),
-                onChanged: (value) {
-                  if (value != null) {
-                    _setTideReference(value);
+              InkWell(
+                key: const Key('settings_tide_reference_field'),
+                onTap: () async {
+                  final result = await showTideReferencePicker(
+                    context,
+                    selected: _currentTideReference,
+                  );
+                  final picked = result?.reference;
+                  if (picked != null) {
+                    _setTideReference(picked.id);
                   }
                 },
+                child: InputDecorator(
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _currentTideReference != null
+                              ? '${_currentTideReference!.displayName} — '
+                                  '${TideReferenceService.describeSource(_currentTideReference!)}'
+                              : 'Automatic (catch location) — catch location',
+                        ),
+                      ),
+                      const Icon(Icons.arrow_drop_down),
+                    ],
+                  ),
+                ),
               ),
               const SizedBox(height: 8),
               const Text(
