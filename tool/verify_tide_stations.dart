@@ -50,6 +50,22 @@
 // reports which catalogue candidates have a real gauge nearby. One
 // `stations` call per anchor; --only selects anchors by key/label.
 //
+// Extremes-only mode:
+//   dart run tool/verify_tide_stations.dart --extremes-only --run \
+//       --only snake_bay,milner_bay
+// Once discovery has established station identity and coordinates, the
+// `stations` call is redundant — `--extremes-only` skips it and checks
+// only prediction serving: which station or atlas the `extremes`
+// response reports at the candidate coordinates. 1 credit per
+// candidate. Candidates with a providerStationId expect the response
+// `station` name to match; candidates without one expect the atlas
+// (model) path. Substitutions are flagged for review.
+//
+// NOTE on terminology: an `Australia:NT_TP###` id is a WorldTides
+// station identifier — it means predictions are served by a named
+// harmonic station record, NOT proof of an operational physical tide
+// gauge. Reports say 'station-served', never 'physical gauge'.
+//
 // Robustness: response fields are coerced defensively (numbers and
 // numeric strings accepted; malformed/missing values become null or a
 // per-candidate error). A bad response for one candidate is reported
@@ -60,7 +76,8 @@
 //              5000 km, 3 credits above.
 //   extremes — 1 credit per 7 days (the tool requests 3 days).
 // So verification = 2 credits/candidate (300 km stations + extremes);
-// discovery = 1 credit/anchor (500 km stations only).
+// --extremes-only = 1 credit/candidate (station identity already
+// established by a discovery sweep); discovery = 1 credit/anchor.
 
 import 'dart:convert';
 import 'dart:io';
@@ -93,16 +110,18 @@ class Candidate {
 
 /// Verification candidates — built from the catalogue file
 /// (lib/data/tide_reference_catalogue.dart) so verified entries and
-/// proposed candidates share one source of truth. Verified entries
-/// expect their own name as the serving station; candidates expect
-/// nothing — the run reports what is actually found.
+/// proposed candidates share one source of truth. Entries with a
+/// providerStationId expect the `extremes` response to name their
+/// station; entries without one expect the atlas/model path.
 final List<Candidate> _candidates = [
   for (final r in kTideReferenceCatalogue)
     Candidate(r.id, r.displayName, r.latitude, r.longitude,
         expectedStation:
             r.source == TideReferenceSource.station ? r.displayName : null),
   for (final r in kTideReferenceCandidates)
-    Candidate(r.id, r.displayName, r.latitude, r.longitude),
+    Candidate(r.id, r.displayName, r.latitude, r.longitude,
+        expectedStation:
+            r.providerStationId != null ? r.displayName : null),
 ];
 
 /// Anchor points for `--discover` sweeps. Each `stations` call uses a
@@ -431,6 +450,35 @@ bool _nameMatches(String expected, String? actual) {
   return a.contains(e) || e.contains(a);
 }
 
+/// Verdict for `--extremes-only` runs: prediction serving checked
+/// against the expectation derived from the catalogue —
+/// candidates with a providerStationId expect their station name in
+/// the response; candidates without one expect the atlas path.
+String assessExtremesOnly(Candidate candidate, PredictionResult p) {
+  if (p.error != null) return 'INCONCLUSIVE — API error, rerun later';
+  switch (p.source) {
+    case PredictionSource.station:
+      if (candidate.expectedStation == null) {
+        return 'REVIEW — expected atlas/model, got station-served '
+            '"${p.stationName}"';
+      }
+      return _nameMatches(candidate.expectedStation!, p.stationName)
+          ? 'SUITABLE — station-served predictions confirmed'
+          : 'REVIEW — served by "${p.stationName}", '
+              'expected "${candidate.expectedStation}"';
+    case PredictionSource.atlas:
+      return candidate.expectedStation == null
+          ? 'MODEL-ONLY — atlas predictions confirmed '
+              '(${p.atlas ?? "atlas"})'
+          : 'REVIEW — expected station "${candidate.expectedStation}" '
+              'but predictions came from the atlas (${p.atlas ?? "?"})';
+    case PredictionSource.none:
+      return 'UNSUITABLE — no usable predictions returned';
+    case PredictionSource.error:
+      return 'INCONCLUSIVE — API error, rerun later';
+  }
+}
+
 Future<Map<String, dynamic>?> _get(Uri uri) async {
   try {
     final response = await http.get(uri).timeout(const Duration(seconds: 30));
@@ -468,17 +516,37 @@ void _out(String line) {
 String _scrub(String message) =>
     message.replaceAll(RegExp(r'key=[^&\s]+'), 'key=***');
 
-Future<void> _verify(Candidate c, String apiKey) async {
+Future<void> _verify(Candidate c, String apiKey,
+    {bool extremesOnly = false}) async {
   _out('=== ${c.label} (requested ${c.lat}, ${c.lon}) ===');
 
-  final stationsData = await _get(_uri({
-    'stations': '',
-    'lat': '${c.lat}',
-    'lon': '${c.lon}',
-    'stationDistance': '$_stationSearchKm',
-  }, apiKey));
-  final lookup =
-      stationsData == null ? const StationLookup(error: 'request failed') : parseStationsResponse(stationsData);
+  StationLookup? lookup;
+  if (extremesOnly) {
+    _out('  station identity: from discovery sweep '
+        '(stations call skipped)');
+  } else {
+    final stationsData = await _get(_uri({
+      'stations': '',
+      'lat': '${c.lat}',
+      'lon': '${c.lon}',
+      'stationDistance': '$_stationSearchKm',
+    }, apiKey));
+    lookup = stationsData == null
+        ? const StationLookup(error: 'request failed')
+        : parseStationsResponse(stationsData);
+    if (lookup.error != null) {
+      _out('  stations lookup: ERROR ${lookup.error}');
+    } else if (lookup.name == null) {
+      _out('  stations lookup: no station within $_stationSearchKm km');
+    } else {
+      _out('  nearest station:  ${lookup.name} (id: ${lookup.id})');
+      _out('  station coords:   ${lookup.lat}, ${lookup.lon}');
+      if (lookup.distanceKm != null) {
+        _out('  distance:         ${lookup.distanceKm} km');
+      }
+      _out('  stations found:   ${lookup.totalFound}');
+    }
+  }
 
   final extremesData = await _get(_uri({
     'extremes': '',
@@ -490,31 +558,18 @@ Future<void> _verify(Candidate c, String apiKey) async {
   final prediction =
       extremesData == null ? const PredictionResult(source: PredictionSource.error, error: 'request failed') : parseExtremesResponse(extremesData);
 
-  if (lookup.error != null) {
-    _out('  stations lookup: ERROR ${lookup.error}');
-  } else if (lookup.name == null) {
-    _out('  stations lookup: no station within $_stationSearchKm km');
-  } else {
-    _out('  nearest station:  ${lookup.name} (id: ${lookup.id})');
-    _out('  station coords:   ${lookup.lat}, ${lookup.lon}');
-    if (lookup.distanceKm != null) {
-      _out('  distance:         ${lookup.distanceKm} km');
-    }
-    _out('  stations found:   ${lookup.totalFound}');
-  }
-
   if (prediction.error != null) {
     _out('  prediction:       ERROR ${prediction.error}');
   } else {
     _out('  prediction via:   '
-        '${prediction.source == PredictionSource.station ? "STATION" : prediction.source == PredictionSource.atlas ? "ATLAS/MODEL" : "NONE"}'
+        '${prediction.source == PredictionSource.station ? "STATION-SERVED" : prediction.source == PredictionSource.atlas ? "ATLAS/MODEL" : "NONE"}'
         '${prediction.stationName != null ? " — ${prediction.stationName}" : ""}'
         '${prediction.atlas != null ? " (${prediction.atlas})" : ""}');
     _out('  response coords:  ${prediction.responseLat}, ${prediction.responseLon}');
     _out('  events returned:  ${prediction.eventCount}');
   }
 
-  _out('  verdict:          ${assessSuitability(c, lookup, prediction)}');
+  _out('  verdict:          ${extremesOnly ? assessExtremesOnly(c, prediction) : assessSuitability(c, lookup ?? const StationLookup(error: 'unreachable'), prediction)}');
   _out('');
 }
 
@@ -553,6 +608,7 @@ String? parseReportPath(List<String> args) {
 Future<void> main(List<String> args) async {
   final run = args.contains('--run');
   final discover = args.contains('--discover');
+  final extremesOnly = args.contains('--extremes-only');
   final reportPath = parseReportPath(args);
   final pool = discover ? _discoveryAnchors : _candidates;
   final unknown = <String>[];
@@ -589,8 +645,14 @@ Future<void> main(List<String> args) async {
           '${c.expectedStation != null ? " [expects ${c.expectedStation}]" : ""}');
     }
     _out('');
-    _out('Calls:  2 per candidate (1 x stations + 1 x extremes)');
-    _out('Estimated credit cost: ${selected.length * 2} credits');
+    if (extremesOnly) {
+      _out('Calls:  1 x extremes per candidate '
+          '(station identity from discovery sweep)');
+      _out('Estimated credit cost: ${selected.length} credits');
+    } else {
+      _out('Calls:  2 per candidate (1 x stations + 1 x extremes)');
+      _out('Estimated credit cost: ${selected.length * 2} credits');
+    }
   }
   _out('');
 
@@ -614,7 +676,7 @@ Future<void> main(List<String> args) async {
   } else {
     for (final c in selected) {
       try {
-        await _verify(c, apiKey);
+        await _verify(c, apiKey, extremesOnly: extremesOnly);
       } catch (e) {
         // One malformed response must not abort the whole run.
         _out('=== ${c.label} — UNEXPECTED ERROR: ${_scrub('$e')} ===');

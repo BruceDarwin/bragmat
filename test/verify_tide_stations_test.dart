@@ -356,4 +356,108 @@ void main() {
       expect(verdict, contains('INCONCLUSIVE'));
     });
   });
+
+  group('assessExtremesOnly', () {
+    const snakeBay = Candidate('snake_bay', 'Snake Bay', -11.4, 130.6667,
+        expectedStation: 'Snake Bay');
+    const croker = Candidate('cape_croker', 'Cape Croker', -11.0, 132.567);
+
+    test('expected station served → SUITABLE', () {
+      expect(
+        assessExtremesOnly(
+          snakeBay,
+          const PredictionResult(
+              source: PredictionSource.station, stationName: 'Snake Bay'),
+        ),
+        contains('SUITABLE'),
+      );
+    });
+
+    test('parenthesised station names still match', () {
+      // WorldTides returns 'Milner Bay (Groote Eylandt)' — substring
+      // matching must accept it for expected 'Milner Bay'.
+      const milner = Candidate('milner_bay', 'Milner Bay', -13.85, 136.4,
+          expectedStation: 'Milner Bay');
+      expect(
+        assessExtremesOnly(
+          milner,
+          const PredictionResult(
+              source: PredictionSource.station,
+              stationName: 'Milner Bay (Groote Eylandt)'),
+        ),
+        contains('SUITABLE'),
+      );
+    });
+
+    test('substituted station is flagged for review', () {
+      expect(
+        assessExtremesOnly(
+          snakeBay,
+          const PredictionResult(
+              source: PredictionSource.station, stationName: 'Darwin'),
+        ),
+        contains('REVIEW'),
+      );
+    });
+
+    test('atlas when a station was expected is flagged for review', () {
+      expect(
+        assessExtremesOnly(
+          snakeBay,
+          const PredictionResult(
+              source: PredictionSource.atlas, atlas: 'FES2022'),
+        ),
+        contains('REVIEW'),
+      );
+    });
+
+    test('atlas for a model candidate is confirmed MODEL-ONLY', () {
+      expect(
+        assessExtremesOnly(
+          croker,
+          const PredictionResult(
+              source: PredictionSource.atlas, atlas: 'FES2022'),
+        ),
+        contains('MODEL-ONLY'),
+      );
+    });
+
+    test('a station where a model was expected is flagged for review',
+        () {
+      expect(
+        assessExtremesOnly(
+          croker,
+          const PredictionResult(
+              source: PredictionSource.station,
+              stationName: 'Port Essington'),
+        ),
+        contains('REVIEW'),
+      );
+    });
+
+    test('errors are inconclusive', () {
+      expect(
+        assessExtremesOnly(
+          snakeBay,
+          const PredictionResult(
+              source: PredictionSource.error, error: 'HTTP 500'),
+        ),
+        contains('INCONCLUSIVE'),
+      );
+    });
+  });
+
+  group('assessSuitability errors', () {
+    const darwin = Candidate('darwin', 'Darwin', -12.4667, 130.85,
+        expectedStation: 'Darwin');
+
+    test('API errors are inconclusive, never suitable', () {
+      final verdict = assessSuitability(
+        darwin,
+        const StationLookup(error: 'HTTP 500'),
+        const PredictionResult(source: PredictionSource.error),
+      );
+      expect(verdict, contains('INCONCLUSIVE'));
+    });
+  });
 }
