@@ -378,6 +378,53 @@ void main() {
     });
   });
 
+  group('fresh-install schema parity (v29)', () {
+    // Regression: _createDB previously omitted the v28 tide columns, so a
+    // fresh install lacked tide_reference_*/worldtides_* entirely while
+    // upgraded databases had them. These assertions pin the parity.
+    test('fresh v29 environmental_conditions has the v28 tide columns',
+        () async {
+      final db = await DatabaseHelper.instance.database;
+      final columns = (await db.rawQuery(
+              'PRAGMA table_info(environmental_conditions)'))
+          .map((c) => c['name'] as String)
+          .toSet();
+
+      for (final col in const [
+        'tide_reference_mode',
+        'tide_reference_name',
+        'tide_request_lat',
+        'tide_request_lon',
+        'worldtides_station',
+        'worldtides_atlas',
+        'worldtides_response_lat',
+        'worldtides_response_lon',
+      ]) {
+        expect(columns, contains(col),
+            reason: 'fresh v29 install must contain $col');
+      }
+    });
+
+    test('fresh v29 tide_cache has the WorldTides source columns',
+        () async {
+      final db = await DatabaseHelper.instance.database;
+      final columns =
+          (await db.rawQuery('PRAGMA table_info(tide_cache)'))
+              .map((c) => c['name'] as String)
+              .toSet();
+
+      for (final col in const [
+        'worldtides_station',
+        'worldtides_atlas',
+        'worldtides_response_lat',
+        'worldtides_response_lon',
+      ]) {
+        expect(columns, contains(col),
+            reason: 'fresh v29 install must contain $col');
+      }
+    });
+  });
+
   group('offline behaviour', () {
     test('new catch with WorldTides unavailable records the selected '
         'reference and reports unavailable', () async {

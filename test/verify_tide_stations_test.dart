@@ -78,10 +78,48 @@ void main() {
     });
   });
 
+  group('candidate selection', () {
+    const candidates = [
+      Candidate('darwin', 'Darwin', -12.4667, 130.85),
+      Candidate('dundee_beach', 'Dundee Beach', -12.705, 130.355),
+      Candidate('melville_bay', 'Melville Bay / Gove', -12.25, 136.7),
+    ];
+
+    test('no selectors returns all candidates', () {
+      expect(selectCandidates(candidates, const []).length, 3);
+    });
+
+    test('keys select exactly the named candidates', () {
+      final selected = selectCandidates(
+          candidates, const ['darwin', 'dundee_beach']);
+      expect(selected.map((c) => c.key), ['darwin', 'dundee_beach']);
+    });
+
+    test('label substrings and case-insensitive matching work', () {
+      final selected = selectCandidates(candidates, const ['DUNDEE']);
+      expect(selected.single.key, 'dundee_beach');
+    });
+
+    test('unmatched selectors are reported as unknown', () {
+      final unknown = <String>[];
+      final selected = selectCandidates(candidates, const ['darwin', 'bogus'],
+          unknown: unknown);
+      expect(selected.map((c) => c.key), ['darwin']);
+      expect(unknown, ['bogus']);
+    });
+
+    test('parseOnlySelectors handles --only=x,y and --only x y forms', () {
+      expect(parseOnlySelectors(['--run', '--only=darwin,dundee_beach']),
+          ['darwin', 'dundee_beach']);
+      expect(parseOnlySelectors(['--only', 'darwin']), ['darwin']);
+      expect(parseOnlySelectors(['--run']), isEmpty);
+    });
+  });
+
   group('assessSuitability', () {
-    const dundee = Candidate('Dundee Beach', -12.705, 130.355);
-    const darwin =
-        Candidate('Darwin', -12.4667, 130.85, expectedStation: 'Darwin');
+    const dundee = Candidate('dundee_beach', 'Dundee Beach', -12.705, 130.355);
+    const darwin = Candidate('darwin', 'Darwin', -12.4667, 130.85,
+        expectedStation: 'Darwin');
 
     StationLookup noStation() => const StationLookup(totalFound: 0);
     StationLookup darwinStation() => const StationLookup(

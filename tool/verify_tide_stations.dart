@@ -24,14 +24,19 @@
 // Windows usage:
 //   PowerShell:
 //     $env:WORLDTIDES_API_KEY = 'your-key-here'
-//     dart run tool/verify_tide_stations.dart          # plan + estimate
-//     dart run tool/verify_tide_stations.dart --run    # make the calls
+//     dart run tool/verify_tide_stations.dart                    # plan + estimate
+//     dart run tool/verify_tide_stations.dart --run              # all candidates
+//     dart run tool/verify_tide_stations.dart --run --only darwin,dundee_beach
 //   Command Prompt:
 //     set WORLDTIDES_API_KEY=your-key-here
-//     dart run tool\verify_tide_stations.dart --run
+//     dart run tool\verify_tide_stations.dart --run --only darwin,dundee_beach
+//
+// --only accepts candidate keys (see the list printed by a dry run) or
+// label substrings, comma-separated, case-insensitive. Unknown keys are
+// reported and cause a non-zero exit.
 //
 // Credit cost: 1 credit per `stations` call (searches <= 500 km) +
-// 1 credit per `extremes` call = 2 credits per candidate.
+// 1 credit per `extremes` call = 2 credits per selected candidate.
 
 import 'dart:convert';
 import 'dart:io';
@@ -46,14 +51,17 @@ const _stationSearchKm = 300;
 
 /// A candidate location to verify. [expectedStation] is the WorldTides
 /// station name we expect nearby — leave null for locations that are
-/// expected to resolve to the background model only.
+/// expected to resolve to the background model only. [key] is the slug
+/// used with --only.
 class Candidate {
+  final String key;
   final String label;
   final double lat;
   final double lon;
   final String? expectedStation;
 
-  const Candidate(this.label, this.lat, this.lon, {this.expectedStation});
+  const Candidate(this.key, this.label, this.lat, this.lon,
+      {this.expectedStation});
 }
 
 /// Candidates under evaluation for the Northern Territory catalogue.
@@ -61,19 +69,49 @@ class Candidate {
 /// unverified candidates pending results from this tool.
 const _candidates = <Candidate>[
   // Verified in production; re-check to confirm the tool's output.
-  Candidate('Darwin', -12.4667, 130.8500, expectedStation: 'Darwin'),
+  Candidate('darwin', 'Darwin', -12.4667, 130.8500,
+      expectedStation: 'Darwin'),
   // Model-only candidate — no WorldTides gauge is expected; fishers at
   // Dundee Beach use Darwin predictions. Verify atlas behaviour.
-  Candidate('Dundee Beach', -12.705, 130.355),
+  Candidate('dundee_beach', 'Dundee Beach', -12.705, 130.355),
   // Unverified NT candidates.
-  Candidate('Melville Bay / Gove', -12.250, 136.700,
+  Candidate('melville_bay', 'Melville Bay / Gove', -12.250, 136.700,
       expectedStation: 'Melville Bay'),
-  Candidate('Milner Bay / Groote Eylandt', -13.860, 136.420,
+  Candidate('milner_bay', 'Milner Bay / Groote Eylandt', -13.860, 136.420,
       expectedStation: 'Milner Bay'),
-  Candidate('Centre Island / Pellew Group', -15.550, 136.750,
+  Candidate('centre_island', 'Centre Island / Pellew Group', -15.550,
+      136.750,
       expectedStation: 'Centre Island'),
-  Candidate('Cape Wessel / Tiwi area', -11.000, 136.750),
+  Candidate('cape_wessel', 'Cape Wessel / Tiwi area', -11.000, 136.750),
 ];
+
+/// Selects the candidates matching any of [selectors] (candidate key or
+/// label substring, case-insensitive). Returns the selected candidates;
+/// [unknown] collects selectors that matched nothing.
+List<Candidate> selectCandidates(
+  List<Candidate> candidates,
+  List<String> selectors, {
+  List<String>? unknown,
+}) {
+  if (selectors.isEmpty) return List.of(candidates);
+  final selected = <Candidate>[];
+  for (final raw in selectors) {
+    final sel = raw.trim().toLowerCase();
+    if (sel.isEmpty) continue;
+    final matches = candidates
+        .where((c) =>
+            c.key.toLowerCase() == sel || c.label.toLowerCase().contains(sel))
+        .toList();
+    if (matches.isEmpty) {
+      unknown?.add(raw);
+    } else {
+      for (final m in matches) {
+        if (!selected.contains(m)) selected.add(m);
+      }
+    }
+  }
+  return selected;
+}
 
 /// What the `extremes` response resolved to for a request.
 enum PredictionSource { station, atlas, none, error }
@@ -271,18 +309,47 @@ Future<void> _verify(Candidate c, String apiKey) async {
   stdout.writeln('');
 }
 
+/// Parses `--only a,b,c` from the argument list. Returns the selectors.
+List<String> parseOnlySelectors(List<String> args) {
+  for (final arg in args) {
+    if (arg.startsWith('--only=')) {
+      return arg.substring('--only='.length).split(',');
+    }
+  }
+  final idx = args.indexOf('--only');
+  if (idx >= 0 && idx + 1 < args.length) {
+    return args[idx + 1].split(',');
+  }
+  return const [];
+}
+
 Future<void> main(List<String> args) async {
   final run = args.contains('--run');
+  final unknown = <String>[];
+  final selected =
+      selectCandidates(_candidates, parseOnlySelectors(args), unknown: unknown);
+
+  if (unknown.isNotEmpty) {
+    stderr.writeln('ERROR: --only matched nothing for: ${unknown.join(", ")}');
+    stderr.writeln('Valid keys: ${_candidates.map((c) => c.key).join(", ")}');
+    exitCode = 2;
+    return;
+  }
+  if (selected.isEmpty) {
+    stderr.writeln('ERROR: --only selected no candidates.');
+    exitCode = 2;
+    return;
+  }
 
   stdout.writeln('WorldTides tide-station verification (read-only)');
-  stdout.writeln('Candidates: ${_candidates.length}');
-  for (final c in _candidates) {
-    stdout.writeln('  - ${c.label} (${c.lat}, ${c.lon})'
+  stdout.writeln('Candidates selected: ${selected.length} of ${_candidates.length}');
+  for (final c in selected) {
+    stdout.writeln('  - ${c.key}: ${c.label} (${c.lat}, ${c.lon})'
         '${c.expectedStation != null ? " [expects ${c.expectedStation}]" : ""}');
   }
   stdout.writeln('');
   stdout.writeln('Calls:  2 per candidate (1 x stations + 1 x extremes)');
-  stdout.writeln('Estimated credit cost: ${_candidates.length * 2} credits');
+  stdout.writeln('Estimated credit cost: ${selected.length * 2} credits');
   stdout.writeln('');
 
   if (!run) {
@@ -299,7 +366,7 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  for (final c in _candidates) {
+  for (final c in selected) {
     await _verify(c, apiKey);
   }
 
