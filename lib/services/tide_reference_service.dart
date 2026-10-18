@@ -54,6 +54,16 @@ class TideReferenceService {
       longitude: 130.355,
       source: TideReferenceSource.model,
     ),
+    // Verified tide station ~10 km west of Dundee Beach: WorldTides
+    // station Australia:NT_TP053, station coords exactly as listed,
+    // `extremes` returns 'Native Point' (Australia) predictions.
+    'native_point': TideReference(
+      id: 'native_point',
+      displayName: 'Native Point',
+      latitude: -12.650,
+      longitude: 130.2667,
+      source: TideReferenceSource.station,
+    ),
   };
 
   /// Get the current tide reference based on user preferences

@@ -888,6 +888,16 @@ void main() {
       expect(dundee.longitude, 130.355);
     });
 
+    test('Native Point is a verified station-backed reference', () {
+      final point = TideReferenceService.getReferenceById('native_point')!;
+      expect(point.displayName, 'Native Point');
+      expect(point.isStation, isTrue);
+      expect(point.isModelLocation, isFalse);
+      // Verified WorldTides station Australia:NT_TP053.
+      expect(point.latitude, -12.650);
+      expect(point.longitude, 130.2667);
+    });
+
     test('describeSource distinguishes model locations', () {
       final model = TideReference(
         id: 'dundee_beach',
