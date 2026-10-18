@@ -38,6 +38,50 @@ void main() {
       final result = parseStationsResponse({'error': 'call failed'});
       expect(result.error, 'call failed');
     });
+
+    // Regression: WorldTides returns station coordinates/distance as
+    // numeric strings — `as num?` crashed the original run.
+    test('numeric-string fields are coerced', () {
+      final result = parseStationsResponse({
+        'stations': [
+          {
+            'id': 'darwin',
+            'name': 'Darwin',
+            'lat': '-12.4667',
+            'lon': '130.85',
+            'distance': '1.234',
+          },
+        ],
+      });
+      expect(result.lat, -12.4667);
+      expect(result.lon, 130.85);
+      expect(result.distanceKm, 1.234);
+    });
+
+    test('malformed or missing numeric fields become null, not a crash',
+        () {
+      final result = parseStationsResponse({
+        'stations': [
+          {'id': 'x', 'name': 'X', 'lat': 'not-a-number', 'distance': {}},
+        ],
+      });
+      expect(result.lat, isNull);
+      expect(result.lon, isNull);
+      expect(result.distanceKm, isNull);
+      expect(result.name, 'X');
+    });
+
+    test('a non-map station entry reports a parse error', () {
+      final result = parseStationsResponse({
+        'stations': ['unexpected string entry'],
+      });
+      expect(result.error, isNotNull);
+    });
+
+    test('non-string error values are surfaced safely', () {
+      final result = parseStationsResponse({'error': 42});
+      expect(result.error, '42');
+    });
   });
 
   group('parseExtremesResponse', () {
@@ -76,6 +120,29 @@ void main() {
       expect(result.source, PredictionSource.error);
       expect(result.error, 'invalid key');
     });
+
+    test('numeric-string response coordinates are coerced', () {
+      final result = parseExtremesResponse({
+        'station': 'Darwin',
+        'responseLat': '-12.4667',
+        'responseLon': '130.85',
+        'extremes': [],
+      });
+      expect(result.source, PredictionSource.station);
+      expect(result.responseLat, -12.4667);
+      expect(result.responseLon, 130.85);
+    });
+
+    test('malformed fields do not throw', () {
+      final result = parseExtremesResponse({
+        'station': {'unexpected': 'map'},
+        'responseLat': [1, 2],
+        'extremes': 'not-a-list',
+      });
+      // station present (stringified) — still classified, not crashed
+      expect(result.responseLat, isNull);
+      expect(result.eventCount, 0);
+    });
   });
 
   group('candidate selection', () {
@@ -113,6 +180,14 @@ void main() {
           ['darwin', 'dundee_beach']);
       expect(parseOnlySelectors(['--only', 'darwin']), ['darwin']);
       expect(parseOnlySelectors(['--run']), isEmpty);
+    });
+
+    test('parseReportPath handles path, bare flag, and absent forms', () {
+      expect(parseReportPath(['--report=report.txt']), 'report.txt');
+      expect(parseReportPath(['--report', 'out.txt']), 'out.txt');
+      expect(parseReportPath(['--report']),
+          'verify_tide_stations_report.txt');
+      expect(parseReportPath(['--run']), isNull);
     });
   });
 

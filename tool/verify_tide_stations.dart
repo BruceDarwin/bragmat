@@ -35,6 +35,16 @@
 // label substrings, comma-separated, case-insensitive. Unknown keys are
 // reported and cause a non-zero exit.
 //
+// --report [path] writes the printed output to a sanitized report file
+// (default verify_tide_stations_report.txt). It contains only station
+// names, coordinates and verdicts — never the API key or request URLs —
+// so it is safe to share.
+//
+// Robustness: response fields are coerced defensively (numbers and
+// numeric strings accepted; malformed/missing values become null or a
+// per-candidate error). A bad response for one candidate is reported
+// and does not abort the run.
+//
 // Credit cost: 1 credit per `stations` call (searches <= 500 km) +
 // 1 credit per `extremes` call = 2 credits per selected candidate.
 
@@ -158,26 +168,43 @@ class PredictionResult {
   });
 }
 
+/// Coerces a JSON value to [double], accepting numbers and numeric
+/// strings — WorldTides returns station coordinates and distances as
+/// strings in the `stations` response. Missing or malformed values
+/// become null rather than throwing.
+double? _asDouble(dynamic value) {
+  if (value is num) return value.toDouble();
+  if (value is String) return double.tryParse(value.trim());
+  return null;
+}
+
+/// Coerces a JSON scalar to [String]. Missing values become null.
+String? _asString(dynamic value) => value?.toString();
+
 /// Parses the WorldTides `stations` response.
 ///
 /// Shape: `{ "stations": [ { "id": ..., "name": ..., "lat": ...,
-/// "lon": ..., "distance": ... }, ... ] }`
+/// "lon": ..., "distance": ... }, ... ] }` — where coordinates and
+/// distance may be encoded as strings.
 StationLookup parseStationsResponse(Map<String, dynamic> data) {
-  final error = data['error'];
-  if (error is String && error.isNotEmpty) {
+  final error = _asString(data['error']);
+  if (error != null && error.isNotEmpty) {
     return StationLookup(error: error);
   }
   final stations = data['stations'];
   if (stations is! List || stations.isEmpty) {
     return const StationLookup(totalFound: 0);
   }
-  final nearest = stations.first as Map<String, dynamic>;
+  final nearest = stations.first;
+  if (nearest is! Map) {
+    return const StationLookup(error: 'malformed station entry');
+  }
   return StationLookup(
-    id: nearest['id']?.toString(),
-    name: nearest['name'] as String?,
-    lat: (nearest['lat'] as num?)?.toDouble(),
-    lon: (nearest['lon'] as num?)?.toDouble(),
-    distanceKm: (nearest['distance'] as num?)?.toDouble(),
+    id: _asString(nearest['id']),
+    name: _asString(nearest['name']),
+    lat: _asDouble(nearest['lat']),
+    lon: _asDouble(nearest['lon']),
+    distanceKm: _asDouble(nearest['distance']),
     totalFound: stations.length,
   );
 }
@@ -186,12 +213,12 @@ StationLookup parseStationsResponse(Map<String, dynamic> data) {
 ///
 /// `station` present → named gauge; `atlas` only → background model.
 PredictionResult parseExtremesResponse(Map<String, dynamic> data) {
-  final error = data['error'];
-  if (error is String && error.isNotEmpty) {
+  final error = _asString(data['error']);
+  if (error != null && error.isNotEmpty) {
     return PredictionResult(source: PredictionSource.error, error: error);
   }
-  final station = data['station'] as String?;
-  final atlas = data['atlas'] as String?;
+  final station = _asString(data['station']);
+  final atlas = _asString(data['atlas']);
   final extremes = data['extremes'];
   return PredictionResult(
     source: station != null
@@ -199,8 +226,8 @@ PredictionResult parseExtremesResponse(Map<String, dynamic> data) {
         : (atlas != null ? PredictionSource.atlas : PredictionSource.none),
     stationName: station,
     atlas: atlas,
-    responseLat: (data['responseLat'] as num?)?.toDouble(),
-    responseLon: (data['responseLon'] as num?)?.toDouble(),
+    responseLat: _asDouble(data['responseLat']),
+    responseLon: _asDouble(data['responseLon']),
     eventCount: extremes is List ? extremes.length : 0,
   );
 }
@@ -259,8 +286,25 @@ Future<Map<String, dynamic>?> _get(Uri uri) async {
 Uri _uri(Map<String, String> params, String apiKey) =>
     Uri.parse(_baseUrl).replace(queryParameters: {...params, 'key': apiKey});
 
+/// Accumulates printed output so it can optionally be written to a
+/// sanitized report file (--report). The report contains only what is
+/// printed — candidate labels, station names, coordinates and verdicts.
+/// The API key and request URLs are never emitted, so the report is
+/// safe to share.
+final _reportLines = StringBuffer();
+
+void _out(String line) {
+  stdout.writeln(line);
+  _reportLines.writeln(line);
+}
+
+/// Removes any `key=` query parameter from a message before display —
+/// belt-and-braces over never building log output from request URLs.
+String _scrub(String message) =>
+    message.replaceAll(RegExp(r'key=[^&\s]+'), 'key=***');
+
 Future<void> _verify(Candidate c, String apiKey) async {
-  stdout.writeln('=== ${c.label} (requested ${c.lat}, ${c.lon}) ===');
+  _out('=== ${c.label} (requested ${c.lat}, ${c.lon}) ===');
 
   final stationsData = await _get(_uri({
     'stations': '',
@@ -282,31 +326,31 @@ Future<void> _verify(Candidate c, String apiKey) async {
       extremesData == null ? const PredictionResult(source: PredictionSource.error, error: 'request failed') : parseExtremesResponse(extremesData);
 
   if (lookup.error != null) {
-    stdout.writeln('  stations lookup: ERROR ${lookup.error}');
+    _out('  stations lookup: ERROR ${lookup.error}');
   } else if (lookup.name == null) {
-    stdout.writeln('  stations lookup: no station within $_stationSearchKm km');
+    _out('  stations lookup: no station within $_stationSearchKm km');
   } else {
-    stdout.writeln('  nearest station:  ${lookup.name} (id: ${lookup.id})');
-    stdout.writeln('  station coords:   ${lookup.lat}, ${lookup.lon}');
+    _out('  nearest station:  ${lookup.name} (id: ${lookup.id})');
+    _out('  station coords:   ${lookup.lat}, ${lookup.lon}');
     if (lookup.distanceKm != null) {
-      stdout.writeln('  distance:         ${lookup.distanceKm} km');
+      _out('  distance:         ${lookup.distanceKm} km');
     }
-    stdout.writeln('  stations found:   ${lookup.totalFound}');
+    _out('  stations found:   ${lookup.totalFound}');
   }
 
   if (prediction.error != null) {
-    stdout.writeln('  prediction:       ERROR ${prediction.error}');
+    _out('  prediction:       ERROR ${prediction.error}');
   } else {
-    stdout.writeln('  prediction via:   '
+    _out('  prediction via:   '
         '${prediction.source == PredictionSource.station ? "STATION" : prediction.source == PredictionSource.atlas ? "ATLAS/MODEL" : "NONE"}'
         '${prediction.stationName != null ? " — ${prediction.stationName}" : ""}'
         '${prediction.atlas != null ? " (${prediction.atlas})" : ""}');
-    stdout.writeln('  response coords:  ${prediction.responseLat}, ${prediction.responseLon}');
-    stdout.writeln('  events returned:  ${prediction.eventCount}');
+    _out('  response coords:  ${prediction.responseLat}, ${prediction.responseLon}');
+    _out('  events returned:  ${prediction.eventCount}');
   }
 
-  stdout.writeln('  verdict:          ${assessSuitability(c, lookup, prediction)}');
-  stdout.writeln('');
+  _out('  verdict:          ${assessSuitability(c, lookup, prediction)}');
+  _out('');
 }
 
 /// Parses `--only a,b,c` from the argument list. Returns the selectors.
@@ -323,8 +367,27 @@ List<String> parseOnlySelectors(List<String> args) {
   return const [];
 }
 
+/// Parses `--report <path>` or `--report=<path>`. Returns the output
+/// file path, or null when the flag is absent. A bare `--report` writes
+/// to `verify_tide_stations_report.txt` in the current directory.
+String? parseReportPath(List<String> args) {
+  for (final arg in args) {
+    if (arg.startsWith('--report=')) {
+      final v = arg.substring('--report='.length).trim();
+      return v.isEmpty ? 'verify_tide_stations_report.txt' : v;
+    }
+  }
+  final idx = args.indexOf('--report');
+  if (idx < 0) return null;
+  if (idx + 1 < args.length && !args[idx + 1].startsWith('--')) {
+    return args[idx + 1];
+  }
+  return 'verify_tide_stations_report.txt';
+}
+
 Future<void> main(List<String> args) async {
   final run = args.contains('--run');
+  final reportPath = parseReportPath(args);
   final unknown = <String>[];
   final selected =
       selectCandidates(_candidates, parseOnlySelectors(args), unknown: unknown);
@@ -341,19 +404,20 @@ Future<void> main(List<String> args) async {
     return;
   }
 
-  stdout.writeln('WorldTides tide-station verification (read-only)');
-  stdout.writeln('Candidates selected: ${selected.length} of ${_candidates.length}');
+  _out('WorldTides tide-station verification (read-only)');
+  _out('Candidates selected: ${selected.length} of ${_candidates.length}');
   for (final c in selected) {
-    stdout.writeln('  - ${c.key}: ${c.label} (${c.lat}, ${c.lon})'
+    _out('  - ${c.key}: ${c.label} (${c.lat}, ${c.lon})'
         '${c.expectedStation != null ? " [expects ${c.expectedStation}]" : ""}');
   }
-  stdout.writeln('');
-  stdout.writeln('Calls:  2 per candidate (1 x stations + 1 x extremes)');
-  stdout.writeln('Estimated credit cost: ${selected.length * 2} credits');
-  stdout.writeln('');
+  _out('');
+  _out('Calls:  2 per candidate (1 x stations + 1 x extremes)');
+  _out('Estimated credit cost: ${selected.length * 2} credits');
+  _out('');
 
   if (!run) {
-    stdout.writeln('Dry run — no API calls made. Re-run with --run to execute.');
+    _out('Dry run — no API calls made. Re-run with --run to execute.');
+    _writeReport(reportPath);
     return;
   }
 
@@ -367,9 +431,28 @@ Future<void> main(List<String> args) async {
   }
 
   for (final c in selected) {
-    await _verify(c, apiKey);
+    try {
+      await _verify(c, apiKey);
+    } catch (e) {
+      // One malformed response must not abort the whole run.
+      _out('=== ${c.label} — UNEXPECTED ERROR: ${_scrub('$e')} ===');
+      _out('');
+    }
   }
 
-  stdout.writeln('Done. Review verdicts before editing the catalogue in '
+  _out('Done. Review verdicts before editing the catalogue in '
       'lib/services/tide_reference_service.dart — this tool never modifies it.');
+  _writeReport(reportPath);
+}
+
+/// Writes the captured output to [path] when --report was given.
+void _writeReport(String? path) {
+  if (path == null) return;
+  try {
+    File(path).writeAsStringSync(_reportLines.toString());
+    stdout.writeln('Report written to $path '
+        '(sanitized: no API key, no request URLs).');
+  } catch (e) {
+    stderr.writeln('WARNING: could not write report to $path: $e');
+  }
 }
