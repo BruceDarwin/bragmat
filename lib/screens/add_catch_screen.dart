@@ -192,10 +192,16 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       _latitudeController.text = widget.catchToEdit!.latitude?.toString() ?? '';
       _longitudeController.text = widget.catchToEdit!.longitude?.toString() ?? '';
       _coordinateSource = widget.catchToEdit!.coordinateSource;
-      
+
       setState(() {
         _isLoadingInitialData = false;
       });
+
+      // Camera photos taken while editing this catch can be lost when
+      // Android destroys the activity. Recover them here — before any
+      // subsequent picker call clears the plugin's lost-data cache.
+      // The recovered photo attaches to _mediaItems for this catch.
+      _retrieveLostData();
     } else {
       // For new catches, load lookup lists in parallel
       await Future.wait([
@@ -443,10 +449,11 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   final Set<String> _recoveredLostPaths = {};
 
   Future<void> _retrieveLostData() async {
-    // Called both from _initializeData (new catches) and on lifecycle
-    // resume. Android normally returns lost data only once, but the two
-    // call sites can overlap — a re-entry guard plus a processed-path set
-    // prevents duplicate attachments of the same recovered file.
+    // Called from _initializeData (new and edited catches) and on
+    // lifecycle resume. Android normally returns lost data only once,
+    // but the call sites can overlap — a re-entry guard plus a
+    // processed-path set prevents duplicate attachments of the same
+    // recovered file.
     if (_retrievingLostData) return;
     _retrievingLostData = true;
     try {

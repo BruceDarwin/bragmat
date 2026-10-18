@@ -515,5 +515,147 @@ void main() {
       expect(saved!.latitude, closeTo(-12.3767, 0.001));
       expect(saved!.coordinateSource, 'photo_gps');
     });
+
+    /// Seeds an existing catch with one stored photo on disk.
+    Future<int> seedCatchWithPhoto(Directory dir) async {
+      final stored = File(
+          path.join(dir.path, 'bragmat', 'media', 'catches', 'existing.jpg'));
+      await stored.parent.create(recursive: true);
+      await File(mfnrFixture).copy(stored.path);
+      final catchId = await DatabaseHelper.instance.insertCatch(model.Catch(
+        lengthCm: 45,
+        createdAt: DateTime(2026, 10, 1),
+        dateCaught: DateTime(2026, 10, 1, 9, 45),
+      ));
+      await DatabaseHelper.instance.insertCatchMedia(CatchMedia(
+        catchId: catchId,
+        filePath: 'catches/existing.jpg',
+        mediaType: 'photo',
+        role: 'primary',
+      ));
+      return catchId;
+    }
+
+    testWidgets('edit-mode lost-camera-data recovery attaches to the '
+        'existing catch without auto-prompting', (tester) async {
+      late final int catchId;
+      late final String recovered;
+      await tester.runAsync(() async {
+        catchId = await seedCatchWithPhoto(testDir);
+        recovered = await copyFixtureTo(srFixture, testDir);
+      });
+      fakePicker.lostData =
+          LostDataResponse(files: [XFile(recovered)]);
+
+      final state = await pumpScreen(tester,
+          catchToEdit: model.Catch(
+            id: catchId,
+            lengthCm: 45,
+            createdAt: DateTime(2026, 10, 1),
+            dateCaught: DateTime(2026, 10, 1, 9, 45),
+          ));
+
+      // Existing photo + recovered photo; recovery ran during init.
+      expect(state.debugMediaItems, hasLength(2));
+      // Existing photo keeps the primary role; recovered is 'other'.
+      expect(state.debugMediaItems.first.role, 'primary');
+      expect(state.debugMediaItems.last.role, 'other');
+      // Edit-mode attachments never auto-prompt — explicit action only.
+      expect(find.text('Photo Details Found'), findsNothing);
+
+      // Save persists the recovered media against the edited catch.
+      final save = find.text('Save Changes');
+      await tester.ensureVisible(save);
+      await tester.tap(save);
+      await flushRealAsync(tester);
+      await tester.pumpAndSettle();
+
+      late final List<CatchMedia> rows;
+      await tester.runAsync(() async {
+        rows = await DatabaseHelper.instance.getMediaForCatch(catchId);
+      });
+      expect(rows, hasLength(2));
+      expect(rows.map((m) => m.catchId), everyElement(catchId));
+    });
+
+    testWidgets('repeated lost-data delivery in edit mode does not '
+        'duplicate media', (tester) async {
+      late final int catchId;
+      late final String recovered;
+      await tester.runAsync(() async {
+        catchId = await seedCatchWithPhoto(testDir);
+        recovered = await copyFixtureTo(srFixture, testDir);
+      });
+      fakePicker.lostData =
+          LostDataResponse(files: [XFile(recovered)]);
+
+      final state = await pumpScreen(tester,
+          catchToEdit: model.Catch(
+            id: catchId,
+            lengthCm: 45,
+            createdAt: DateTime(2026, 10, 1),
+            dateCaught: DateTime(2026, 10, 1, 9, 45),
+          ));
+      expect(state.debugMediaItems, hasLength(2));
+
+      // Later resume redelivers the same file — dedupe holds.
+      await state.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await flushRealAsync(tester);
+      await tester.pumpAndSettle();
+      expect(state.debugMediaItems, hasLength(2));
+    });
+
+    testWidgets('recovered edit-mode photo coexists with a subsequent '
+        'gallery pick', (tester) async {
+      late final int catchId;
+      late final String recovered;
+      await tester.runAsync(() async {
+        catchId = await seedCatchWithPhoto(testDir);
+        recovered = await copyFixtureTo(srFixture, testDir);
+      });
+      fakePicker.lostData =
+          LostDataResponse(files: [XFile(recovered)]);
+
+      final state = await pumpScreen(tester,
+          catchToEdit: model.Catch(
+            id: catchId,
+            lengthCm: 45,
+            createdAt: DateTime(2026, 10, 1),
+            dateCaught: DateTime(2026, 10, 1, 9, 45),
+          ));
+      expect(state.debugMediaItems, hasLength(2));
+
+      // A later picker operation (which on Android clears the plugin's
+      // lost-data cache) must leave recovered attachments intact.
+      late final String picked;
+      await tester.runAsync(() async {
+        picked = await copyFixtureTo(mfnrFixture, testDir);
+      });
+      fakePicker.nextPick = XFile(picked);
+      await tapAddPhoto(tester);
+
+      expect(state.debugMediaItems, hasLength(3));
+      expect(fakePicker.pickCalls, 1);
+    });
+
+    testWidgets('lost-data pointing at a missing file attaches nothing '
+        'and does not crash', (tester) async {
+      fakePicker.lostData = LostDataResponse(
+          files: [XFile(path.join(testDir.path, 'does_not_exist.jpg'))]);
+
+      final state = await pumpScreen(tester);
+      await flushRealAsync(tester);
+      await tester.pumpAndSettle();
+
+      expect(state.debugMediaItems, isEmpty);
+      expect(find.text('Photo Details Found'), findsNothing);
+    });
+
+    testWidgets('empty lost-data response is a no-op', (tester) async {
+      fakePicker.lostData = LostDataResponse.empty();
+      final state = await pumpScreen(tester);
+      expect(state.debugMediaItems, isEmpty);
+      expect(find.text('Photo Details Found'), findsNothing);
+    });
   });
 }
