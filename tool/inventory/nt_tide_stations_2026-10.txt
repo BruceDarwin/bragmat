@@ -1,0 +1,364 @@
+# NT Tide-Station Discovery Inventory — 2026-10
+#
+# Complete WorldTides 'stations' discovery evidence for the NT
+# catalogue: 131 unique stations (93 NT, 38 interstate/other)
+# gathered in 7 anchor sweeps at 500 km radius (7 credits).
+#
+# Retained verbatim for future catalogue expansion and NT coastal
+# coverage assessment. Candidates promoted to the published
+# catalogue reference this inventory as their discovery
+# provenance. Source reports: discovery_darwin.txt (anchor 1)
+# and discovery_rest.txt (anchors 2-7), both read-only sweeps.
+#
+# Entry format:  Name (id: provider:id)  lat, lon  — via <anchor>
+# [official] = returned by WorldTides as an official/named station
+
+======================================================================
+PART 1 — Darwin anchor sweep
+======================================================================
+
+WorldTides NT station discovery (read-only)
+Anchors selected: 1 of 7
+  - anchor_darwin: Darwin / Fog Bay / Tiwi south (-12.6, 130.55)
+
+Calls:  1 x stations per anchor (500 km radius = 1 credit each)
+Estimated credit cost: 1 credits
+
+=== Darwin / Fog Bay / Tiwi south: 90 station(s) within 500 km ===
+
+--- Deduplicated inventory: 90 unique station(s) from 90 sightings (67 NT, 23 interstate/other) ---
+
+  Darwin & surrounds (7):
+    Burge Point (id: Australia:NT_TP057)  -12.5667, 130.5667  — via anchor_darwin [official]
+    Charles Point Patches (id: Australia:NT_TP036)  -12.3167, 130.6833  — via anchor_darwin [official]
+    Darwin (id: Australia:NT_TP001)  -12.4667, 130.8333  — via anchor_darwin [official]
+    Fenton Patches (id: Australia:NT_TP061)  -12.2167, 130.6667  — via anchor_darwin [official]
+    Fish Reef (id: Australia:NT_TP054)  -12.4167, 130.4167  — via anchor_darwin [official]
+    Nightcliff (id: Australia:NT_TP063)  -12.3667, 130.8167  — via anchor_darwin [official]
+    Tapa Bay (id: Australia:NT_TP055)  -12.4333, 130.5833  — via anchor_darwin [official]
+
+  Fog Bay & Daly coast (7):
+    Anson Bay (id: Australia:NT_TP049)  -13.3333, 130.0833  — via anchor_darwin [official]
+    Cape Ford (id: Australia:NT_TP009)  -13.4167, 129.9167  — via anchor_darwin [official]
+    Cape Scott Offshore (id: Australia:NT_TP048)  -13.4167, 129.5167  — via anchor_darwin [official]
+    Native Point (id: Australia:NT_TP053)  -12.65, 130.2667  — via anchor_darwin [official]
+    North Peron Island (id: FES2022:6318)  -13.1333, 130.0  — via anchor_darwin [official]
+    Peron Island North (id: Australia:NT_TP051)  -13.0833, 129.9667  — via anchor_darwin [official]
+    Point Jenny (id: Australia:NT_TP052)  -12.9, 130.1667  — via anchor_darwin [official]
+
+  Tiwi Islands (9):
+    Cache Point (id: Australia:NT_TP071)  -11.3167, 130.9167  — via anchor_darwin [official]
+    Cape Van Dieman (id: Australia:NT_TP069)  -11.15, 130.3667  — via anchor_darwin [official]
+    Medina Inlet South (id: Australia:NT_TP044)  -11.8167, 130.6  — via anchor_darwin [official]
+    Munkunuwa (id: Australia:NT_TP058)  -11.8667, 130.4667  — via anchor_darwin [official]
+    Point Fawcett (Offshore) (id: Australia:NT_TP056)  -11.6833, 130.0167  — via anchor_darwin [official]
+    Point Jahleel (id: Australia:NT_TP072)  -11.15, 131.2667  — via anchor_darwin [official]
+    Snake Bay (id: Australia:NT_TP070)  -11.4, 130.6667  — via anchor_darwin [official]
+    South Barlow Point (id: Australia:NT_TP045)  -11.4167, 130.4167  — via anchor_darwin [official]
+    St. Asaph Bay (id: Australia:NT_TP043)  -11.2667, 130.2667  — via anchor_darwin [official]
+
+  Cobourg Peninsula (15):
+    Camp Point (id: Australia:NT_TP068)  -11.6167, 131.4167  — via anchor_darwin [official]
+    Cape Cockburn (id: Australia:NT_TP083)  -11.3333, 132.8667  — via anchor_darwin [official]
+    Cape Croker (id: FES2022:6339)  -11.0, 132.567  — via anchor_darwin
+    Cape Don (id: Australia:NT_TP040)  -11.3, 131.7667  — via anchor_darwin [official]
+    Christine Reef (id: Australia:NT_TP066)  -11.75, 131.9667  — via anchor_darwin [official]
+    Copeland Island (id: Australia:NT_TP082)  -11.4667, 132.7167  — via anchor_darwin [official]
+    D'urville Point (id: Australia:NT_TP080)  -11.2167, 132.3667  — via anchor_darwin [official]
+    Grant Island (id: Australia:NT_TP086)  -11.1667, 132.8667  — via anchor_darwin [official]
+    Nw Peacock Island (id: Australia:NT_TP076)  -10.9, 132.3667  — via anchor_darwin [official]
+    One Tree Point (id: Australia:NT_TP084)  -11.15, 132.7167  — via anchor_darwin [official]
+    Peacock Island (id: Australia:NT_TP078)  -11.0167, 132.4333  — via anchor_darwin [official]
+    Point David (id: Australia:NT_TP079)  -11.3333, 132.5667  — via anchor_darwin [official]
+    Port Essington (id: Australia:NT_TP074)  -11.05, 132.0167  — via anchor_darwin [official]
+    Smith Point - West (id: Australia:NT_TP075)  -11.1167, 132.1167  — via anchor_darwin [official]
+    Two Hills Bay (id: Australia:NT_TP033)  -11.5167, 132.05  — via anchor_darwin [official]
+
+  Arnhem Land (8):
+    Aurari Bay (id: Australia:NT_TP087)  -11.7167, 133.25  — via anchor_darwin [official]
+    Cuthbert Point (id: Australia:NT_TP015)  -11.75, 133.7667  — via anchor_darwin [official]
+    Entrance Island (id: Australia:NT_TP089)  -11.9333, 134.2167  — via anchor_darwin [official]
+    Hogmany Shoal (id: Australia:NT_TP020)  -10.9667, 133.15  — via anchor_darwin [official]
+    New Year Island - West (id: Australia:NT_TP085)  -10.9167, 133.0167  — via anchor_darwin [official]
+    North Goulburn Island (id: Australia:NT_TP088)  -11.5, 133.3667  — via anchor_darwin [official]
+    Paxie Shoal (id: Australia:NT_TP026)  -11.4167, 134.1167  — via anchor_darwin [official]
+    Yabooma Island (id: Australia:NT_TP038)  -12.0167, 134.9167  — via anchor_darwin [official]
+
+  Joseph Bonaparte Gulf (4):
+    Catfish Island (id: Australia:NT_TP013)  -14.4833, 129.4667  — via anchor_darwin [official]
+    Jones Point (id: Australia:NT_TP022)  -14.0667, 129.4833  — via anchor_darwin [official]
+    Port Keats (id: Australia:NT_TP042)  -14.15, 129.5667  — via anchor_darwin [official]
+    Quoin Island (id: Australia:NT_TP029)  -14.8167, 129.5667  — via anchor_darwin [official]
+
+  Offshore waters (17):
+    Adelaide River (id: Australia:NT_TP004)  -13.2333, 131.1333  — via anchor_darwin
+    Beagle A (id: Australia:NT_TP059)  -12.0167, 130.1167  — via anchor_darwin [official]
+    Calder Shoal (id: Australia:NT_TP006)  -10.8333, 129.0667  — via anchor_darwin [official]
+    Cape Hotham (id: Australia:NT_TP011)  -12.05, 131.2667  — via anchor_darwin [official]
+    Chambers Bay (id: Australia:NT_TP065)  -12.2667, 131.7667  — via anchor_darwin [official]
+    East Field Island (id: Australia:NT_TP016)  -12.1167, 132.4167  — via anchor_darwin [official]
+    Evans Shoal (id: Australia:NT_TP047)  -10.0667, 129.5167  — via anchor_darwin [official]
+    Glyde Point (id: Australia:NT_TP064)  -12.1167, 131.1167  — via anchor_darwin [official]
+    Goodrich Bank (id: Australia:NT_TP050)  -10.6833, 130.3167  — via anchor_darwin [official]
+    Hancox Shoal Area (id: Australia:NT_TP062)  -12.0667, 130.8667  — via anchor_darwin [official]
+    Lynedoch Bank (id: Australia:NT_TP023)  -10.0167, 130.8167  — via anchor_darwin [official]
+    Money Shoal (id: Australia:NT_TP024)  -10.3167, 132.7167  — via anchor_darwin [official]
+    Newby Shoal (id: Australia:NT_TP067)  -11.8667, 129.1667  — via anchor_darwin [official]
+    North Of Jones Shoal (id: Australia:NT_TP077)  -10.8167, 132.1833  — via anchor_darwin [official]
+    Parsons Bank (id: Australia:NT_TP060)  -11.9167, 130.7667  — via anchor_darwin [official]
+    Point Stuart (id: Australia:NT_TP027)  -12.1833, 131.9167  — via anchor_darwin [official]
+    West Alligator Head (id: Australia:NT_TP034)  -12.1167, 132.2667  — via anchor_darwin [official]
+
+  Interstate / other waters (23) — outside NT catalogue scope:
+    [WA] Adolphus Island (id: Australia:WA_TP114)  -15.1167, 128.1667 — via anchor_darwin
+    [WA] Bonaparte Gulf (id: Australia:WA_TP029)  -12.8333, 128.4667 — via anchor_darwin
+    [WA] Cape Domett (id: Australia:WA_TP032)  -14.8167, 128.3 — via anchor_darwin
+    [WA] Cape Whiskey (id: FES2022:6304a)  -14.1667, 127.65 — via anchor_darwin
+    [WA] Carronade Island (id: Australia:WA_TP140)  -13.9167, 126.6167 — via anchor_darwin
+    [WA] Echo Shoal (id: Australia:WA_TP079)  -10.15, 126.8167 — via anchor_darwin
+    [WA] Guy Point (id: Australia:WA_TP141)  -14.0667, 126.5 — via anchor_darwin
+    [WA] Jar Island (id: Australia:WA_TP081)  -14.15, 126.2167 — via anchor_darwin
+    [WA] Lacrosse Island (id: Australia:WA_TP050)  -14.75, 128.3 — via anchor_darwin
+    [WA] Lesueur Island (id: Australia:WA_TP051)  -13.8167, 127.2667 — via anchor_darwin
+    [WA] Loxton Shoal (id: Australia:NT_TP037)  -9.5833, 128.7167 — via anchor_darwin
+    [WA] Napier Broome Bay (id: Australia:WA_TP080)  -14.0833, 126.7 — via anchor_darwin
+    [WA] Pelican Island (id: Australia:WA_TP061)  -14.7667, 128.7667 — via anchor_darwin
+    [WA] Pender Point (id: Australia:WA_TP142)  -15.2667, 128.0667 — via anchor_darwin
+    [WA] Reveley Island (id: Australia:WA_TP066)  -14.3167, 127.9 — via anchor_darwin
+    [WA] Rocky Island (id: Australia:WA_TP067)  -14.0667, 127.5667 — via anchor_darwin
+    [WA] The Boxers (id: Australia:NT_TP031)  -11.4333, 128.4167 — via anchor_darwin
+    [WA] Troughton Island (id: Australia:WA_TP134)  -13.7667, 126.15 — via anchor_darwin
+    [WA] Unnamed Shoal (id: Australia:NT_TP046)  -10.5167, 128.6667 — via anchor_darwin
+    [WA] Van Cloon Shoal (id: Australia:WA_TP075)  -12.6167, 126.4167 — via anchor_darwin
+    [WA] Wyndham (id: Australia:WA_TP023)  -15.45, 128.1 — via anchor_darwin
+    [other] Arafura Sea (id: Australia:NT_TP081)  -9.5, 132.7667 — via anchor_darwin
+    [other] Cape Crocker Offshore (id: Australia:NT_TP008)  -9.5, 132.7667 — via anchor_darwin
+
+--- Candidate coverage (nearest discovered gauge) ---
+  Nightcliff: Nightcliff (4.5 km)
+  Charles Point Patches: Charles Point Patches (8.3 km)
+  Anson Bay: Anson Bay (9.7 km)
+  Tapa Bay: Burge Point (15.4 km)
+  Snake Bay: Snake Bay (7.6 km)
+  Cape Van Diemen: Beagle A (16.7 km)
+  Point Fawcett: Point Fawcett (Offshore) (10.8 km)
+  Port Essington: Two Hills Bay (19.6 km)
+  Cape Don: Cape Don (2.3 km)
+  Melville Bay: Yabooma Island (195.6 km)  → likely model-only
+  Cape Wessel: Yabooma Island (229.5 km)  → likely model-only
+  Elcho Island: Yabooma Island (71.1 km)  → likely model-only
+  North Goulburn Island: North Goulburn Island (8.0 km)
+  Milner Bay: Yabooma Island (261.8 km)  → likely model-only
+  Centre Island: Yabooma Island (461.7 km)  → likely model-only
+  Port Keats: Port Keats (12.2 km)
+  Evans Shoal: Evans Shoal (31.4 km)  → likely model-only
+  Money Shoal: Hancox Shoal Area (21.0 km)
+
+Done. This report is sanitized — no API key or request URLs.
+
+======================================================================
+
+
+PART 2 — Remaining anchor sweeps
+
+
+======================================================================
+
+WorldTides NT station discovery (read-only)
+Anchors selected: 6 of 7
+  - anchor_cobourg: Tiwi north / Cobourg / Van Diemen Gulf (-11.45, 131.9)
+  - anchor_arnhem: Arnhem Land coast (-12.45, 134.6)
+  - anchor_ne_arnhem: NE Arnhem / Gove / Wessel Islands (-12.1, 136.4)
+  - anchor_groote: Groote Eylandt / SW Gulf (-14.2, 136.55)
+  - anchor_gulf: Gulf of Carpentaria coast (NT) (-15.9, 136.2)
+  - anchor_bonaparte: Joseph Bonaparte Gulf (-14.6, 129.2)
+
+Calls:  1 x stations per anchor (500 km radius = 1 credit each)
+Estimated credit cost: 6 credits
+
+=== Tiwi north / Cobourg / Van Diemen Gulf: 85 station(s) within 500 km ===
+
+=== Arnhem Land coast: 82 station(s) within 500 km ===
+
+=== NE Arnhem / Gove / Wessel Islands: 54 station(s) within 500 km ===
+
+=== Groote Eylandt / SW Gulf: 37 station(s) within 500 km ===
+
+=== Gulf of Carpentaria coast (NT): 32 station(s) within 500 km ===
+
+=== Joseph Bonaparte Gulf: 69 station(s) within 500 km ===
+
+--- Deduplicated inventory: 131 unique station(s) from 359 sightings (93 NT, 38 interstate/other) ---
+
+  Darwin & surrounds (7):
+    Burge Point (id: Australia:NT_TP057)  -12.5667, 130.5667  — via anchor_cobourg [official]
+    Charles Point Patches (id: Australia:NT_TP036)  -12.3167, 130.6833  — via anchor_cobourg [official]
+    Darwin (id: Australia:NT_TP001)  -12.4667, 130.8333  — via anchor_cobourg [official]
+    Fenton Patches (id: Australia:NT_TP061)  -12.2167, 130.6667  — via anchor_cobourg [official]
+    Fish Reef (id: Australia:NT_TP054)  -12.4167, 130.4167  — via anchor_cobourg [official]
+    Nightcliff (id: Australia:NT_TP063)  -12.3667, 130.8167  — via anchor_cobourg [official]
+    Tapa Bay (id: Australia:NT_TP055)  -12.4333, 130.5833  — via anchor_cobourg [official]
+
+  Fog Bay & Daly coast (7):
+    Anson Bay (id: Australia:NT_TP049)  -13.3333, 130.0833  — via anchor_cobourg [official]
+    Cape Ford (id: Australia:NT_TP009)  -13.4167, 129.9167  — via anchor_cobourg [official]
+    Cape Scott Offshore (id: Australia:NT_TP048)  -13.4167, 129.5167  — via anchor_cobourg [official]
+    Native Point (id: Australia:NT_TP053)  -12.65, 130.2667  — via anchor_cobourg [official]
+    North Peron Island (id: FES2022:6318)  -13.1333, 130.0  — via anchor_cobourg [official]
+    Peron Island North (id: Australia:NT_TP051)  -13.0833, 129.9667  — via anchor_cobourg [official]
+    Point Jenny (id: Australia:NT_TP052)  -12.9, 130.1667  — via anchor_cobourg [official]
+
+  Tiwi Islands (9):
+    Cache Point (id: Australia:NT_TP071)  -11.3167, 130.9167  — via anchor_cobourg [official]
+    Cape Van Dieman (id: Australia:NT_TP069)  -11.15, 130.3667  — via anchor_cobourg [official]
+    Medina Inlet South (id: Australia:NT_TP044)  -11.8167, 130.6  — via anchor_cobourg [official]
+    Munkunuwa (id: Australia:NT_TP058)  -11.8667, 130.4667  — via anchor_cobourg [official]
+    Point Fawcett (Offshore) (id: Australia:NT_TP056)  -11.6833, 130.0167  — via anchor_cobourg [official]
+    Point Jahleel (id: Australia:NT_TP072)  -11.15, 131.2667  — via anchor_cobourg [official]
+    Snake Bay (id: Australia:NT_TP070)  -11.4, 130.6667  — via anchor_cobourg [official]
+    South Barlow Point (id: Australia:NT_TP045)  -11.4167, 130.4167  — via anchor_cobourg [official]
+    St. Asaph Bay (id: Australia:NT_TP043)  -11.2667, 130.2667  — via anchor_cobourg [official]
+
+  Cobourg Peninsula (15):
+    Camp Point (id: Australia:NT_TP068)  -11.6167, 131.4167  — via anchor_cobourg [official]
+    Cape Cockburn (id: Australia:NT_TP083)  -11.3333, 132.8667  — via anchor_cobourg [official]
+    Cape Croker (id: FES2022:6339)  -11.0, 132.567  — via anchor_cobourg
+    Cape Don (id: Australia:NT_TP040)  -11.3, 131.7667  — via anchor_cobourg [official]
+    Christine Reef (id: Australia:NT_TP066)  -11.75, 131.9667  — via anchor_cobourg [official]
+    Copeland Island (id: Australia:NT_TP082)  -11.4667, 132.7167  — via anchor_cobourg [official]
+    D'urville Point (id: Australia:NT_TP080)  -11.2167, 132.3667  — via anchor_cobourg [official]
+    Grant Island (id: Australia:NT_TP086)  -11.1667, 132.8667  — via anchor_cobourg [official]
+    Nw Peacock Island (id: Australia:NT_TP076)  -10.9, 132.3667  — via anchor_cobourg [official]
+    One Tree Point (id: Australia:NT_TP084)  -11.15, 132.7167  — via anchor_cobourg [official]
+    Peacock Island (id: Australia:NT_TP078)  -11.0167, 132.4333  — via anchor_cobourg [official]
+    Point David (id: Australia:NT_TP079)  -11.3333, 132.5667  — via anchor_cobourg [official]
+    Port Essington (id: Australia:NT_TP074)  -11.05, 132.0167  — via anchor_cobourg [official]
+    Smith Point - West (id: Australia:NT_TP075)  -11.1167, 132.1167  — via anchor_cobourg [official]
+    Two Hills Bay (id: Australia:NT_TP033)  -11.5167, 132.05  — via anchor_cobourg [official]
+
+  Arnhem Land (26):
+    Aurari Bay (id: Australia:NT_TP087)  -11.7167, 133.25  — via anchor_cobourg [official]
+    Auster Point (id: Australia:NT_TP005)  -11.0833, 136.6833  — via anchor_arnhem [official]
+    Cadell Strait (id: Australia:NT_TP073)  -12.05, 135.5667  — via anchor_cobourg [official]
+    Cape Arnhem (id: FES2022:6349)  -12.3167, 136.933  — via anchor_arnhem [official]
+    Cape Arnhem (id: Australia:NT_TP007)  -12.3167, 136.9167  — via anchor_arnhem [official]
+    Cape Grey (id: Australia:NT_TP010)  -13.0, 136.65  — via anchor_arnhem [official]
+    Cape Wessel (id: Australia:NT_TP012)  -11.0, 136.75  — via anchor_arnhem [official]
+    Cuthbert Point (id: Australia:NT_TP015)  -11.75, 133.7667  — via anchor_cobourg [official]
+    Elcho Island (id: Australia:NT_TP018)  -11.9167, 135.6667  — via anchor_cobourg [official]
+    Entrance Island (id: Australia:NT_TP089)  -11.9333, 134.2167  — via anchor_cobourg [official]
+    GOVE (id: FES2022:6348)  -12.2167, 136.667  — via anchor_arnhem
+    Guluwuru Island (id: Australia:NT_TP019)  -11.5, 136.3167  — via anchor_cobourg [official]
+    Hogmany Shoal (id: Australia:NT_TP020)  -10.9667, 133.15  — via anchor_cobourg [official]
+    Hopeful Bay (id: Australia:NT_TP092)  -11.4167, 136.5  — via anchor_arnhem [official]
+    Hutchison River (id: Australia:NT_TP021)  -12.1833, 135.1667  — via anchor_cobourg [official]
+    Mallison Island (id: Australia:NT_TP090)  -12.1667, 136.0833  — via anchor_cobourg [official]
+    Melville Bay (Gove Harbour) (id: Australia:NT_TP002)  -12.2, 136.6667  — via anchor_arnhem [official]
+    N.W. Crocodile Island (id: FES2022:6344a)  -11.7, 135.15  — via anchor_cobourg [official]
+    New Year Island - West (id: Australia:NT_TP085)  -10.9167, 133.0167  — via anchor_cobourg [official]
+    North Goulburn Island (id: Australia:NT_TP088)  -11.5, 133.3667  — via anchor_cobourg [official]
+    North West Crocodile Island (id: Australia:NT_TP025)  -11.7167, 135.15  — via anchor_cobourg [official]
+    Paxie Shoal (id: Australia:NT_TP026)  -11.4167, 134.1167  — via anchor_cobourg [official]
+    Stevens Island (id: Australia:NT_TP091)  -11.55, 136.1167  — via anchor_cobourg [official]
+    Truant Island (id: Australia:NT_TP032)  -11.65, 136.8167  — via anchor_arnhem [official]
+    Two Island Bay (id: Australia:NT_TP093)  -11.05, 136.7167  — via anchor_arnhem [official]
+    Yabooma Island (id: Australia:NT_TP038)  -12.0167, 134.9167  — via anchor_cobourg [official]
+
+  Groote Eylandt (5):
+    Cape Beatrice (id: Australia:NT_TP039)  -14.2667, 136.9333  — via anchor_arnhem [official]
+    Hawk Island (id: Australia:NT_TP041)  -13.6167, 136.9  — via anchor_arnhem [official]
+    Milner Bay (id: FES2022:6351a)  -13.8333, 136.5  — via anchor_arnhem [official]
+    Milner Bay (Groote Eylandt) (id: Australia:NT_TP003)  -13.85, 136.4  — via anchor_arnhem [official]
+    Port Langdon (id: FES2022:6351)  -13.8667, 136.833  — via anchor_arnhem
+
+  Gulf of Carpentaria (2):
+    Centre Island (id: Australia:NT_TP014)  -15.7333, 136.8  — via anchor_arnhem [official]
+    West Island (id: Australia:NT_TP035)  -15.5167, 136.55  — via anchor_arnhem [official]
+
+  Joseph Bonaparte Gulf (4):
+    Catfish Island (id: Australia:NT_TP013)  -14.4833, 129.4667  — via anchor_cobourg [official]
+    Jones Point (id: Australia:NT_TP022)  -14.0667, 129.4833  — via anchor_cobourg [official]
+    Port Keats (id: Australia:NT_TP042)  -14.15, 129.5667  — via anchor_cobourg [official]
+    Quoin Island (id: Australia:NT_TP029)  -14.8167, 129.5667  — via anchor_cobourg [official]
+
+  Offshore waters (18):
+    Adelaide River (id: Australia:NT_TP004)  -13.2333, 131.1333  — via anchor_cobourg
+    Beagle A (id: Australia:NT_TP059)  -12.0167, 130.1167  — via anchor_cobourg [official]
+    Calder Shoal (id: Australia:NT_TP006)  -10.8333, 129.0667  — via anchor_cobourg [official]
+    Cape Hotham (id: Australia:NT_TP011)  -12.05, 131.2667  — via anchor_cobourg [official]
+    Chambers Bay (id: Australia:NT_TP065)  -12.2667, 131.7667  — via anchor_cobourg [official]
+    East Field Island (id: Australia:NT_TP016)  -12.1167, 132.4167  — via anchor_cobourg [official]
+    Evans Shoal (id: Australia:NT_TP047)  -10.0667, 129.5167  — via anchor_cobourg [official]
+    Glyde Point (id: Australia:NT_TP064)  -12.1167, 131.1167  — via anchor_cobourg [official]
+    Goodrich Bank (id: Australia:NT_TP050)  -10.6833, 130.3167  — via anchor_cobourg [official]
+    Hancox Shoal Area (id: Australia:NT_TP062)  -12.0667, 130.8667  — via anchor_cobourg [official]
+    Lynedoch Bank (id: Australia:NT_TP023)  -10.0167, 130.8167  — via anchor_cobourg [official]
+    Money Shoal (id: Australia:NT_TP024)  -10.3167, 132.7167  — via anchor_cobourg [official]
+    Newby Shoal (id: Australia:NT_TP067)  -11.8667, 129.1667  — via anchor_cobourg [official]
+    North Of Jones Shoal (id: Australia:NT_TP077)  -10.8167, 132.1833  — via anchor_cobourg [official]
+    Parsons Bank (id: Australia:NT_TP060)  -11.9167, 130.7667  — via anchor_cobourg [official]
+    Point Stuart (id: Australia:NT_TP027)  -12.1833, 131.9167  — via anchor_cobourg [official]
+    Rose River (id: FES2022:6351c)  -14.2833, 135.717  — via anchor_arnhem
+    West Alligator Head (id: Australia:NT_TP034)  -12.1167, 132.2667  — via anchor_cobourg [official]
+
+  Interstate / other waters (38) — outside NT catalogue scope:
+    [QLD] Sweers Island (id: Australia:QLD_TP112)  -17.1, 139.5833 — via anchor_groote
+    [QLD] Albert River Mouth (id: Australia:QLD_TP139)  -17.5333, 139.75 — via anchor_gulf
+    [QLD] West Wellesley Islands (id: Australia:QLD_TP142)  -16.7833, 138.95 — via anchor_groote
+    [QLD] Bountiful Island (id: Australia:QLD_TP045)  -16.6667, 139.8333 — via anchor_groote
+    [QLD] Burketown (id: Australia:QLD_TP140)  -17.7333, 139.5833 — via anchor_gulf
+    [QLD] Mornington Island (id: Australia:QLD_TP084)  -16.6667, 139.1667 — via anchor_groote
+    [QLD] Nassau River Offshore (id: Australia:QLD_TP086)  -15.4, 140.1833 — via anchor_groote
+    [WA] Cassini Island (id: Australia:WA_TP135)  -13.9333, 125.6667 — via anchor_bonaparte
+    [WA] Cape Domett (id: Australia:WA_TP032)  -14.8167, 128.3 — via anchor_bonaparte
+    [WA] Cape Voltaire (Krait Bay) (id: Australia:WA_TP007)  -14.25, 125.5833 — via anchor_bonaparte
+    [WA] Cape Whiskey (id: FES2022:6304a)  -14.1667, 127.65 — via anchor_bonaparte
+    [WA] Carronade Island (id: Australia:WA_TP140)  -13.9167, 126.6167 — via anchor_bonaparte
+    [WA] Adolphus Island (id: Australia:WA_TP114)  -15.1167, 128.1667 — via anchor_bonaparte
+    [WA] Guy Point (id: Australia:WA_TP141)  -14.0667, 126.5 — via anchor_bonaparte
+    [WA] Jar Island (id: Australia:WA_TP081)  -14.15, 126.2167 — via anchor_bonaparte
+    [WA] Lacrosse Island (id: Australia:WA_TP050)  -14.75, 128.3 — via anchor_bonaparte
+    [WA] Lesueur Island (id: Australia:WA_TP051)  -13.8167, 127.2667 — via anchor_bonaparte
+    [WA] Loxton Shoal (id: Australia:NT_TP037)  -9.5833, 128.7167 — via anchor_cobourg
+    [WA] Maret Island (id: Australia:WA_TP054)  -14.4, 124.9667 — via anchor_bonaparte
+    [WA] Baudin Island (id: Australia:WA_TP132)  -14.1167, 125.5833 — via anchor_bonaparte
+    [WA] Napier Broome Bay (id: Australia:WA_TP080)  -14.0833, 126.7 — via anchor_bonaparte
+    [WA] Bonaparte Gulf (id: Australia:WA_TP029)  -12.8333, 128.4667 — via anchor_cobourg
+    [WA] Pelican Island (id: Australia:WA_TP061)  -14.7667, 128.7667 — via anchor_cobourg
+    [WA] Pender Point (id: Australia:WA_TP142)  -15.2667, 128.0667 — via anchor_bonaparte
+    [WA] Wyndham (id: Australia:WA_TP023)  -15.45, 128.1 — via anchor_bonaparte
+    [WA] Reveley Island (id: Australia:WA_TP066)  -14.3167, 127.9 — via anchor_bonaparte
+    [WA] Van Cloon Shoal (id: Australia:WA_TP075)  -12.6167, 126.4167 — via anchor_bonaparte
+    [WA] Rocky Island (id: Australia:WA_TP067)  -14.0667, 127.5667 — via anchor_bonaparte
+    [WA] Unnamed Shoal (id: Australia:NT_TP046)  -10.5167, 128.6667 — via anchor_cobourg
+    [WA] West Holothuria Reef Offshore (id: Australia:WA_TP136)  -13.4667, 125.7833 — via anchor_bonaparte
+    [WA] Troughton Island (id: Australia:WA_TP134)  -13.7667, 126.15 — via anchor_bonaparte
+    [WA] The Boxers (id: Australia:NT_TP031)  -11.4333, 128.4167 — via anchor_cobourg
+    [WA] Port Warrender (id: Australia:WA_TP065)  -14.5167, 125.9 — via anchor_bonaparte
+    [other] Saumlaki (id: UHSLC:420A)  -7.9815, 131.2906 — via anchor_cobourg
+    [other] Ritabel Bay (id: FES2022:5427)  -7.15, 131.717 — via anchor_cobourg
+    [other] Cape Crocker Offshore (id: Australia:NT_TP008)  -9.5, 132.7667 — via anchor_cobourg
+    [other] Arafura Sea (id: Australia:NT_TP081)  -9.5, 132.7667 — via anchor_cobourg
+    [other] Tepa Road (id: FES2022:5425)  -8.0, 129.583 — via anchor_cobourg
+
+--- Candidate coverage (nearest discovered gauge) ---
+  Nightcliff: Nightcliff (4.5 km)
+  Charles Point Patches: Charles Point Patches (8.3 km)
+  Anson Bay: Anson Bay (9.7 km)
+  Tapa Bay: Burge Point (15.4 km)
+  Snake Bay: Snake Bay (7.6 km)
+  Cape Van Diemen: Beagle A (16.7 km)
+  Point Fawcett: Point Fawcett (Offshore) (10.8 km)
+  Port Essington: Two Hills Bay (19.6 km)
+  Cape Don: Cape Don (2.3 km)
+  Melville Bay: GOVE (5.2 km)
+  Cape Wessel: Cape Wessel (0.0 km)
+  Elcho Island: Cadell Strait (3.4 km)
+  North Goulburn Island: North Goulburn Island (8.0 km)
+  Milner Bay: Milner Bay (Groote Eylandt) (2.4 km)
+  Centre Island: Centre Island (1.3 km)
+  Port Keats: Port Keats (12.2 km)
+  Evans Shoal: Evans Shoal (31.4 km)  → likely model-only
+  Money Shoal: Hancox Shoal Area (21.0 km)
+
+Done. This report is sanitized — no API key or request URLs.

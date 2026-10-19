@@ -429,13 +429,18 @@ const List<TideReference> kTideReferenceCandidates = [
     latitude: -15.9700,
     longitude: 136.3500,
     region: TideRegion.gulfOfCarpentaria,
-    altNames: ['Borroloola', 'Bing Bong', 'McArthur River'],
+    altNames: [
+      'Borroloola', 'Bing Bong', 'McArthur River', 'King Ash Bay'
+    ],
     // Model-based: no gauge on the mainland Gulf coast south of the
-    // Pellew Group — a named model point for fishers working the
-    // McArthur River coast.
+    // Pellew Group. Point sits in the lower McArthur estuary near
+    // King Ash Bay (the Borroloola fishing launch) — ~11 km NNE of
+    // the inland township (-16.068, 136.307), ~45 km south of Bing
+    // Bong. Served FES2022 cell will be offshore; check response
+    // coords in the verification run.
     verification: TideVerification.candidate(
-        provenance: 'no gauge in 2026-10 discovery — model point, '
-            'coords approximate; verify atlas behaviour'),
+        provenance: 'no gauge in 2026-10 discovery — model point '
+            'at McArthur estuary mouth area; verify atlas behaviour'),
   ),
   // Offshore waters — real WorldTides gauge positions from discovery
   TideReference(
