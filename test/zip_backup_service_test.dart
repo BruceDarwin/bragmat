@@ -508,7 +508,7 @@ void main() {
     });
 
     test('validateBackup - unsupported manifest schema version', () async {
-      final zipPath = await buildBackupZip(schemaVersion: 30);
+      final zipPath = await buildBackupZip(schemaVersion: 31);
 
       final result = await ZipBackupService.validateBackup(zipPath);
 
@@ -517,7 +517,7 @@ void main() {
     });
 
     test('validateBackup - unsupported database user_version', () async {
-      final zipPath = await buildBackupZip(databaseUserVersion: 30);
+      final zipPath = await buildBackupZip(databaseUserVersion: 31);
 
       final result = await ZipBackupService.validateBackup(zipPath);
 

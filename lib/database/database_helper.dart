@@ -297,7 +297,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 29,
+      version: 30,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -1224,6 +1224,202 @@ class DatabaseHelper {
       // Schema v29 — user data ownership & sync preparation.
       // Idempotent; runs inside sqflite's upgrade transaction.
       await MigrationV29.migrate(db);
+    }
+
+    if (oldVersion < 30) {
+      // Schema v30 — repair for databases born at v28 by the drifted
+      // _createDB, which lacked the tide-cache table plus the v28
+      // tide-reference/WorldTides and lure/bait columns that only existed
+      // in the < 27/< 28 upgrade blocks. Those databases are stamped 28,
+      // so the guard blocks never fire and the defects persist. Every
+      // step here is guarded and additive: healthy databases are
+      // untouched, and the whole repair runs inside sqflite's upgrade
+      // transaction so a failure rolls back cleanly.
+      await _repairV28Drift(db);
+    }
+  }
+
+  /// Additive, idempotent repair of the v28 _createDB drift. Creates
+  /// tide_cache and its index when absent, then tops up the thirteen
+  /// columns that drifted v28-born databases never received. Definitions
+  /// are verbatim from _createDB so repaired objects match a fresh
+  /// install exactly. Also covers restored backups of drifted databases,
+  /// which the restore pipeline upgrades through this same path.
+  static Future<void> _repairV28Drift(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS tide_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        date TEXT NOT NULL,
+        datum TEXT NOT NULL DEFAULT 'CD',
+        extremes_json TEXT NOT NULL,
+        cached_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        worldtides_station TEXT,
+        worldtides_atlas TEXT,
+        worldtides_response_lat REAL,
+        worldtides_response_lon REAL,
+        UNIQUE(latitude, longitude, date, datum)
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tide_cache_location_date ON tide_cache(latitude, longitude, date)');
+
+    // A partially-present tide_cache (theoretical) is topped up to parity
+    // by the same guarded column checks.
+    const tideCacheColumns = [
+      'worldtides_station TEXT',
+      'worldtides_atlas TEXT',
+      'worldtides_response_lat REAL',
+      'worldtides_response_lon REAL',
+    ];
+    for (final column in tideCacheColumns) {
+      await _addColumnIfMissing(db, 'tide_cache', column);
+    }
+
+    // Minimal historical backups may lack the table entirely; create it
+    // verbatim so the column repair below is a no-op on the fresh table.
+    if (!await _tableExists(db, 'environmental_conditions')) {
+      await db.execute('''
+        CREATE TABLE environmental_conditions (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          catch_id INTEGER,
+          trip_id INTEGER,
+          observation_date_time TEXT NOT NULL,
+          latitude REAL,
+          longitude REAL,
+          moon_phase TEXT,
+          moon_illumination REAL,
+          sunrise_time TEXT,
+          sunset_time TEXT,
+          tide_stage TEXT,
+          tide_strength TEXT,
+          tide_notes TEXT,
+          tide_height REAL,
+          tide_movement TEXT,
+          tide_station TEXT,
+          tide_data_source TEXT,
+          tide_confidence TEXT,
+          derived_tide_stage TEXT,
+          tide_observed_or_estimated TEXT,
+          tide_diagnostics TEXT,
+          tide_station_name TEXT,
+          tide_station_distance_km REAL,
+          tide_reference_mode TEXT,
+          tide_reference_name TEXT,
+          tide_request_lat REAL,
+          tide_request_lon REAL,
+          worldtides_station TEXT,
+          worldtides_atlas TEXT,
+          worldtides_response_lat REAL,
+          worldtides_response_lon REAL,
+          reference_tide_event_type TEXT,
+          reference_tide_event_time TEXT,
+          reference_tide_event_height REAL,
+          reference_tide_event_relation TEXT,
+          minutes_from_reference_tide_event INTEGER,
+          previous_tide_event_type TEXT,
+          previous_tide_event_time TEXT,
+          previous_tide_event_height REAL,
+          next_tide_event_type TEXT,
+          next_tide_event_time TEXT,
+          next_tide_event_height REAL,
+          tide_context_phrase TEXT,
+          tide_context_data_source TEXT,
+          tide_context_confidence TEXT,
+          weather_condition TEXT,
+          temperature REAL,
+          humidity REAL,
+          cloud_cover REAL,
+          wind_speed REAL,
+          wind_direction TEXT,
+          barometric_pressure REAL,
+          rainfall REAL,
+          river_flow TEXT,
+          water_clarity TEXT,
+          data_source TEXT,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL,
+          uuid TEXT,
+          owner_id TEXT,
+          FOREIGN KEY (catch_id) REFERENCES catches (id) ON DELETE CASCADE,
+          FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
+        )
+      ''');
+    }
+
+    const environmentalColumns = [
+      'tide_reference_mode TEXT',
+      'tide_reference_name TEXT',
+      'tide_request_lat REAL',
+      'tide_request_lon REAL',
+      'worldtides_station TEXT',
+      'worldtides_atlas TEXT',
+      'worldtides_response_lat REAL',
+      'worldtides_response_lon REAL',
+    ];
+    for (final column in environmentalColumns) {
+      await _addColumnIfMissing(db, 'environmental_conditions', column);
+    }
+
+    if (!await _tableExists(db, 'catches')) {
+      await db.execute('''
+        CREATE TABLE catches (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          fish_type TEXT,
+          length_cm INTEGER,
+          notes TEXT,
+          created_at TEXT,
+          date_caught TEXT,
+          image_path TEXT,
+          photo_datetime TEXT,
+          latitude REAL,
+          longitude REAL,
+          location TEXT,
+          fishing_buddy_id INTEGER,
+          trip_id INTEGER,
+          coordinate_source TEXT,
+          lure_id INTEGER,
+          bait_id INTEGER,
+          lure_size TEXT,
+          lure_colour TEXT,
+          lure_photo_path TEXT,
+          uuid TEXT,
+          owner_id TEXT,
+          updated_at TEXT
+        )
+      ''');
+    }
+
+    const catchColumns = [
+      'lure_id INTEGER',
+      'bait_id INTEGER',
+      'lure_size TEXT',
+      'lure_colour TEXT',
+      'lure_photo_path TEXT',
+    ];
+    for (final column in catchColumns) {
+      await _addColumnIfMissing(db, 'catches', column);
+    }
+  }
+
+  /// Whether [table] exists in sqlite_master.
+  static Future<bool> _tableExists(Database db, String table) async {
+    final rows = await db.rawQuery(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+        [table]);
+    return rows.isNotEmpty;
+  }
+
+  /// `ALTER TABLE ... ADD COLUMN` guarded by PRAGMA table_info so the
+  /// repair is idempotent and a no-op on healthy databases.
+  static Future<void> _addColumnIfMissing(
+      Database db, String table, String columnDef) async {
+    final columnName = columnDef.split(' ').first;
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    if (!columns.any((c) => c['name'] == columnName)) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $columnDef');
     }
   }
 
