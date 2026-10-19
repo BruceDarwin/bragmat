@@ -54,6 +54,12 @@ insert into public.beta_testers (email, status) values
   ('rlstest.c@bragmat.invalid', 'invited'),
   ('rlstest.d@bragmat.invalid', 'revoked');
 
+-- A second, disposable bucket so the planted object below can prove the
+-- policies are bucket-scoped (FK on storage.objects.bucket_id requires
+-- the bucket row to exist; rolled back with everything else).
+insert into storage.buckets (id, name, public)
+values ('avatars', 'avatars', false);
+
 -- Planted backup objects: one each for A, B and D under their uid
 -- prefixes, plus one in a NON-backups bucket to prove the policies are
 -- bucket-scoped. Inserted as the session user — RLS does not apply here.
