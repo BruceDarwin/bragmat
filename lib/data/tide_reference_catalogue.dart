@@ -226,6 +226,22 @@ const List<TideReference> kTideReferenceCatalogue = [
           'station-served, 14 events',
     ),
   ),
+  // Verified 2026-10 (model batch): extremes resolved to a named
+  // FES2022 model node 'Cape Croker' at the request point (12
+  // events). No gauge exists here — model-based reference.
+  TideReference(
+    id: 'cape_croker',
+    displayName: 'Cape Croker',
+    latitude: -11.0000,
+    longitude: 132.5670,
+    source: TideReferenceSource.model,
+    region: TideRegion.cobourgPeninsula,
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — named '
+          'FES2022 model node, 12 events',
+    ),
+  ),
   // Arnhem Land — verified 2026-10: extremes served by 'Elcho Island'
   // (12 events) and 'Cape Wessel' (11 events).
   TideReference(
@@ -313,6 +329,23 @@ const List<TideReference> kTideReferenceCatalogue = [
           'station-served, 5 events',
     ),
   ),
+  // Verified 2026-10 (model batch): extremes resolved to a named
+  // FES2022 model node 'Port Langdon' at the request point (8
+  // events). Groote's west coast — no gauge; model-based reference.
+  TideReference(
+    id: 'port_langdon',
+    displayName: 'Port Langdon',
+    latitude: -13.8667,
+    longitude: 136.8330,
+    source: TideReferenceSource.model,
+    region: TideRegion.grooteEylandt,
+    altNames: ['Umbakumba'],
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — named '
+          'FES2022 model node, 8 events',
+    ),
+  ),
   // Gulf of Carpentaria — verified 2026-10: extremes served by
   // 'Centre Island' (5 events).
   TideReference(
@@ -328,6 +361,29 @@ const List<TideReference> kTideReferenceCatalogue = [
       verifiedOn: '2026-10',
       provenance: 'worldtides discovery + extremes-only run — '
           'station-served, 5 events',
+    ),
+  ),
+  // Verified 2026-10 (model batch): FES2022 atlas extremes confirmed
+  // at the request point (6 events — consistent with the SW Gulf's
+  // strongly diurnal regime). Point sits in the lower McArthur
+  // estuary zone near King Ash Bay, not the inland township.
+  // NOTE: model predictions describe coastal-shelf tides; inside the
+  // McArthur River estuary real tide timing can differ markedly —
+  // treat as indicative only.
+  TideReference(
+    id: 'borroloola',
+    displayName: 'Borroloola Coast',
+    latitude: -15.9700,
+    longitude: 136.3500,
+    source: TideReferenceSource.model,
+    region: TideRegion.gulfOfCarpentaria,
+    altNames: [
+      'Borroloola', 'Bing Bong', 'McArthur River', 'King Ash Bay'
+    ],
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — FES2022 '
+          'atlas at request point, 6 events; estuary accuracy limited',
     ),
   ),
   // Joseph Bonaparte Gulf — verified 2026-10: extremes served by
@@ -394,53 +450,6 @@ const List<TideReference> kTideReferenceCandidates = [
     verification: TideVerification.candidate(
         provenance: 'worldtides discovery 2026-10 — station coords; '
             'extremes unverified'),
-  ),
-  // Cobourg Peninsula & Van Diemen Gulf
-  TideReference(
-    id: 'cape_croker',
-    displayName: 'Cape Croker',
-    latitude: -11.0000,
-    longitude: 132.5670,
-    region: TideRegion.cobourgPeninsula,
-    // Model-based: discovery shows only a FES2022 grid point here —
-    // popular Cobourg fishing area with no gauge.
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — FES2022 point '
-            'only; verify atlas behaviour'),
-  ),
-  // Groote Eylandt
-  TideReference(
-    id: 'port_langdon',
-    displayName: 'Port Langdon',
-    latitude: -13.8667,
-    longitude: 136.8330,
-    region: TideRegion.grooteEylandt,
-    altNames: ['Umbakumba'],
-    // Model-based: discovery shows only a FES2022 grid point on
-    // Groote's west coast.
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — FES2022 point '
-            'only; verify atlas behaviour'),
-  ),
-  // Gulf of Carpentaria
-  TideReference(
-    id: 'borroloola',
-    displayName: 'Borroloola Coast',
-    latitude: -15.9700,
-    longitude: 136.3500,
-    region: TideRegion.gulfOfCarpentaria,
-    altNames: [
-      'Borroloola', 'Bing Bong', 'McArthur River', 'King Ash Bay'
-    ],
-    // Model-based: no gauge on the mainland Gulf coast south of the
-    // Pellew Group. Point sits in the lower McArthur estuary near
-    // King Ash Bay (the Borroloola fishing launch) — ~11 km NNE of
-    // the inland township (-16.068, 136.307), ~45 km south of Bing
-    // Bong. Served FES2022 cell will be offshore; check response
-    // coords in the verification run.
-    verification: TideVerification.candidate(
-        provenance: 'no gauge in 2026-10 discovery — model point '
-            'at McArthur estuary mouth area; verify atlas behaviour'),
   ),
   // Offshore waters — real WorldTides gauge positions from discovery
   TideReference(

@@ -1109,9 +1109,36 @@ void main() {
     });
   });
 
+  test('verified model-batch entries are published model references', () {
+    const expected = {
+      'cape_croker': ('Cape Croker', -11.0, 132.567),
+      'port_langdon': ('Port Langdon', -13.8667, 136.833),
+      'borroloola': ('Borroloola Coast', -15.97, 136.35),
+    };
+    expected.forEach((id, e) {
+      final ref = TideReferenceService.getReferenceById(id);
+      expect(ref, isNotNull, reason: '$id must be published');
+      expect(ref!.displayName, e.$1);
+      expect(ref.latitude, e.$2);
+      expect(ref.longitude, e.$3);
+      expect(ref.source, TideReferenceSource.model);
+      expect(ref.isPublished, isTrue);
+      expect(ref.providerStationId, isNull,
+          reason: '$id has no gauge — model source only');
+      expect(TideReferenceService.describeSource(ref),
+          'model prediction');
+      expect(TideReferenceService.getAllReferences(), contains(ref));
+    });
+    // Borroloola: King Ash Bay alias resolves for search/history.
+    expect(TideReferenceService.getReferenceById('borroloola')!
+        .altNames, contains('King Ash Bay'));
+  });
+
   test('catalogue lookup map covers published and candidate entries', () {
     expect(tideReferenceCatalogueById['darwin']?.isPublished, isTrue);
     expect(tideReferenceCatalogueById['borroloola']?.isPublished,
+        isTrue);
+    expect(tideReferenceCatalogueById['nightcliff']?.isPublished,
         isFalse);
   });
 });

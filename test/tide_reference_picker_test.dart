@@ -99,8 +99,8 @@ void main() {
       expect(seenRegions, contains('Joseph Bonaparte Gulf'));
 
       // Unverified candidates never appear.
-      expect(find.text('Borroloola Coast'), findsNothing);
-      expect(find.text('Cape Van Dieman'), findsNothing);
+      expect(find.text('Nightcliff'), findsNothing);
+      expect(find.text('Evans Shoal'), findsNothing);
     });
 
     testWidgets('tapping a reference returns it and closes', (tester) async {

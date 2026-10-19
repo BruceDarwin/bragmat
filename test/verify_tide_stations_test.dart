@@ -218,6 +218,34 @@ void main() {
       expect(result.atlas, 'FES2022');
     });
 
+    test('station field with FES2022 atlas is a named model node, '
+        'not station-served', () {
+      // Regression: WorldTides serves named FES2022 harmonic nodes
+      // (e.g. Cape Croker, Port Langdon) that carry a station label —
+      // the atlas field must win so these are never reported as
+      // gauge-served.
+      final result = parseExtremesResponse({
+        'station': 'Cape Croker',
+        'atlas': 'FES2022',
+        'responseLat': -11.0,
+        'responseLon': 132.567,
+        'extremes': const [],
+      });
+      expect(result.source, PredictionSource.atlas);
+      expect(result.stationName, 'Cape Croker');
+      expect(result.atlas, 'FES2022');
+    });
+
+    test('station field with a gauge atlas stays station-served', () {
+      final result = parseExtremesResponse({
+        'station': 'Snake Bay',
+        'atlas': 'Australia',
+        'extremes': const [],
+      });
+      expect(result.source, PredictionSource.station);
+      expect(result.stationName, 'Snake Bay');
+    });
+
     test('error response resolves to error source', () {
       final result = parseExtremesResponse({'error': 'invalid key'});
       expect(result.source, PredictionSource.error);
@@ -420,6 +448,37 @@ void main() {
         ),
         contains('MODEL-ONLY'),
       );
+    });
+
+    test('named FES2022 node for a model candidate is MODEL-ONLY '
+        'and names the model reference', () {
+      // Cape Croker / Port Langdon shape: station label present but
+      // FES2022 atlas — report must name the model node, not claim a
+      // gauge.
+      final verdict = assessExtremesOnly(
+        croker,
+        const PredictionResult(
+          source: PredictionSource.atlas,
+          stationName: 'Cape Croker',
+          atlas: 'FES2022',
+        ),
+      );
+      expect(verdict, contains('MODEL-ONLY'));
+      expect(verdict, contains('Cape Croker'));
+      expect(verdict, isNot(contains('SUITABLE')));
+    });
+
+    test('named FES2022 node when a gauge was expected is REVIEW', () {
+      final verdict = assessExtremesOnly(
+        snakeBay,
+        const PredictionResult(
+          source: PredictionSource.atlas,
+          stationName: 'Snake Bay',
+          atlas: 'FES2022',
+        ),
+      );
+      expect(verdict, contains('REVIEW'));
+      expect(verdict, contains('Snake Bay'));
     });
 
     test('a station where a model was expected is flagged for review',

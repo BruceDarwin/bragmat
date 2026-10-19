@@ -66,6 +66,10 @@
 // harmonic station record, NOT proof of an operational physical tide
 // gauge. Reports say 'station-served', never 'physical gauge'.
 //
+// `station` + `atlas: FES2022` in an extremes response is a named
+// FES2022 model node — classified as model, not station-served, and
+// reported as a 'named model reference' vs an unnamed atlas point.
+//
 // Robustness: response fields are coerced defensively (numbers and
 // numeric strings accepted; malformed/missing values become null or a
 // per-candidate error). A bad response for one candidate is reported
@@ -395,7 +399,11 @@ double _rad(double deg) => deg * math.pi / 180.0;
 
 /// Parses the WorldTides `extremes` response for source metadata.
 ///
-/// `station` present → named gauge; `atlas` only → background model.
+/// `atlas` naming a model atlas (FES*) → model prediction, even when a
+/// `station` field is present: WorldTides serves named FES2022 harmonic
+/// nodes (e.g. 'Cape Croker') that carry a station label but are NOT
+/// physical gauges. `station` + a non-model atlas → named gauge;
+/// `atlas` only → unnamed background model point.
 PredictionResult parseExtremesResponse(Map<String, dynamic> data) {
   final error = _asString(data['error']);
   if (error != null && error.isNotEmpty) {
@@ -404,10 +412,15 @@ PredictionResult parseExtremesResponse(Map<String, dynamic> data) {
   final station = _asString(data['station']);
   final atlas = _asString(data['atlas']);
   final extremes = data['extremes'];
+  final modelAtlas = atlas != null && atlas.toUpperCase().startsWith('FES');
   return PredictionResult(
-    source: station != null
-        ? PredictionSource.station
-        : (atlas != null ? PredictionSource.atlas : PredictionSource.none),
+    source: modelAtlas
+        ? PredictionSource.atlas
+        : (station != null
+            ? PredictionSource.station
+            : (atlas != null
+                ? PredictionSource.atlas
+                : PredictionSource.none)),
     stationName: station,
     atlas: atlas,
     responseLat: _asDouble(data['responseLat']),
@@ -437,8 +450,11 @@ String assessSuitability(
             '"${prediction.stationName}", expected "${candidate.expectedStation}"';
   }
   if (prediction.source == PredictionSource.atlas) {
-    return 'MODEL-ONLY — suitable only as a model-based reference '
-        '(no gauge; ${prediction.atlas ?? "atlas"})';
+    return prediction.stationName != null
+        ? 'MODEL-ONLY — named ${prediction.atlas ?? "model"} reference '
+            '"${prediction.stationName}" (not a gauge)'
+        : 'MODEL-ONLY — suitable only as a model-based reference '
+            '(no gauge; ${prediction.atlas ?? "atlas"})';
   }
   return 'UNSUITABLE — no usable predictions returned';
 }
@@ -467,11 +483,16 @@ String assessExtremesOnly(Candidate candidate, PredictionResult p) {
           : 'REVIEW — served by "${p.stationName}", '
               'expected "${candidate.expectedStation}"';
     case PredictionSource.atlas:
-      return candidate.expectedStation == null
-          ? 'MODEL-ONLY — atlas predictions confirmed '
-              '(${p.atlas ?? "atlas"})'
-          : 'REVIEW — expected station "${candidate.expectedStation}" '
-              'but predictions came from the atlas (${p.atlas ?? "?"})';
+      if (candidate.expectedStation == null) {
+        return p.stationName != null
+            ? 'MODEL-ONLY — named ${p.atlas ?? "model"} reference '
+                '"${p.stationName}" confirmed (not a gauge)'
+            : 'MODEL-ONLY — atlas predictions confirmed '
+                '(${p.atlas ?? "atlas"})';
+      }
+      return 'REVIEW — expected station "${candidate.expectedStation}" '
+          'but predictions came from the model (${p.atlas ?? "?"}'
+          '${p.stationName != null ? ' node "${p.stationName}"' : ''})';
     case PredictionSource.none:
       return 'UNSUITABLE — no usable predictions returned';
     case PredictionSource.error:
@@ -562,7 +583,7 @@ Future<void> _verify(Candidate c, String apiKey,
     _out('  prediction:       ERROR ${prediction.error}');
   } else {
     _out('  prediction via:   '
-        '${prediction.source == PredictionSource.station ? "STATION-SERVED" : prediction.source == PredictionSource.atlas ? "ATLAS/MODEL" : "NONE"}'
+        '${prediction.source == PredictionSource.station ? "STATION-SERVED" : prediction.source == PredictionSource.atlas ? (prediction.stationName != null ? "MODEL (named ${prediction.atlas ?? "model"} node)" : "ATLAS/MODEL") : "NONE"}'
         '${prediction.stationName != null ? " — ${prediction.stationName}" : ""}'
         '${prediction.atlas != null ? " (${prediction.atlas})" : ""}');
     _out('  response coords:  ${prediction.responseLat}, ${prediction.responseLon}');
