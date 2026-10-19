@@ -173,7 +173,7 @@ void main() {
       await createV28Database(dbPath);
       final db = await openLive();
 
-      expect(await userVersion(db), 29);
+      expect(await userVersion(db), 30);
 
       final catches = await db.query('catches');
       expect(catches.length, 2);
@@ -308,7 +308,7 @@ void main() {
 
       // Retry succeeds.
       final db = await openLive();
-      expect(await userVersion(db), 29);
+      expect(await userVersion(db), 30);
       expect((await db.query('catches')).length, 2);
     });
   });
@@ -317,7 +317,7 @@ void main() {
     test('_createDB emits full schema incl. tide_cache + triggers',
         () async {
       final db = await openLive(); // no file -> _createDB runs
-      expect(await userVersion(db), 29);
+      expect(await userVersion(db), 30);
       for (final t in [
         'catches', 'catch_media', 'fishing_trips', 'trip_media',
         'trip_journal', 'journal_media', 'favourite_spots',

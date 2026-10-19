@@ -506,6 +506,10 @@ void main() {
         await db.execute(
             'CREATE TABLE journal_media (id INTEGER PRIMARY KEY,'
             ' journal_entry_id INTEGER, file_path TEXT)');
+        await db.execute(
+            'CREATE TABLE environmental_conditions ('
+            ' id INTEGER PRIMARY KEY AUTOINCREMENT,'
+            ' observation_date_time TEXT, created_at TEXT, updated_at TEXT)');
       });
       await db.insert('catches', {'fish_type': 'Barramundi'});
       for (final ref in mediaRefs) {

@@ -379,7 +379,7 @@ class ZipBackupService {
   }
 
   /// Maximum database schema version this build can restore.
-  static const int _maxSupportedSchemaVersion = 29;
+  static const int _maxSupportedSchemaVersion = 30;
 
   /// Validate a backup ZIP without modifying any data.
   ///

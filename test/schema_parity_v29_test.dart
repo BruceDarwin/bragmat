@@ -53,6 +53,12 @@ void main() {
       version: 27,
       onCreate: (db, version) async {
         await db.execute('''
+          CREATE TABLE catches (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            fish_type TEXT
+          )
+        ''');
+        await db.execute('''
           CREATE TABLE environmental_conditions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             catch_id INTEGER,

@@ -54,6 +54,10 @@ void main() {
       await db.execute(
           'CREATE TABLE catches (id INTEGER PRIMARY KEY AUTOINCREMENT,'
           ' fish_type TEXT)');
+      await db.execute(
+          'CREATE TABLE environmental_conditions ('
+          ' id INTEGER PRIMARY KEY AUTOINCREMENT,'
+          ' observation_date_time TEXT, created_at TEXT, updated_at TEXT)');
       for (final f in fish) {
         await db.insert('catches', {'fish_type': f});
       }
@@ -73,6 +77,11 @@ void main() {
       await db.execute(
           'CREATE TABLE catches (id INTEGER PRIMARY KEY AUTOINCREMENT,'
           ' fish_type TEXT, uuid TEXT, owner_id TEXT, updated_at TEXT)');
+      await db.execute(
+          'CREATE TABLE environmental_conditions ('
+          ' id INTEGER PRIMARY KEY AUTOINCREMENT,'
+          ' observation_date_time TEXT, created_at TEXT, updated_at TEXT,'
+          ' uuid TEXT, owner_id TEXT)');
       await MigrationV29.createOwnershipTables(db);
       for (final f in fish) {
         await db.insert('catches',

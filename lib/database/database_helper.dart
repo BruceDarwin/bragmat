@@ -297,7 +297,7 @@ class DatabaseHelper {
 
     return await openDatabase(
       path,
-      version: 29,
+      version: 30,
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -1224,6 +1224,120 @@ class DatabaseHelper {
       // Schema v29 — user data ownership & sync preparation.
       // Idempotent; runs inside sqflite's upgrade transaction.
       await MigrationV29.migrate(db);
+    }
+
+    if (oldVersion < 30) {
+      // Schema v30 — repair for databases born at v28 by the drifted
+      // _createDB, which lacked the tide-cache table plus the v28
+      // tide-reference/WorldTides and lure/bait columns that only existed
+      // in the < 27/< 28 upgrade blocks. Those databases are stamped 28,
+      // so the guard blocks never fire and the defects persist. Every
+      // step here is guarded and additive: healthy databases are
+      // untouched, and the whole repair runs inside sqflite's upgrade
+      // transaction so a failure rolls back cleanly.
+      await _repairV28Drift(db);
+    }
+  }
+
+  /// Additive, idempotent repair of the v28 _createDB drift. Creates
+  /// tide_cache and its index when absent, then tops up the thirteen
+  /// columns that drifted v28-born databases never received. Definitions
+  /// are verbatim from _createDB so repaired objects match a fresh
+  /// install exactly. Also covers restored backups of drifted databases,
+  /// which the restore pipeline upgrades through this same path.
+  static Future<void> _repairV28Drift(Database db) async {
+    await db.execute('''
+      CREATE TABLE IF NOT EXISTS tide_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        latitude REAL NOT NULL,
+        longitude REAL NOT NULL,
+        date TEXT NOT NULL,
+        datum TEXT NOT NULL DEFAULT 'CD',
+        extremes_json TEXT NOT NULL,
+        cached_at TEXT NOT NULL,
+        expires_at TEXT NOT NULL,
+        worldtides_station TEXT,
+        worldtides_atlas TEXT,
+        worldtides_response_lat REAL,
+        worldtides_response_lon REAL,
+        UNIQUE(latitude, longitude, date, datum)
+      )
+    ''');
+    await db.execute(
+        'CREATE INDEX IF NOT EXISTS idx_tide_cache_location_date ON tide_cache(latitude, longitude, date)');
+
+    // A partially-present tide_cache (theoretical) is topped up to parity
+    // by the same guarded column checks.
+    const tideCacheColumns = [
+      'worldtides_station TEXT',
+      'worldtides_atlas TEXT',
+      'worldtides_response_lat REAL',
+      'worldtides_response_lon REAL',
+    ];
+    for (final column in tideCacheColumns) {
+      await _addColumnIfMissing(db, 'tide_cache', column);
+    }
+
+    // Core tables are never legitimately absent at this point: catches
+    // has existed since v1 and environmental_conditions since v18 (and
+    // any older origin receives it from the <18 upgrade block above).
+    // Their absence therefore means a corrupt or truncated database —
+    // fail the upgrade transaction rather than fabricate empty tables
+    // that would silently mask data loss.
+    if (!await _tableExists(db, 'environmental_conditions')) {
+      throw StateError(
+          'v30 repair aborted: core table environmental_conditions is '
+          'missing — database is corrupt');
+    }
+
+    const environmentalColumns = [
+      'tide_reference_mode TEXT',
+      'tide_reference_name TEXT',
+      'tide_request_lat REAL',
+      'tide_request_lon REAL',
+      'worldtides_station TEXT',
+      'worldtides_atlas TEXT',
+      'worldtides_response_lat REAL',
+      'worldtides_response_lon REAL',
+    ];
+    for (final column in environmentalColumns) {
+      await _addColumnIfMissing(db, 'environmental_conditions', column);
+    }
+
+    if (!await _tableExists(db, 'catches')) {
+      throw StateError(
+          'v30 repair aborted: core table catches is missing — '
+          'database is corrupt');
+    }
+
+    const catchColumns = [
+      'lure_id INTEGER',
+      'bait_id INTEGER',
+      'lure_size TEXT',
+      'lure_colour TEXT',
+      'lure_photo_path TEXT',
+    ];
+    for (final column in catchColumns) {
+      await _addColumnIfMissing(db, 'catches', column);
+    }
+  }
+
+  /// Whether [table] exists in sqlite_master.
+  static Future<bool> _tableExists(Database db, String table) async {
+    final rows = await db.rawQuery(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name = ?",
+        [table]);
+    return rows.isNotEmpty;
+  }
+
+  /// `ALTER TABLE ... ADD COLUMN` guarded by PRAGMA table_info so the
+  /// repair is idempotent and a no-op on healthy databases.
+  static Future<void> _addColumnIfMissing(
+      Database db, String table, String columnDef) async {
+    final columnName = columnDef.split(' ').first;
+    final columns = await db.rawQuery('PRAGMA table_info($table)');
+    if (!columns.any((c) => c['name'] == columnName)) {
+      await db.execute('ALTER TABLE $table ADD COLUMN $columnDef');
     }
   }
 
