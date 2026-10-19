@@ -160,6 +160,40 @@ const List<TideReference> kTideReferenceCatalogue = [
           'station-served, 11 events',
     ),
   ),
+  // Verified 2026-10 (tier 3): extremes served by 'Cape Van Dieman'
+  // (11 events).
+  TideReference(
+    id: 'cape_van_diemen',
+    displayName: 'Cape Van Dieman',
+    latitude: -11.1500,
+    longitude: 130.3667,
+    source: TideReferenceSource.station,
+    region: TideRegion.tiwiIslands,
+    altNames: ['Cape Van Diemen'],
+    providerStationId: 'Australia:NT_TP069',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
+  // Verified 2026-10 (tier 3): extremes served by
+  // 'Point Fawcett (Offshore)' (11 events).
+  TideReference(
+    id: 'point_fawcett',
+    displayName: 'Point Fawcett',
+    latitude: -11.6833,
+    longitude: 130.0167,
+    source: TideReferenceSource.station,
+    region: TideRegion.tiwiIslands,
+    altNames: ['Point Fawcett (Offshore)'],
+    providerStationId: 'Australia:NT_TP056',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
   // Cobourg Peninsula — verified 2026-10: extremes served by
   // 'Port Essington' (12 events).
   TideReference(
@@ -174,6 +208,22 @@ const List<TideReference> kTideReferenceCatalogue = [
       verifiedOn: '2026-10',
       provenance: 'worldtides discovery + extremes-only run — '
           'station-served, 12 events',
+    ),
+  ),
+  // Verified 2026-10 (tier 3): extremes served by 'Cape Don'
+  // (14 events).
+  TideReference(
+    id: 'cape_don',
+    displayName: 'Cape Don',
+    latitude: -11.3000,
+    longitude: 131.7667,
+    source: TideReferenceSource.station,
+    region: TideRegion.cobourgPeninsula,
+    providerStationId: 'Australia:NT_TP040',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 14 events',
     ),
   ),
   // Arnhem Land — verified 2026-10: extremes served by 'Elcho Island'
@@ -225,6 +275,22 @@ const List<TideReference> kTideReferenceCatalogue = [
       verifiedOn: '2026-10',
       provenance: 'worldtides discovery + extremes-only run — '
           'station-served, 11 events',
+    ),
+  ),
+  // Verified 2026-10 (tier 3): extremes served by
+  // 'North Goulburn Island' (12 events).
+  TideReference(
+    id: 'north_goulburn_island',
+    displayName: 'North Goulburn Island',
+    latitude: -11.5000,
+    longitude: 133.3667,
+    source: TideReferenceSource.station,
+    region: TideRegion.arnhemLand,
+    providerStationId: 'Australia:NT_TP088',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 12 events',
     ),
   ),
   // Groote Eylandt — verified 2026-10: extremes served by
@@ -329,43 +395,7 @@ const List<TideReference> kTideReferenceCandidates = [
         provenance: 'worldtides discovery 2026-10 — station coords; '
             'extremes unverified'),
   ),
-  // Tiwi Islands
-  TideReference(
-    id: 'cape_van_diemen',
-    displayName: 'Cape Van Dieman',
-    latitude: -11.1500,
-    longitude: 130.3667,
-    region: TideRegion.tiwiIslands,
-    altNames: ['Cape Van Diemen'],
-    providerStationId: 'Australia:NT_TP069',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  TideReference(
-    id: 'point_fawcett',
-    displayName: 'Point Fawcett',
-    latitude: -11.6833,
-    longitude: 130.0167,
-    region: TideRegion.tiwiIslands,
-    altNames: ['Point Fawcett (Offshore)'],
-    providerStationId: 'Australia:NT_TP056',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
   // Cobourg Peninsula & Van Diemen Gulf
-  TideReference(
-    id: 'cape_don',
-    displayName: 'Cape Don',
-    latitude: -11.3000,
-    longitude: 131.7667,
-    region: TideRegion.cobourgPeninsula,
-    providerStationId: 'Australia:NT_TP040',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
   TideReference(
     id: 'cape_croker',
     displayName: 'Cape Croker',
@@ -377,18 +407,6 @@ const List<TideReference> kTideReferenceCandidates = [
     verification: TideVerification.candidate(
         provenance: 'worldtides discovery 2026-10 — FES2022 point '
             'only; verify atlas behaviour'),
-  ),
-  // Arnhem Land
-  TideReference(
-    id: 'north_goulburn_island',
-    displayName: 'North Goulburn Island',
-    latitude: -11.5000,
-    longitude: 133.3667,
-    region: TideRegion.arnhemLand,
-    providerStationId: 'Australia:NT_TP088',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
   ),
   // Groote Eylandt
   TideReference(

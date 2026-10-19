@@ -1067,8 +1067,8 @@ void main() {
     expect(TideReferenceService.getReferenceById('native_point'), isNotNull);
   });
 
-  test('verified tier-1/tier-2 entries are published station references '
-      'with provider ids', () {
+  test('verified tier-1/tier-2/tier-3 entries are published station '
+      'references with provider ids', () {
     const expected = {
       'snake_bay': ('Snake Bay', 'Australia:NT_TP070', -11.4, 130.6667),
       'melville_bay':
@@ -1084,6 +1084,17 @@ void main() {
           ('Elcho Island', 'Australia:NT_TP018', -11.9167, 135.6667),
       'cape_wessel':
           ('Cape Wessel', 'Australia:NT_TP012', -11.0, 136.75),
+      'cape_van_diemen':
+          ('Cape Van Dieman', 'Australia:NT_TP069', -11.15, 130.3667),
+      'point_fawcett':
+          ('Point Fawcett', 'Australia:NT_TP056', -11.6833, 130.0167),
+      'cape_don': ('Cape Don', 'Australia:NT_TP040', -11.3, 131.7667),
+      'north_goulburn_island': (
+        'North Goulburn Island',
+        'Australia:NT_TP088',
+        -11.5,
+        133.3667
+      ),
     };
     expected.forEach((id, e) {
       final ref = TideReferenceService.getReferenceById(id);
