@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
@@ -459,7 +460,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     if (_retrievingLostData) return;
     _retrievingLostData = true;
     try {
-      final lostData = await ImagePicker().retrieveLostData();
+      // No image_picker implementation on this platform — nothing can
+      // have been lost.
+      final LostDataResponse lostData;
+      try {
+        lostData = await ImagePicker().retrieveLostData();
+      } on MissingPluginException {
+        return;
+      }
 
       bool recovered = false;
 
