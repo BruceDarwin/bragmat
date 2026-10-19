@@ -20,7 +20,7 @@ Flutter fishing log app. Primary dev/test device: Moto G15 (Android).
 
 ## Verification
 
-- `flutter test` — full unit test suite, 219 tests
+- `flutter test` — full unit test suite, 361 tests + 1 skipped
   (sqflite tests use sqflite_common_ffi)
 - `flutter analyze` — ~181 issues, all pre-existing/baseline
   (lib ~138 + tool/ script `avoid_print` infos); don't add new ones

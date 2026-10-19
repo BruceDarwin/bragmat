@@ -6,6 +6,7 @@ import 'package:bragmat/models/environmental_condition.dart';
 import 'package:bragmat/models/tide_reference.dart';
 import 'package:bragmat/services/tide_reference_service.dart';
 import 'package:bragmat/services/environmental_conditions_service.dart';
+import 'package:bragmat/data/tide_reference_catalogue.dart';
 
 void main() {
   group('TideReferenceService', () {
@@ -16,7 +17,7 @@ void main() {
     test('Default mode is automatic', () async {
       final reference = await TideReferenceService.getCurrentReference();
       expect(reference.id, 'automatic');
-      expect(reference.displayName, 'Automatic');
+      expect(reference.displayName, 'Automatic (catch location)');
     });
 
     test('Set automatic mode', () async {
@@ -740,5 +741,511 @@ void main() {
       expect(TideRecalculationResult.invalidApiKey, isNotNull);
       expect(TideRecalculationResult.unexpectedFailure, isNotNull);
     });
+
+    test('clearTideResults stamps an applied fixed reference', () {
+      final condition = EnvironmentalCondition(
+        id: 1,
+        catchId: 1,
+        observationDateTime: DateTime(2026, 8, 2),
+        latitude: -12.4634,
+        longitude: 130.8456,
+        tideReferenceMode: 'fixed',
+        tideReferenceName: 'Darwin',
+        tideRequestLat: -12.4667,
+        tideRequestLon: 130.8500,
+        worldtidesStation: 'Darwin',
+        tideContextPhrase: 'Darwin high tide',
+        tideContextDataSource: 'WorldTides',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final cleared = condition.clearTideResults(
+        appliedTideReferenceMode: 'fixed',
+        appliedTideReferenceName: 'Gove',
+        appliedTideRequestLat: -12.25,
+        appliedTideRequestLon: 136.70,
+      );
+
+      // The applied reference is recorded, not the previous one.
+      expect(cleared.tideReferenceMode, 'fixed');
+      expect(cleared.tideReferenceName, 'Gove');
+      expect(cleared.tideRequestLat, -12.25);
+      expect(cleared.tideRequestLon, 136.70);
+      // Tide results belonging to the previous request are cleared.
+      expect(cleared.worldtidesStation, isNull);
+      expect(cleared.tideContextPhrase, isNull);
+    });
+
+    test('clearTideResults stamps an applied automatic reference', () {
+      final condition = EnvironmentalCondition(
+        id: 1,
+        catchId: 1,
+        observationDateTime: DateTime(2026, 8, 2),
+        latitude: -12.4634,
+        longitude: 130.8456,
+        tideReferenceMode: 'fixed',
+        tideReferenceName: 'Darwin',
+        tideRequestLat: -12.4667,
+        tideRequestLon: 130.8500,
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+
+      final cleared = condition.clearTideResults(
+        appliedTideReferenceMode: 'automatic',
+        appliedTideReferenceName: null,
+        appliedTideRequestLat: -12.4634,
+        appliedTideRequestLon: 130.8456,
+      );
+
+      expect(cleared.tideReferenceMode, 'automatic');
+      expect(cleared.tideReferenceName, isNull);
+      expect(cleared.tideRequestLat, -12.4634);
+      expect(cleared.tideRequestLon, 130.8456);
+    });
   });
+
+  group('resolveRecordedReference (D1)', () {
+    test('null or empty mode resolves to null', () {
+      expect(TideReferenceService.resolveRecordedReference(mode: null), isNull);
+      expect(TideReferenceService.resolveRecordedReference(mode: ''), isNull);
+    });
+
+    test('automatic mode resolves to the automatic sentinel', () {
+      final ref = TideReferenceService.resolveRecordedReference(mode: 'automatic');
+      expect(ref, isNotNull);
+      expect(TideReferenceService.isAutomatic(ref!), isTrue);
+    });
+
+    test('fixed mode resolves a legacy display name via the catalogue', () {
+      // Historical rows store the display name ('Darwin'), not the ID.
+      final ref = TideReferenceService.resolveRecordedReference(
+        mode: 'fixed',
+        name: 'Darwin',
+        requestLat: -12.4667,
+        requestLon: 130.8500,
+      );
+      expect(ref, isNotNull);
+      expect(ref!.id, 'darwin');
+    });
+
+    test('fixed mode resolves a catalogue display name even when the row '
+        'predates the entry', () {
+      final ref = TideReferenceService.resolveRecordedReference(
+        mode: 'fixed',
+        name: 'Dundee Beach',
+        requestLat: -12.705,
+        requestLon: 130.355,
+      );
+      expect(ref, isNotNull);
+      expect(ref!.id, 'dundee_beach');
+      expect(ref.isModelLocation, isTrue);
+    });
+
+    test('fixed mode with an unknown name reconstructs from recorded '
+        'request coordinates — never substitutes automatic', () {
+      final ref = TideReferenceService.resolveRecordedReference(
+        mode: 'fixed',
+        name: 'Old Jetty',
+        requestLat: -12.9,
+        requestLon: 130.7,
+      );
+      expect(ref, isNotNull);
+      expect(TideReferenceService.isAutomatic(ref!), isFalse);
+      expect(ref.latitude, -12.9);
+      expect(ref.longitude, 130.7);
+      expect(ref.displayName, 'Old Jetty');
+      // Reconstructed ID is stable for this recorded name.
+      expect(ref.id, 'recorded_old_jetty');
+    });
+
+    test('fixed mode with no name and no coordinates is unresolved — '
+        'returns null rather than substituting automatic', () {
+      final ref = TideReferenceService.resolveRecordedReference(
+        mode: 'fixed',
+      );
+      expect(ref, isNull);
+    });
+  });
+
+  group('Catalogue source kinds', () {
+    test('Darwin is a station-backed reference', () {
+      final darwin = TideReferenceService.getReferenceById('darwin')!;
+      expect(darwin.isStation, isTrue);
+      expect(darwin.isModelLocation, isFalse);
+      expect(TideReferenceService.describeSource(darwin), 'tide station');
+    });
+
+    test('Dundee Beach is a verified model-based reference', () {
+      final dundee = TideReferenceService.getReferenceById('dundee_beach')!;
+      expect(dundee.displayName, 'Dundee Beach');
+      expect(dundee.isModelLocation, isTrue);
+      expect(dundee.isStation, isFalse);
+      expect(TideReferenceService.describeSource(dundee),
+          'model prediction');
+      // Verified WorldTides extremes response coords (FES2022 atlas).
+      expect(dundee.latitude, -12.705);
+      expect(dundee.longitude, 130.355);
+    });
+
+    test('Native Point is a verified station-backed reference', () {
+      final point = TideReferenceService.getReferenceById('native_point')!;
+      expect(point.displayName, 'Native Point');
+      expect(point.isStation, isTrue);
+      expect(point.isModelLocation, isFalse);
+      // Verified WorldTides station Australia:NT_TP053.
+      expect(point.latitude, -12.650);
+      expect(point.longitude, 130.2667);
+    });
+
+    test('describeSource distinguishes model locations', () {
+      final model = TideReference(
+        id: 'dundee_beach',
+        displayName: 'Dundee Beach',
+        latitude: -12.705,
+        longitude: 130.355,
+        source: TideReferenceSource.model,
+      );
+      expect(model.isModelLocation, isTrue);
+      expect(model.isStation, isFalse);
+      expect(TideReferenceService.describeSource(model), 'model prediction');
+    });
+
+    test('catalogue IDs are unique and coordinates are sane', () {
+      final refs = TideReferenceService.getAllReferences();
+      final ids = refs.map((r) => r.id).toSet();
+      expect(ids.length, refs.length);
+      for (final ref in refs) {
+        if (TideReferenceService.isAutomatic(ref)) continue;
+        expect(ref.latitude, inInclusiveRange(-90.0, 90.0));
+        expect(ref.longitude, inInclusiveRange(-180.0, 180.0));
+        expect(ref.source, isNotNull,
+            reason: '${ref.id} must declare station vs model');
+      }
+    });
+  });
+
+  group('tideRequestChanged gate (D2)', () {
+    EnvironmentalCondition recorded({
+      double lat = -12.4667,
+      double lon = 130.85,
+      DateTime? observedAt,
+    }) =>
+        EnvironmentalCondition(
+          id: 1,
+          catchId: 1,
+          observationDateTime: observedAt ?? DateTime(2026, 8, 2, 10, 0),
+          tideReferenceMode: 'fixed',
+          tideReferenceName: 'Darwin',
+          tideRequestLat: lat,
+          tideRequestLon: lon,
+          createdAt: DateTime.now(),
+          updatedAt: DateTime.now(),
+        );
+
+    test('identical request coordinates and day → unchanged', () {
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: recorded(),
+          requestLat: -12.4667,
+          requestLon: 130.85,
+          observationDateTime: DateTime(2026, 8, 2, 14, 30),
+        ),
+        isFalse,
+      );
+    });
+
+    test('different reference coordinates → changed', () {
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: recorded(),
+          requestLat: -12.25,
+          requestLon: 136.70,
+          observationDateTime: DateTime(2026, 8, 2, 10, 0),
+        ),
+        isTrue,
+      );
+    });
+
+    test('different catch location in automatic mode → changed', () {
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: recorded(lat: -12.4634, lon: 130.8456),
+          requestLat: -12.7,
+          requestLon: 130.4,
+          observationDateTime: DateTime(2026, 8, 2, 10, 0),
+        ),
+        isTrue,
+      );
+    });
+
+    test('same coordinates but different tide date → changed', () {
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: recorded(observedAt: DateTime(2026, 8, 2, 23, 30)),
+          requestLat: -12.4667,
+          requestLon: 130.85,
+          observationDateTime: DateTime(2026, 8, 3, 0, 15),
+        ),
+        isTrue,
+      );
+    });
+
+    test('no recorded request coordinates → not "changed"', () {
+      final existing = EnvironmentalCondition(
+        id: 1,
+        catchId: 1,
+        observationDateTime: DateTime(2026, 8, 2, 10, 0),
+        tideReferenceMode: 'fixed',
+        tideReferenceName: 'Darwin',
+        createdAt: DateTime.now(),
+        updatedAt: DateTime.now(),
+      );
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: existing,
+          requestLat: -12.4667,
+          requestLon: 130.85,
+          observationDateTime: DateTime(2026, 8, 2, 10, 0),
+        ),
+        isFalse,
+      );
+    });
+
+    test('no existing record → not "changed" (fetch triggered by missing '
+        'context instead)', () {
+      expect(
+        EnvironmentalConditionsService.tideRequestChanged(
+          existing: null,
+          requestLat: -12.4667,
+          requestLon: 130.85,
+          observationDateTime: DateTime(2026, 8, 2),
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('NT catalogue structure', () {
+  test('all catalogue IDs unique across published and candidates', () {
+    final all = [
+      ...kTideReferenceCatalogue,
+      ...kTideReferenceCandidates,
+    ];
+    final ids = all.map((r) => r.id).toSet();
+    expect(ids.length, all.length);
+  });
+
+  test('published entries are verified; candidates are not', () {
+    for (final r in kTideReferenceCatalogue) {
+      expect(r.isPublished, isTrue,
+          reason: '${r.id} must be verified before publication');
+      expect(r.source, isNotNull,
+          reason: '${r.id} must declare station vs model');
+      expect(r.region, isNotNull,
+          reason: '${r.id} must declare a region');
+    }
+    for (final r in kTideReferenceCandidates) {
+      expect(r.isPublished, isFalse);
+      expect(r.region, isNotNull);
+    }
+  });
+
+  test('candidates are never exposed to pickers', () {
+    final published = TideReferenceService.getAllReferences();
+    for (final c in kTideReferenceCandidates) {
+      expect(published.contains(c), isFalse,
+          reason: 'unverified candidate ${c.id} must not appear in pickers');
+      expect(TideReferenceService.getReferenceById(c.id), isNull);
+    }
+  });
+
+  test('legacy IDs darwin, dundee_beach, native_point are preserved', () {
+    expect(TideReferenceService.getReferenceById('darwin'), isNotNull);
+    expect(TideReferenceService.getReferenceById('dundee_beach'), isNotNull);
+    expect(TideReferenceService.getReferenceById('native_point'), isNotNull);
+  });
+
+  test('verified tier-1/2/3/5 entries are published station '
+      'references with provider ids', () {
+    const expected = {
+      'snake_bay': ('Snake Bay', 'Australia:NT_TP070', -11.4, 130.6667),
+      'melville_bay':
+          ('Melville Bay', 'Australia:NT_TP002', -12.2, 136.6667),
+      'milner_bay': ('Milner Bay', 'Australia:NT_TP003', -13.85, 136.4),
+      'centre_island':
+          ('Centre Island', 'Australia:NT_TP014', -15.7333, 136.8),
+      'port_keats': ('Port Keats', 'Australia:NT_TP042', -14.15, 129.5667),
+      'anson_bay': ('Anson Bay', 'Australia:NT_TP049', -13.3333, 130.0833),
+      'port_essington':
+          ('Port Essington', 'Australia:NT_TP074', -11.05, 132.0167),
+      'elcho_island':
+          ('Elcho Island', 'Australia:NT_TP018', -11.9167, 135.6667),
+      'cape_wessel':
+          ('Cape Wessel', 'Australia:NT_TP012', -11.0, 136.75),
+      'cape_van_diemen':
+          ('Cape Van Dieman', 'Australia:NT_TP069', -11.15, 130.3667),
+      'point_fawcett':
+          ('Point Fawcett', 'Australia:NT_TP056', -11.6833, 130.0167),
+      'cape_don': ('Cape Don', 'Australia:NT_TP040', -11.3, 131.7667),
+      'north_goulburn_island': (
+        'North Goulburn Island',
+        'Australia:NT_TP088',
+        -11.5,
+        133.3667
+      ),
+      'nightcliff': ('Nightcliff', 'Australia:NT_TP063', -12.3667,
+          130.8167),
+      'charles_point_patches': (
+        'Charles Point Patches',
+        'Australia:NT_TP036',
+        -12.3167,
+        130.6833
+      ),
+      'tapa_bay': ('Tapa Bay', 'Australia:NT_TP055', -12.4333,
+          130.5833),
+      'evans_shoal':
+          ('Evans Shoal', 'Australia:NT_TP047', -10.0667, 129.5167),
+      'money_shoal':
+          ('Money Shoal', 'Australia:NT_TP024', -10.3167, 132.7167),
+    };
+    expected.forEach((id, e) {
+      final ref = TideReferenceService.getReferenceById(id);
+      expect(ref, isNotNull, reason: '$id must be published');
+      expect(ref!.displayName, e.$1);
+      expect(ref.providerStationId, e.$2);
+      expect(ref.latitude, e.$3);
+      expect(ref.longitude, e.$4);
+      expect(ref.isStation, isTrue);
+      expect(ref.isPublished, isTrue);
+      expect(TideReferenceService.getAllReferences(), contains(ref));
+    });
+  });
+
+  test('verified model-batch entries are published model references', () {
+    const expected = {
+      'cape_croker': ('Cape Croker', -11.0, 132.567),
+      'port_langdon': ('Port Langdon', -13.8667, 136.833),
+      'borroloola': ('Borroloola Coast', -15.97, 136.35),
+    };
+    expected.forEach((id, e) {
+      final ref = TideReferenceService.getReferenceById(id);
+      expect(ref, isNotNull, reason: '$id must be published');
+      expect(ref!.displayName, e.$1);
+      expect(ref.latitude, e.$2);
+      expect(ref.longitude, e.$3);
+      expect(ref.source, TideReferenceSource.model);
+      expect(ref.isPublished, isTrue);
+      expect(ref.providerStationId, isNull,
+          reason: '$id has no gauge — model source only');
+      expect(TideReferenceService.describeSource(ref),
+          'model prediction');
+      expect(TideReferenceService.getAllReferences(), contains(ref));
+    });
+    // Borroloola: King Ash Bay alias resolves for search/history.
+    expect(TideReferenceService.getReferenceById('borroloola')!
+        .altNames, contains('King Ash Bay'));
+  });
+
+  test('catalogue lookup map covers published and candidate entries', () {
+    expect(tideReferenceCatalogueById['darwin']?.isPublished, isTrue);
+    expect(tideReferenceCatalogueById['borroloola']?.isPublished,
+        isTrue);
+    // All 2026-10 candidates have been published — the lookup map
+    // still covers both lists, and unknown ids stay absent.
+    expect(tideReferenceCatalogueById['wyndham'], isNull);
+  });
+});
+
+group('region classification', () {
+  test('verified entries classify into their declared region', () {
+    for (final r in kTideReferenceCatalogue) {
+      expect(tideRegionForCoordinates(r.latitude, r.longitude), r.region,
+          reason: '${r.id} (${r.latitude}, ${r.longitude})');
+    }
+  });
+
+  test('candidates classify into their declared region', () {
+    for (final r in kTideReferenceCandidates) {
+      expect(tideRegionForCoordinates(r.latitude, r.longitude), r.region,
+          reason:
+              '${r.id} at (${r.latitude}, ${r.longitude}) — if this fails, fix the bounding boxes or the candidate coords');
+    }
+  });
+
+  test('tideStateForCoordinates labels interstate stations', () {
+    // WA: west of 129°E (Wyndham ~128.7)
+    expect(tideStateForCoordinates(-15.4, 128.7), 'WA');
+    // QLD: east of 138°E (Karumba ~140.8)
+    expect(tideStateForCoordinates(-17.5, 140.8), 'QLD');
+    // NT interior/coast
+    expect(tideStateForCoordinates(-12.47, 130.85), 'NT');
+    expect(tideStateForCoordinates(-15.74, 136.81), 'NT');
+    // Other: north of NT (Indonesian waters)
+    expect(tideStateForCoordinates(-8.0, 131.0), 'other');
+  });
+
+  test('tideReferencesByRegion groups all published entries', () {
+    final grouped = tideReferencesByRegion();
+    final total = grouped.values.fold<int>(0, (n, l) => n + l.length);
+    expect(total, kTideReferenceCatalogue.length);
+  });
+});
+
+group('alternative names', () {
+  test('recorded references resolve via alt names', () {
+    final ref = TideReferenceService.resolveRecordedReference(
+      mode: 'fixed',
+      name: 'Native Pt',
+      requestLat: -12.650,
+      requestLon: 130.2667,
+    );
+    expect(ref, isNotNull);
+    expect(ref!.id, 'native_point');
+  });
+});
+
+group('toMap/fromMap round-trip', () {
+  test('new catalogue fields survive serialization', () {
+    const original = TideReference(
+      id: 'test_ref',
+      displayName: 'Test Ref',
+      latitude: -12.0,
+      longitude: 130.0,
+      source: TideReferenceSource.station,
+      state: 'NT',
+      region: TideRegion.fogBayAndDaly,
+      altNames: ['Alt One', 'Alt Two'],
+      providerStationId: 'Australia:NT_TP999',
+      verification: TideVerification.verified(
+          verifiedOn: '2026-10', provenance: 'test'),
+    );
+    final restored = TideReference.fromMap(original.toMap());
+    expect(restored.id, 'test_ref');
+    expect(restored.source, TideReferenceSource.station);
+    expect(restored.state, 'NT');
+    expect(restored.region, TideRegion.fogBayAndDaly);
+    expect(restored.altNames, ['Alt One', 'Alt Two']);
+    expect(restored.providerStationId, 'Australia:NT_TP999');
+    expect(restored.verification.status, TideVerificationStatus.verified);
+    expect(restored.verification.verifiedOn, '2026-10');
+    expect(restored.isPublished, isTrue);
+  });
+
+  test('missing new fields deserialize with safe defaults', () {
+    final ref = TideReference.fromMap(const {
+      'id': 'old_ref',
+      'displayName': 'Old Ref',
+      'latitude': -12.0,
+      'longitude': 130.0,
+      'isUserCreated': 0,
+    });
+    expect(ref.state, 'NT');
+    expect(ref.region, isNull);
+    expect(ref.altNames, isEmpty);
+    expect(ref.providerStationId, isNull);
+    expect(ref.isPublished, isFalse);
+  });
+});
 }

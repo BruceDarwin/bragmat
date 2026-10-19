@@ -52,3 +52,13 @@ app.*.map.json
 device_snapshots/
 tool/verify_*_tmp.dart
 bragmat_e2e_creds.json
+
+# Tide-station verification/discovery reports (may contain WorldTides
+# metadata). Covers the defaults plus common user-chosen names.
+verify_report.txt
+verify_tide_stations_report.txt
+discovery_report.txt
+*_discovery_report.txt
+*_verification_report.txt
+discovery_*.txt
+verify_*.txt
