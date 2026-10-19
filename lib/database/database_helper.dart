@@ -521,6 +521,14 @@ class DatabaseHelper {
         tide_diagnostics TEXT,
         tide_station_name TEXT,
         tide_station_distance_km REAL,
+        tide_reference_mode TEXT,
+        tide_reference_name TEXT,
+        tide_request_lat REAL,
+        tide_request_lon REAL,
+        worldtides_station TEXT,
+        worldtides_atlas TEXT,
+        worldtides_response_lat REAL,
+        worldtides_response_lon REAL,
         reference_tide_event_type TEXT,
         reference_tide_event_time TEXT,
         reference_tide_event_height REAL,
@@ -565,6 +573,10 @@ class DatabaseHelper {
         extremes_json TEXT NOT NULL,
         cached_at TEXT NOT NULL,
         expires_at TEXT NOT NULL,
+        worldtides_station TEXT,
+        worldtides_atlas TEXT,
+        worldtides_response_lat REAL,
+        worldtides_response_lon REAL,
         UNIQUE(latitude, longitude, date, datum)
       )
     ''');

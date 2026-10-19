@@ -3,7 +3,6 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:exif/exif.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:intl/intl.dart';
 import '../database/database_helper.dart';
@@ -13,6 +12,8 @@ import '../models/catch_media.dart';
 import '../models/fishing_trip.dart';
 import '../models/favourite_spot.dart';
 import '../models/environmental_condition.dart';
+import '../models/photo_details_decision.dart';
+import '../models/photo_metadata_result.dart';
 import '../models/lure.dart';
 import '../models/bait.dart';
 import '../models/tide_reference.dart';
@@ -20,11 +21,15 @@ import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
 import '../services/tide_reference_service.dart';
+import '../services/gallery_photo_picker.dart';
 import '../services/media_storage_service.dart';
+import '../services/photo_metadata_service.dart';
+import '../services/photo_details_applier.dart';
 import '../helpers/tide_context_helper.dart';
 import '../widgets/bragmat_section_card.dart';
 import '../widgets/resolved_image.dart';
 import '../widgets/location_action_buttons.dart';
+import '../widgets/photo_details_dialog.dart';
 import 'location_picker_screen.dart';
 
 class AddCatchScreen extends StatefulWidget {
@@ -44,6 +49,22 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   final _longitudeController = TextEditingController();
   DateTime? _dateCaught;
   List<CatchMedia> _mediaItems = [];
+
+  // Test-only accessors — the photo-metadata workflow tests need to
+  // verify attach results and field state without reaching into privates.
+  @visibleForTesting
+  List<CatchMedia> get debugMediaItems => _mediaItems;
+  @visibleForTesting
+  DateTime? get debugDateCaught => _dateCaught;
+  @visibleForTesting
+  String get debugLatitudeText => _latitudeController.text;
+  @visibleForTesting
+  String get debugLongitudeText => _longitudeController.text;
+  @visibleForTesting
+  String? get debugCoordinateSource => _coordinateSource;
+  @visibleForTesting
+  bool get debugDateTimeEditedByUser => _dateTimeEditedByUser;
+
   String? _selectedFishType;
   List<String> _fishTypes = [];
   int? _selectedFishingBuddyId;
@@ -51,6 +72,10 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   int? _selectedTripId;
   List<FishingTrip> _fishingTrips = [];
   String? _coordinateSource;
+  // Photo metadata: distinguishes the auto-seeded "now" date/time from a
+  // value the user deliberately set — the photo-details dialog only shows
+  // a "Current:" conflict line for authoritative values.
+  bool _dateTimeEditedByUser = false;
   int? _selectedFavouriteSpotId;
   List<FavouriteSpot> _favouriteSpots = [];
   int? _selectedLureId;
@@ -168,10 +193,16 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       _latitudeController.text = widget.catchToEdit!.latitude?.toString() ?? '';
       _longitudeController.text = widget.catchToEdit!.longitude?.toString() ?? '';
       _coordinateSource = widget.catchToEdit!.coordinateSource;
-      
+
       setState(() {
         _isLoadingInitialData = false;
       });
+
+      // Camera photos taken while editing this catch can be lost when
+      // Android destroys the activity. Recover them here — before any
+      // subsequent picker call clears the plugin's lost-data cache.
+      // The recovered photo attaches to _mediaItems for this catch.
+      _retrieveLostData();
     } else {
       // For new catches, load lookup lists in parallel
       await Future.wait([
@@ -415,35 +446,91 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     }
   }
 
+  bool _retrievingLostData = false;
+  final Set<String> _recoveredLostPaths = {};
+
   Future<void> _retrieveLostData() async {
-    final lostData = await ImagePicker().retrieveLostData();
-    
-    if (lostData == null || lostData.isEmpty) {
-      return;
-    }
-    
-    bool recovered = false;
-    
-    if (lostData.file != null) {
-      final file = File(lostData.file!.path);
-      await _processPickedFile(file, 'lost_data');
-      recovered = true;
-    } else if (lostData.files != null && lostData.files!.isNotEmpty) {
-      for (final lostFile in lostData.files!) {
-        final file = File(lostFile.path);
-        await _processPickedFile(file, 'lost_data');
-        recovered = true;
+    // Called from _initializeData (new and edited catches) and on
+    // lifecycle resume. Android normally returns lost data only once,
+    // but the call sites can overlap — a re-entry guard plus a
+    // processed-path set prevents duplicate attachments of the same
+    // recovered file.
+    if (_retrievingLostData) return;
+    _retrievingLostData = true;
+    try {
+      final lostData = await ImagePicker().retrieveLostData();
+
+      bool recovered = false;
+
+      if (!lostData.isEmpty) {
+        if (lostData.file != null) {
+          recovered = await _processLostFile(File(lostData.file!.path));
+        } else if (lostData.files != null && lostData.files!.isNotEmpty) {
+          for (final lostFile in lostData.files!) {
+            recovered =
+                await _processLostFile(File(lostFile.path)) || recovered;
+          }
+        }
       }
+
+      // The platform gallery picker keeps its own persistent recovery
+      // record (it survives process death and later picker calls). Only
+      // attach a pending pick whose recorded context matches this screen
+      // — a pick started while editing catch N must never land on a
+      // different catch.
+      final pending = await GalleryPhotoPicker.instance.retrievePending();
+      if (pending != null) {
+        if (pending.context == _galleryPickContext) {
+          if (!File(pending.path).existsSync()) {
+            // Nothing recoverable — discard the dead record.
+            await GalleryPhotoPicker.instance.acknowledgePending(pending.path);
+          } else if (await _processLostFile(File(pending.path))) {
+            await GalleryPhotoPicker.instance.acknowledgePending(pending.path);
+            recovered = true;
+          }
+        }
+      }
+
+      // A stale in-progress marker means a pick's result was never
+      // delivered (process death while the picker was open — Android does
+      // not always re-deliver Photo Picker results). Nothing is
+      // recoverable; tell the user once so the selection isn't silently
+      // lost.
+      final interrupted =
+          await GalleryPhotoPicker.instance.takeInterruptedPick();
+      if (interrupted != null && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Your previous photo selection could not be recovered — '
+              'please pick it again',
+            ),
+            duration: Duration(seconds: 4),
+          ),
+        );
+      }
+
+      if (recovered && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Recovered photo from previous camera session'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      _retrievingLostData = false;
     }
-    
-    if (recovered && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Recovered photo from previous camera session'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
+  }
+
+  /// Context token recorded with each platform-channel gallery pick so a
+  /// recovered result can only attach to the catch it was started from.
+  String get _galleryPickContext =>
+      widget.catchToEdit?.id != null ? 'edit:${widget.catchToEdit!.id}' : 'new';
+
+  Future<bool> _processLostFile(File file) async {
+    if (!_recoveredLostPaths.add(file.path)) return false;
+    return _processPickedFile(file, 'lost_data');
   }
 
   Future<void> _loadCurrentTrip() async {
@@ -771,6 +858,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           existingTime?.hour ?? DateTime.now().hour,
           existingTime?.minute ?? DateTime.now().minute,
         );
+        _dateTimeEditedByUser = true;
         _onFieldChanged();
       });
     }
@@ -792,6 +880,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           picked.hour,
           picked.minute,
         );
+        _dateTimeEditedByUser = true;
         _onFieldChanged();
       });
     }
@@ -799,6 +888,54 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
 
   Future<void> _pickImage() async {
     try {
+      // Android: use the system Photo Picker via platform channel so the
+      // user can consent to sharing EXIF location metadata. Unsupported
+      // platforms (and iOS) fall through to the existing image_picker
+      // flow unchanged.
+      final outcome = await GalleryPhotoPicker.instance
+          .pickFromGallery(context: _galleryPickContext);
+
+      if (outcome.status == GalleryPickStatus.picked &&
+          outcome.path != null) {
+        // Dedupe by path: the same result can theoretically arrive again
+        // through retrievePending if acknowledgement fails or races a
+        // lifecycle resume.
+        if (_recoveredLostPaths.add(outcome.path!) &&
+            await _processPickedFile(File(outcome.path!), 'gallery')) {
+          await GalleryPhotoPicker.instance
+              .acknowledgePending(outcome.path!);
+        }
+        return;
+      }
+      if (outcome.status == GalleryPickStatus.pending &&
+          outcome.path != null) {
+        // A recovered pick surfaces here instead of launching the picker.
+        // Attach only when it belongs to this catch.
+        if (outcome.context == _galleryPickContext) {
+          if (!File(outcome.path!).existsSync()) {
+            await GalleryPhotoPicker.instance
+                .acknowledgePending(outcome.path!);
+          } else if (await _processLostFile(File(outcome.path!))) {
+            await GalleryPhotoPicker.instance
+                .acknowledgePending(outcome.path!);
+          }
+        } else if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'A photo from a previous session is waiting to be '
+                'recovered for another catch',
+              ),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        return;
+      }
+      if (outcome.status == GalleryPickStatus.cancelled) return;
+      if (outcome.status != GalleryPickStatus.unsupported) return;
+
+      // Unsupported platform — existing image_picker flow.
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
@@ -811,7 +948,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         final file = File(pickedFile.path);
         await _processPickedFile(file, 'gallery');
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error picking image: $e')),
@@ -893,30 +1030,30 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     }
   }
 
-  Future<void> _processPickedFile(File file, String source) async {
+  /// Processes a picked/recovered photo: EXIF extraction, compressed
+  /// storage and media staging. Returns true when the photo was staged
+  /// into [_mediaItems] — callers use this to acknowledge recovery state.
+  Future<bool> _processPickedFile(File file, String source) async {
     final originalPath = file.path;
-    
-    // Extract GPS data from file
-    final gpsData = await _extractGpsData(originalPath);
-    final latitude = gpsData['latitude'];
-    final longitude = gpsData['longitude'];
-    
-    final photoDateTime = DateTime.now();
-    
-    // Copy photo to persistent storage
-    String? persistentPath;
-    final role = _mediaItems.isEmpty ? 'primary' : 'other';
-    
+
+    // Extract metadata offline from the picker-produced copy. The picker's
+    // recompression preserves the EXIF tags we need; failures yield an
+    // "absent" result — they never throw and never block attachment.
+    final metadata = await PhotoMetadataService.extractFromFile(originalPath);
+
+    final isFirstPhoto = _mediaItems.isEmpty;
+    final role = isFirstPhoto ? 'primary' : 'other';
+
     // Use temporary catch ID (0) for new catches, will be updated on save
     final tempCatchId = widget.catchToEdit?.id ?? 0;
-    
-    persistentPath = await MediaStorageService.copyPhotoToStorage(
+
+    final persistentPath = await MediaStorageService.copyPhotoToStorage(
       originalPath,
       'catch',
       tempCatchId,
       role,
     );
-    
+
     if (persistentPath == null) {
       // Copy failed, show error and do not add photo
       if (mounted) {
@@ -928,77 +1065,122 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           ),
         );
       }
-      return;
+      return false;
     }
-    
-    // persistentPath is guaranteed non-null at this point
-    if (mounted) {
-      setState(() {
-        _mediaItems.add(CatchMedia(
-          catchId: 0, // Will be set when saving
-          filePath: persistentPath!,
-          mediaType: 'photo',
-          role: role,
-          dateTaken: photoDateTime,
-          latitude: latitude,
-          longitude: longitude,
-        ));
-        
-        // Auto-populate latitude/longitude fields if GPS data found
-        if (latitude != null && longitude != null) {
-          _latitudeController.text = latitude.toString();
-          _longitudeController.text = longitude.toString();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('GPS coordinates found in photo'),
-              duration: Duration(seconds: 2),
-            ),
-          );
+
+    if (!mounted) return false;
+
+    // Store the photo's own metadata on the media row. date_taken is only
+    // set from genuine EXIF capture times — never attachment time, and
+    // never the low-confidence filesystem mtime suggestion.
+    final media = CatchMedia(
+      catchId: 0, // Will be set when saving
+      filePath: persistentPath,
+      mediaType: 'photo',
+      role: role,
+      dateTaken: PhotoDetailsApplier.captureTimeFor(metadata),
+      latitude: metadata.hasValidGps ? metadata.latitude : null,
+      longitude: metadata.hasValidGps ? metadata.longitude : null,
+    );
+    setState(() {
+      _mediaItems.add(media);
+    });
+
+    // Only the FIRST photo added to a NEW catch may auto-prompt, and only
+    // when it carries usable metadata. Subsequent photos, edit-mode
+    // attaches and metadata-free photos stay silent — the explicit
+    // per-photo "Use photo details" action is always available.
+    if (PhotoDetailsApplier.shouldAutoPrompt(
+      metadata: metadata,
+      isFirstPhoto: isFirstPhoto,
+      isEditMode: widget.catchToEdit != null,
+    )) {
+      // Defer past the current frame — required for lost-data recovery,
+      // which can reach this point during initial widget build-up.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          _showPhotoDetailsDialog(metadata);
         }
       });
     }
+    return true;
   }
 
-  Future<Map<String, double?>> _extractGpsData(String imagePath) async {
-    double? latitude;
-    double? longitude;
-    
+  /// Explicit "Use photo details" action for any attached photo.
+  ///
+  /// Re-reads the stored photo (byte-exact copy retains EXIF), extracts
+  /// metadata and offers it via the confirmation dialog. Available for
+  /// any photo, in both Add and Edit modes — the only path by which a
+  /// non-first photo or an existing catch receives photo metadata.
+  Future<void> _usePhotoDetails(CatchMedia media) async {
     try {
-      final file = File(imagePath);
-      final bytes = await file.readAsBytes();
-      final data = await readExifFromBytes(bytes);
-
-      if (data.containsKey('GPSLatitude') && data.containsKey('GPSLongitude')) {
-        final lat = data['GPSLatitude'];
-        final latRef = data['GPSLatitudeRef'];
-        final lon = data['GPSLongitude'];
-        final lonRef = data['GPSLongitudeRef'];
-
-        if (lat != null && latRef != null && lon != null && lonRef != null) {
-          latitude = _convertToDecimalDegrees(lat, latRef);
-          longitude = _convertToDecimalDegrees(lon, lonRef);
-        }
-      }
+      final resolvedPath = await MediaStorageService.resolvePath(media.filePath);
+      final metadata = await PhotoMetadataService.extractFromFile(resolvedPath);
+      if (!mounted) return;
+      await _showPhotoDetailsDialog(metadata);
     } catch (e) {
-      debugPrint('EXIF: Error reading GPS data: $e');
+      debugPrint('Photo details action failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not read details from this photo'),
+          ),
+        );
+      }
     }
-    
-    return {'latitude': latitude, 'longitude': longitude};
   }
 
-  double _convertToDecimalDegrees(dynamic value, dynamic ref) {
-    if (value is! List || value.length != 3) return 0.0;
+  /// Present [PhotoDetailsFoundDialog] for [metadata] and apply the
+  /// confirmed selections. Nothing changes unless the user explicitly
+  /// confirms; cancelling returns `null` and leaves every field alone.
+  Future<void> _showPhotoDetailsDialog(PhotoMetadataResult metadata) async {
+    try {
+      final decision = await showDialog<PhotoDetailsDecision>(
+        context: context,
+        builder: (_) => PhotoDetailsFoundDialog(
+          metadata: metadata,
+          currentDateCaught: _dateCaught,
+          currentDateTimeAuthoritative:
+              widget.catchToEdit != null || _dateTimeEditedByUser,
+          currentLatitude: double.tryParse(_latitudeController.text),
+          currentLongitude: double.tryParse(_longitudeController.text),
+          currentLocationName: _locationController.text.trim().isEmpty
+              ? null
+              : _locationController.text.trim(),
+        ),
+      );
+      if (decision == null || !mounted) return;
 
-    final degrees = value[0] is num ? value[0].toDouble() : 0.0;
-    final minutes = value[1] is num ? value[1].toDouble() : 0.0;
-    final seconds = value[2] is num ? value[2].toDouble() : 0.0;
+      final updates = PhotoDetailsApplier.buildUpdates(
+        metadata: metadata,
+        decision: decision,
+        currentDateCaught: _dateCaught,
+      );
+      if (updates.isEmpty) return;
 
-    final decimal = degrees + (minutes / 60) + (seconds / 3600);
-
-    if (ref == 'S' || ref == 'W') {
-      return -decimal;
+      setState(() {
+        if (updates.dateCaught != null) {
+          _dateCaught = updates.dateCaught;
+          _dateTimeEditedByUser = true;
+        }
+        if (updates.latitude != null && updates.longitude != null) {
+          _latitudeController.text = updates.latitude!.toString();
+          _longitudeController.text = updates.longitude!.toString();
+          _coordinateSource = updates.coordinateSource;
+          if (updates.clearFavouriteSpot) _selectedFavouriteSpotId = null;
+        }
+        _onFieldChanged();
+      });
+    } catch (e) {
+      debugPrint('Photo details action failed: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not read details from this photo'),
+          ),
+        );
+      }
     }
-    return decimal;
   }
 
   Future<void> _getCurrentLocation() async {
@@ -1896,6 +2078,25 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                                   ),
                                 ),
                               ),
+                            Positioned(
+                              bottom: 4,
+                              right: 4,
+                              child: GestureDetector(
+                                onTap: () => _usePhotoDetails(media),
+                                child: Container(
+                                  padding: const EdgeInsets.all(4),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  child: const Icon(
+                                    Icons.info_outline,
+                                    color: Colors.white,
+                                    size: 16,
+                                  ),
+                                ),
+                              ),
+                            ),
                             Positioned(
                               top: 4,
                               right: 4,
