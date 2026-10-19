@@ -100,6 +100,9 @@ model.Catch _catch({double lat = -12.4634, double lon = 130.8456}) =>
       longitude: lon,
     );
 
+TideReference _automaticRef() => TideReferenceService.getAllReferences()
+    .firstWhere((r) => r.id == 'automatic');
+
 Future<void> _insertDarwinCondition(
   int catchId, {
   String mode = 'fixed',
@@ -435,7 +438,8 @@ void main() {
         tideReference: TideReferenceService.getReferenceById('darwin'),
       );
 
-      expect(result, TideRecalculationResult.unavailable);
+      // A missing key now reports distinctly from a real fetch failure.
+      expect(result, TideRecalculationResult.invalidApiKey);
 
       final row = await service.getEnvironmentalConditionForCatch(7);
       expect(row, isNotNull);
@@ -443,6 +447,91 @@ void main() {
       expect(row.tideReferenceName, 'Darwin');
       expect(row.tideContextPhrase, isNull);
       expect(tides.fetchCount, 0);
+    });
+  });
+
+  // Regression for the missing-key diagnosis: an absent WorldTides key must
+  // be distinguishable from a real fetch failure, and must never reach the
+  // network (no paid request is made for a key that does not exist).
+  group('WorldTides key-vs-failure distinction', () {
+
+    test('missing key reports invalidApiKey without a network attempt',
+        () async {
+      tides.available = false;
+
+      final result = await service.upsertCalculatedConditionsForCatch(
+        _catch(),
+        tideReference: _automaticRef(),
+      );
+
+      expect(result, TideRecalculationResult.invalidApiKey);
+      expect(tides.fetchCount, 0);
+      expect(service.lastTideFailure, TideFailureReason.apiKeyMissing);
+
+      // Reference context is still recorded so a future retry can fetch.
+      final row = await service.getEnvironmentalConditionForCatch(7);
+      expect(row, isNotNull);
+      expect(row!.tideRequestLat, closeTo(-12.4634, 0.0001));
+      expect(row.worldtidesStation, isNull);
+    });
+
+    test('failed fetch reports unavailable after exactly one attempt',
+        () async {
+      tides.nextContext = null;
+
+      final result = await service.upsertCalculatedConditionsForCatch(
+        _catch(),
+        tideReference: _automaticRef(),
+      );
+
+      expect(result, TideRecalculationResult.unavailable);
+      expect(tides.fetchCount, 1);
+      expect(service.lastTideFailure, TideFailureReason.fetchFailed);
+    });
+
+    test('throwing fetch reports unavailable without leaking the failure',
+        () async {
+      tides.throwOnFetch = true;
+
+      final result = await service.upsertCalculatedConditionsForCatch(
+        _catch(),
+        tideReference: _automaticRef(),
+      );
+
+      expect(result, TideRecalculationResult.unavailable);
+      expect(tides.fetchCount, 1);
+      expect(service.lastTideFailure, TideFailureReason.fetchFailed);
+    });
+
+    test('explicit recalculation with a missing key reports apiKeyMissing',
+        () async {
+      await _insertDarwinCondition(7);
+      tides.available = false;
+      service.lastTideFailure = TideFailureReason.none;
+
+      final updated = await service.recalculateEnvironmentalConditionForCatch(
+        _catch(),
+        useRecordedReference: true,
+      );
+
+      expect(updated, isNull);
+      expect(service.lastTideFailure, TideFailureReason.apiKeyMissing);
+      expect(tides.fetchCount, 0);
+    });
+
+    test('explicit recalculation with a throwing fetch reports fetchFailed',
+        () async {
+      await _insertDarwinCondition(7);
+      tides.throwOnFetch = true;
+
+      final updated = await service.recalculateEnvironmentalConditionForCatch(
+        _catch(),
+        useRecordedReference: true,
+      );
+
+      expect(updated, isNull);
+      expect(service.lastTideFailure, TideFailureReason.fetchFailed);
+      expect(tides.fetchCount, 1);
     });
   });
 }
