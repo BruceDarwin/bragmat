@@ -1067,7 +1067,7 @@ void main() {
     expect(TideReferenceService.getReferenceById('native_point'), isNotNull);
   });
 
-  test('verified tier-1/tier-2/tier-3 entries are published station '
+  test('verified tier-1/2/3/5 entries are published station '
       'references with provider ids', () {
     const expected = {
       'snake_bay': ('Snake Bay', 'Australia:NT_TP070', -11.4, 130.6667),
@@ -1095,6 +1095,20 @@ void main() {
         -11.5,
         133.3667
       ),
+      'nightcliff': ('Nightcliff', 'Australia:NT_TP063', -12.3667,
+          130.8167),
+      'charles_point_patches': (
+        'Charles Point Patches',
+        'Australia:NT_TP036',
+        -12.3167,
+        130.6833
+      ),
+      'tapa_bay': ('Tapa Bay', 'Australia:NT_TP055', -12.4333,
+          130.5833),
+      'evans_shoal':
+          ('Evans Shoal', 'Australia:NT_TP047', -10.0667, 129.5167),
+      'money_shoal':
+          ('Money Shoal', 'Australia:NT_TP024', -10.3167, 132.7167),
     };
     expected.forEach((id, e) {
       final ref = TideReferenceService.getReferenceById(id);
@@ -1138,8 +1152,9 @@ void main() {
     expect(tideReferenceCatalogueById['darwin']?.isPublished, isTrue);
     expect(tideReferenceCatalogueById['borroloola']?.isPublished,
         isTrue);
-    expect(tideReferenceCatalogueById['nightcliff']?.isPublished,
-        isFalse);
+    // All 2026-10 candidates have been published — the lookup map
+    // still covers both lists, and unknown ids stay absent.
+    expect(tideReferenceCatalogueById['wyndham'], isNull);
   });
 });
 

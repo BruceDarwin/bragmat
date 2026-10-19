@@ -98,9 +98,10 @@ void main() {
       expect(seenRegions, contains('Arnhem Land'));
       expect(seenRegions, contains('Joseph Bonaparte Gulf'));
 
-      // Unverified candidates never appear.
-      expect(find.text('Nightcliff'), findsNothing);
-      expect(find.text('Evans Shoal'), findsNothing);
+      // Non-catalogue names never appear (all 2026-10 candidates
+      // have been verified and published).
+      expect(find.text('Wyndham'), findsNothing);
+      expect(find.text('Karumba'), findsNothing);
     });
 
     testWidgets('tapping a reference returns it and closes', (tester) async {

@@ -99,6 +99,50 @@ const List<TideReference> kTideReferenceCatalogue = [
           '(tool/verify_tide_stations.dart)',
     ),
   ),
+  // Darwin harbour & surrounds — verified 2026-10 (tier 5): extremes
+  // served by each named station (11 events each).
+  TideReference(
+    id: 'nightcliff',
+    displayName: 'Nightcliff',
+    latitude: -12.3667,
+    longitude: 130.8167,
+    source: TideReferenceSource.station,
+    region: TideRegion.darwinSurrounds,
+    providerStationId: 'Australia:NT_TP063',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
+  TideReference(
+    id: 'charles_point_patches',
+    displayName: 'Charles Point Patches',
+    latitude: -12.3167,
+    longitude: 130.6833,
+    source: TideReferenceSource.station,
+    region: TideRegion.darwinSurrounds,
+    providerStationId: 'Australia:NT_TP036',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
+  TideReference(
+    id: 'tapa_bay',
+    displayName: 'Tapa Bay',
+    latitude: -12.4333,
+    longitude: 130.5833,
+    source: TideReferenceSource.station,
+    region: TideRegion.darwinSurrounds,
+    providerStationId: 'Australia:NT_TP055',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
   TideReference(
     id: 'dundee_beach',
     displayName: 'Dundee Beach',
@@ -403,6 +447,36 @@ const List<TideReference> kTideReferenceCatalogue = [
           'station-served, 11 events',
     ),
   ),
+  // Offshore waters — verified 2026-10 (tier 5): extremes served by
+  // each named station (11 events each).
+  TideReference(
+    id: 'evans_shoal',
+    displayName: 'Evans Shoal',
+    latitude: -10.0667,
+    longitude: 129.5167,
+    source: TideReferenceSource.station,
+    region: TideRegion.offshore,
+    providerStationId: 'Australia:NT_TP047',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
+  TideReference(
+    id: 'money_shoal',
+    displayName: 'Money Shoal',
+    latitude: -10.3167,
+    longitude: 132.7167,
+    source: TideReferenceSource.station,
+    region: TideRegion.offshore,
+    providerStationId: 'Australia:NT_TP024',
+    verification: TideVerification.verified(
+      verifiedOn: '2026-10',
+      provenance: 'worldtides discovery + extremes-only run — '
+          'station-served, 11 events',
+    ),
+  ),
 ];
 
 /// Proposed NT coverage awaiting WorldTides `extremes` verification.
@@ -417,63 +491,10 @@ const List<TideReference> kTideReferenceCatalogue = [
 /// promote by moving an entry to [kTideReferenceCatalogue] after a
 /// SUITABLE verification verdict.
 const List<TideReference> kTideReferenceCandidates = [
-  // Darwin & surrounds
-  TideReference(
-    id: 'nightcliff',
-    displayName: 'Nightcliff',
-    latitude: -12.3667,
-    longitude: 130.8167,
-    region: TideRegion.darwinSurrounds,
-    providerStationId: 'Australia:NT_TP063',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  TideReference(
-    id: 'charles_point_patches',
-    displayName: 'Charles Point Patches',
-    latitude: -12.3167,
-    longitude: 130.6833,
-    region: TideRegion.darwinSurrounds,
-    providerStationId: 'Australia:NT_TP036',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  TideReference(
-    id: 'tapa_bay',
-    displayName: 'Tapa Bay',
-    latitude: -12.4333,
-    longitude: 130.5833,
-    region: TideRegion.darwinSurrounds,
-    providerStationId: 'Australia:NT_TP055',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  // Offshore waters — real WorldTides gauge positions from discovery
-  TideReference(
-    id: 'evans_shoal',
-    displayName: 'Evans Shoal',
-    latitude: -10.0667,
-    longitude: 129.5167,
-    region: TideRegion.offshore,
-    providerStationId: 'Australia:NT_TP047',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
-  TideReference(
-    id: 'money_shoal',
-    displayName: 'Money Shoal',
-    latitude: -10.3167,
-    longitude: 132.7167,
-    region: TideRegion.offshore,
-    providerStationId: 'Australia:NT_TP024',
-    verification: TideVerification.candidate(
-        provenance: 'worldtides discovery 2026-10 — station coords; '
-            'extremes unverified'),
-  ),
+  // Empty — every 2026-10 inventory candidate has been verified and
+  // published. New proposals go here first; see
+  // tool/inventory/nt_tide_stations_2026-10.txt for the retained
+  // discovery inventory of unverified WorldTides station records.
 ];
 
 /// Catalogue lookup by stable id across BOTH published entries and
