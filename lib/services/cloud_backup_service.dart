@@ -269,9 +269,28 @@ class CloudBackupService {
   static const _kConsentAt = 'cloud_backup_consent_at';
   static const _kConsentVersion = 'cloud_backup_consent_version';
 
-  /// Disabled by default — enabled only via [grantConsent].
+  /// Build-time feature availability, supplied via
+  /// `--dart-define=CLOUD_BACKUP_AVAILABLE=true`. Fails CLOSED: anything
+  /// other than the literal `true` — including a missing flag — makes
+  /// the feature unavailable regardless of saved consent or preferences.
+  /// Beta-1 builds ship without the flag: cloud backup cannot be
+  /// initiated from the service layer at all.
+  static const bool _kBuildAvailable =
+      bool.fromEnvironment('CLOUD_BACKUP_AVAILABLE');
+
+  /// Test seam — set only from unit tests, never in app code.
+  static bool? debugAvailable;
+
+  /// Whether the feature exists in this build at all. When false,
+  /// [isEnabled] is always false and every cloud operation throws
+  /// [CloudBackupNotEnabledException].
+  static bool get isAvailable => debugAvailable ?? _kBuildAvailable;
+
+  /// Disabled by default — enabled only via [grantConsent] in a build
+  /// where the feature is available.
   static Future<bool> get isEnabled async =>
-      (await SharedPreferences.getInstance()).getBool(_kEnabled) ?? false;
+      isAvailable &&
+      ((await SharedPreferences.getInstance()).getBool(_kEnabled) ?? false);
 
   /// Record explicit opt-in consent (versioned consent text).
   static Future<void> grantConsent() async {

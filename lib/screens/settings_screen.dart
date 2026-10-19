@@ -32,6 +32,7 @@ import '../widgets/tide_reference_picker_sheet.dart';
 import 'favourite_spots_screen.dart';
 import 'claim_data_screen.dart';
 import 'cloud_backup_screen.dart';
+import '../services/cloud_backup_service.dart';
 import 'achievements_screen.dart';
 import 'photo_metadata_diagnostic_screen.dart';
 
@@ -3772,8 +3773,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 onTap: _restoreData,
               ),
               // Cloud backup requires a signed-in account — hidden when
-              // Supabase is not configured.
-              if (SupabaseConfig.isConfigured) ...[
+              // Supabase is not configured, and unavailable entirely in
+              // builds compiled without CLOUD_BACKUP_AVAILABLE=true.
+              if (SupabaseConfig.isConfigured &&
+                  CloudBackupService.isAvailable) ...[
                 const Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.cloud_upload),

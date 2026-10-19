@@ -1,11 +1,38 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+// Release signing: credentials live OUTSIDE the repository. Point
+// BRAGMAT_KEY_PROPERTIES at a key.properties file containing:
+//   storeFile=<absolute path to .jks>
+//   storePassword=...
+//   keyAlias=...
+//   keyPassword=...
+// The file and the keystore are gitignored / stored outside the repo and
+// must never be committed. Release builds FAIL CLOSED when credentials are
+// absent — they must never silently fall back to the debug key.
+val keystoreProperties = Properties()
+val keystorePropertiesFile =
+    File(System.getenv("BRAGMAT_KEY_PROPERTIES") ?: "key.properties")
+if (keystorePropertiesFile.exists()) {
+    keystorePropertiesFile.inputStream().use { keystoreProperties.load(it) }
+}
+val releaseTaskRequested = gradle.startParameter.taskNames.any {
+    it.contains("release", ignoreCase = true)
+}
+if (releaseTaskRequested && !keystorePropertiesFile.exists()) {
+    throw GradleException(
+        "Release build requires signing credentials. Set " +
+            "BRAGMAT_KEY_PROPERTIES to a key.properties file (outside the repo)."
+    )
+}
+
 android {
-    namespace = "com.example.bragmat"
+    namespace = "com.bragmat.app"
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
@@ -15,8 +42,7 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.bragmat"
+        applicationId = "com.bragmat.app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion
@@ -25,11 +51,24 @@ android {
         versionName = flutter.versionName
     }
 
+    if (keystorePropertiesFile.exists()) {
+        signingConfigs {
+            create("release") {
+                keyAlias = keystoreProperties["keyAlias"] as String
+                keyPassword = keystoreProperties["keyPassword"] as String
+                storeFile = file(keystoreProperties["storeFile"] as String)
+                storePassword = keystoreProperties["storePassword"] as String
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (keystorePropertiesFile.exists()) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
     }
 }

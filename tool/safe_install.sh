@@ -24,7 +24,7 @@
 
 set -euo pipefail
 
-PKG="com.example.bragmat"
+PKG="com.bragmat.app"
 APK="build/app/outputs/flutter-apk/app-debug.apk"
 NO_BACKUP_OK=0
 ALLOW_DOWNGRADE=0

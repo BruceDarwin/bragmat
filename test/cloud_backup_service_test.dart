@@ -44,6 +44,7 @@ void main() {
     // explicitly overrides a seam.
     CloudBackupService.debugAuthStatus = AuthStatus.signedIn;
     CloudBackupService.debugLocalOwnerIdReader = () async => backend.uid;
+    CloudBackupService.debugAvailable = true;
 
     zipCounter = 0;
     CloudBackupService.debugCreateBackup = (dir) async {
@@ -72,6 +73,7 @@ void main() {
   });
 
   tearDown(() async {
+    CloudBackupService.debugAvailable = null;
     CloudBackupService.debugCreateBackup = null;
     CloudBackupService.debugRestoreOverride = null;
     CloudBackupService.debugWorkDir = null;

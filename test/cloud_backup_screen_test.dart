@@ -63,9 +63,11 @@ void main() {
       return f.path;
     };
     CloudBackupService.debugRestoreOverride = (_) async => _stubResult();
+    CloudBackupService.debugAvailable = true;
   });
 
   tearDown(() async {
+    CloudBackupService.debugAvailable = null;
     CloudBackupService.debugCreateBackup = null;
     CloudBackupService.debugRestoreOverride = null;
     CloudBackupService.debugWorkDir = null;

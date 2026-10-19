@@ -1,4 +1,4 @@
-package com.example.bragmat
+package com.bragmat.app
 
 import android.app.Activity
 import android.content.Intent

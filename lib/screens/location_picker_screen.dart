@@ -137,7 +137,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           children: [
             TileLayer(
               urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.example.bragmat',
+              userAgentPackageName: 'com.bragmat.app',
             ),
             if (_selectedLocation != null)
               MarkerLayer(

@@ -98,10 +98,12 @@ void main() {
     CloudBackupService.debugLocalOwnerIdReader = () async =>
         OwnershipService.ownerIdFrom(
             await DatabaseHelper.instance.systemDatabase);
+    CloudBackupService.debugAvailable = true;
     await CloudBackupService.grantConsent();
   });
 
   tearDown(() async {
+    CloudBackupService.debugAvailable = null;
     CloudBackupService.debugCreateBackup = null;
     CloudBackupService.debugRestoreOverride = null;
     CloudBackupService.debugWorkDir = null;
