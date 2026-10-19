@@ -24,6 +24,18 @@ enum TideRecalculationResult {
   unexpectedFailure,
 }
 
+/// Why the most recent WorldTides tide-context fetch did not produce
+/// data. Lets the UI distinguish "no API key configured" (fixable in
+/// Settings) from an actual network/API failure.
+enum TideFailureReason {
+  /// Last fetch succeeded, or no fetch was needed.
+  none,
+  /// No WorldTides API key is configured — no request was attempted.
+  apiKeyMissing,
+  /// A request was made (or attempted) and failed or returned nothing.
+  fetchFailed,
+}
+
 /// Service for managing environmental conditions
 /// Handles moon phase, sun times, weather, and tide data
 /// 
@@ -43,6 +55,10 @@ class EnvironmentalConditionsService {
   final SunTimesService _sunTimesService = SunTimesService();
   WeatherService _weatherService = WeatherService();
   WorldTidesService _worldTidesService = WorldTidesService();
+
+  /// Why the most recent tide-context fetch failed or was skipped.
+  /// Updated by the fetch paths so callers can message accurately.
+  TideFailureReason lastTideFailure = TideFailureReason.none;
 
   /// Test seam: inject a fake weather service in unit tests.
   @visibleForTesting
@@ -818,24 +834,39 @@ class EnvironmentalConditionsService {
 
     Map<String, dynamic>? tideContext;
     var tideFetchSucceeded = false;
+    var worldTidesKeyMissing = false;
     if (shouldFetchWorldTides &&
         requestLat != null &&
-        requestLon != null &&
-        await _worldTidesService.isAvailable()) {
-      try {
-        tideContext = await _worldTidesService.getTideContextForLocation(
-          requestLat,
-          requestLon,
-          observationDateTime,
-        );
-        tideFetchSucceeded = tideContext != null && tideContext.isNotEmpty;
-      } catch (e) {
-        debugPrint('WorldTides: Error fetching tide context: $e');
-        // Continue without tide context - don't fail the catch save
-        // Per Stage 2: Always record selected tide reference even if tide data unavailable
-        // WorldTides source will display as "Not recorded" in UI
-        tideFetchSucceeded = false;
+        requestLon != null) {
+      if (await _worldTidesService.isAvailable()) {
+        try {
+          tideContext = await _worldTidesService.getTideContextForLocation(
+            requestLat,
+            requestLon,
+            observationDateTime,
+          );
+          tideFetchSucceeded = tideContext != null && tideContext.isNotEmpty;
+        } catch (e) {
+          debugPrint('WorldTides: Error fetching tide context: $e');
+          // Continue without tide context - don't fail the catch save
+          // Per Stage 2: Always record selected tide reference even if tide data unavailable
+          // WorldTides source will display as "Not recorded" in UI
+          tideFetchSucceeded = false;
+        }
+      } else {
+        // No API key configured — never reached the network. Distinguish
+        // this from a real fetch failure so the UI can point the user at
+        // Settings → API Keys instead of implying an outage.
+        worldTidesKeyMissing = true;
+        debugPrint('WorldTides: API key not configured — no request attempted');
       }
+    }
+    if (shouldFetchWorldTides) {
+      lastTideFailure = tideFetchSucceeded
+          ? TideFailureReason.none
+          : (worldTidesKeyMissing
+              ? TideFailureReason.apiKeyMissing
+              : TideFailureReason.fetchFailed);
     }
 
     // If the request changed (different reference, catch location or
@@ -848,7 +879,9 @@ class EnvironmentalConditionsService {
         _hasValidWorldTidesContext(existing)) {
       debugPrint(
           'WorldTides: request changed but fetch failed — preserving recorded condition');
-      return TideRecalculationResult.unavailable;
+      return worldTidesKeyMissing
+          ? TideRecalculationResult.invalidApiKey
+          : TideRecalculationResult.unavailable;
     }
 
     final condition = EnvironmentalCondition(
@@ -928,8 +961,9 @@ class EnvironmentalConditionsService {
     
     // Return result based on tide fetch success
     if (shouldFetchWorldTides) {
-      return tideFetchSucceeded 
-          ? TideRecalculationResult.success 
+      if (tideFetchSucceeded) return TideRecalculationResult.success;
+      return worldTidesKeyMissing
+          ? TideRecalculationResult.invalidApiKey
           : TideRecalculationResult.unavailable;
     }
     
@@ -1068,20 +1102,29 @@ class EnvironmentalConditionsService {
     // Fetch official tide context from WorldTides
     Map<String, dynamic>? tideContext;
     var tideFetchSucceeded = false;
-    if (requestLat != null &&
-        requestLon != null &&
-        await _worldTidesService.isAvailable()) {
-      try {
-        tideContext = await _worldTidesService.getTideContextForLocation(
-          requestLat,
-          requestLon,
-          observationDateTime,
-        );
-        tideFetchSucceeded = tideContext != null && tideContext.isNotEmpty;
-      } catch (e) {
-        debugPrint('WorldTides: Error fetching tide context: $e');
+    var worldTidesKeyMissing = false;
+    if (requestLat != null && requestLon != null) {
+      if (await _worldTidesService.isAvailable()) {
+        try {
+          tideContext = await _worldTidesService.getTideContextForLocation(
+            requestLat,
+            requestLon,
+            observationDateTime,
+          );
+          tideFetchSucceeded = tideContext != null && tideContext.isNotEmpty;
+        } catch (e) {
+          debugPrint('WorldTides: Error fetching tide context: $e');
+        }
+      } else {
+        worldTidesKeyMissing = true;
+        debugPrint('WorldTides: API key not configured — no request attempted');
       }
     }
+    lastTideFailure = tideFetchSucceeded
+        ? TideFailureReason.none
+        : (worldTidesKeyMissing
+            ? TideFailureReason.apiKeyMissing
+            : TideFailureReason.fetchFailed);
 
     // The recalculation could not produce tide data — leave the recorded
     // condition untouched so the previously recorded reference and its

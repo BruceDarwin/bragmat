@@ -1542,7 +1542,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           );
           
           // Handle recalculation result
-          if (recalcResult == TideRecalculationResult.unavailable && _hasValidTideData) {
+          if (_tideFailed(recalcResult) && _hasValidTideData) {
             // Recalculation failed for existing catch with valid data - show decision dialog
             final decision = await _showFailedRecalculationPrompt();
             if (decision == null) {
@@ -1558,13 +1558,17 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                 savedCatch!,
                 tideReference: _recordedTideReference,
               );
-              if (revertResult == TideRecalculationResult.unavailable) {
+              if (_tideFailed(revertResult)) {
                 // Even revert failed - show notification
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Catch saved. Tide information unavailable.'),
-                      duration: Duration(seconds: 5),
+                    SnackBar(
+                      content: Text(revertResult ==
+                              TideRecalculationResult.invalidApiKey
+                          ? 'Catch saved. WorldTides API key not '
+                              'configured — set it in Settings → API Keys.'
+                          : 'Catch saved. Tide information unavailable.'),
+                      duration: const Duration(seconds: 5),
                     ),
                   );
                 }
@@ -1582,13 +1586,13 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                 );
               }
             }
-          } else if (recalcResult == TideRecalculationResult.unavailable) {
+          } else if (_tideFailed(recalcResult)) {
             // New catch or no existing valid data - show notification
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Catch saved without tide data. Tide information unavailable.'),
-                  duration: Duration(seconds: 5),
+                SnackBar(
+                  content: Text(_tideFailedText(recalcResult)),
+                  duration: const Duration(seconds: 5),
                 ),
               );
             }
@@ -1602,13 +1606,13 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
               tideReference: _selectedTideReference,
             );
             
-            if (recalcResult == TideRecalculationResult.unavailable) {
+            if (_tideFailed(recalcResult)) {
               // Recalculation failed - show notification
               if (mounted) {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Catch saved without tide data. Tide information unavailable.'),
-                    duration: Duration(seconds: 5),
+                  SnackBar(
+                    content: Text(_tideFailedText(recalcResult)),
+                    duration: const Duration(seconds: 5),
                   ),
                 );
               }
@@ -1624,13 +1628,13 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
             tideReference: _selectedTideReference,
           );
           
-          if (recalcResult == TideRecalculationResult.unavailable) {
+          if (_tideFailed(recalcResult)) {
             // Recalculation failed - show notification
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Catch saved without tide data. Tide information unavailable.'),
-                  duration: Duration(seconds: 5),
+                SnackBar(
+                  content: Text(_tideFailedText(recalcResult)),
+                  duration: const Duration(seconds: 5),
                 ),
               );
             }
@@ -1675,13 +1679,13 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
           tideReference: _selectedTideReference,
         );
         
-        if (recalcResult == TideRecalculationResult.unavailable) {
+        if (_tideFailed(recalcResult)) {
           // New catch with API failure - show notification
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Catch saved without tide data. Tide information unavailable.'),
-                duration: Duration(seconds: 5),
+              SnackBar(
+                content: Text(_tideFailedText(recalcResult)),
+                duration: const Duration(seconds: 5),
               ),
             );
           }
@@ -1976,6 +1980,18 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
     );
   }
 
+  /// A missing WorldTides key and a real fetch failure take the same code
+  /// paths — only the user-facing message differs.
+  bool _tideFailed(TideRecalculationResult result) =>
+      result == TideRecalculationResult.unavailable ||
+      result == TideRecalculationResult.invalidApiKey;
+
+  String _tideFailedText(TideRecalculationResult result) =>
+      result == TideRecalculationResult.invalidApiKey
+          ? 'Catch saved without tide data. WorldTides API key not '
+              'configured — set it in Settings → API Keys.'
+          : 'Catch saved without tide data. Tide information unavailable.';
+
   Future<void> _recalculateEnvironmentalData({bool useRecordedReference = true}) async {
     if (widget.catchToEdit == null) return;
     
@@ -1991,7 +2007,11 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(updated == null
-                ? 'Tide information could not be retrieved. Previously recorded tide data was kept.'
+                ? (envService.lastTideFailure == TideFailureReason.apiKeyMissing
+                    ? 'WorldTides API key not configured — set it in '
+                        'Settings → API Keys. Recorded tide data was kept.'
+                    : 'Tide information could not be retrieved. Previously '
+                        'recorded tide data was kept.')
                 : 'Environmental data recalculated successfully'),
             backgroundColor: updated == null ? Colors.orange : Colors.green,
             duration: const Duration(seconds: 5),
