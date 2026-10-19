@@ -18,6 +18,7 @@ import '../models/environmental_condition.dart';
 import '../models/lure.dart';
 import '../models/bait.dart';
 import '../services/achievement_service.dart';
+import '../services/media_storage_service.dart';
 import 'migration_v29.dart';
 
 class DatabaseHelper {
@@ -1399,13 +1400,86 @@ class DatabaseHelper {
   }
 
   // DELETE
+  /// Delete a catch together with its dependent rows and unreferenced
+  /// media files.
+  ///
+  /// SQLite foreign keys are not enabled globally (declared
+  /// ON DELETE CASCADE clauses are inert), so dependents are removed
+  /// explicitly inside one transaction: catch_media rows,
+  /// environmental_conditions rows, then the catch itself. If any part
+  /// fails the transaction rolls back and no rows are removed.
+  ///
+  /// Filesystem changes cannot roll back with SQLite, so media files are
+  /// only touched after the row deletions have committed. A file still
+  /// referenced by any surviving row — in any table or feature — is kept.
+  /// Newly unreferenced files are moved to a recoverable quarantine area
+  /// rather than permanently deleted.
   Future<int> deleteCatch(int id) async {
     final db = await instance.database;
-    return await db.delete(
-      'catches',
-      where: 'id = ?',
+
+    // Collect candidate media paths first; post-commit cleanup needs them.
+    final mediaPaths = (await db.query(
+      'catch_media',
+      columns: ['file_path'],
+      where: 'catch_id = ?',
       whereArgs: [id],
-    );
+    ))
+        .map((r) => r['file_path'] as String?)
+        .whereType<String>()
+        .where((p) => p.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final deleted = await db.transaction((txn) async {
+      await txn.delete('catch_media',
+          where: 'catch_id = ?', whereArgs: [id]);
+      await txn.delete('environmental_conditions',
+          where: 'catch_id = ?', whereArgs: [id]);
+      return txn.delete('catches', where: 'id = ?', whereArgs: [id]);
+    });
+
+    for (final relPath in mediaPaths) {
+      try {
+        if (await _isMediaPathStillReferenced(db, relPath)) continue;
+        await MediaStorageService.quarantinePhoto(relPath);
+      } catch (_) {
+        // Quarantine failure leaves the row cleanup intact; the file
+        // simply remains in place for a later sweep.
+      }
+    }
+    return deleted;
+  }
+
+  /// True when [relPath] is still referenced by any surviving row in any
+  /// table or feature that can hold a media path. Both the stored
+  /// spelling and its canonicalised legacy form are checked so a file
+  /// shared under `catch/x.jpg` and `catches/x.jpg` is still protected.
+  Future<bool> _isMediaPathStillReferenced(
+      Database db, String relPath) async {
+    final variants = MediaStorageService.mediaPathVariants(relPath).toList();
+    const sources = [
+      ('catch_media', 'file_path'),
+      ('trip_media', 'file_path'),
+      ('journal_media', 'file_path'),
+      ('catches', 'lure_photo_path'),
+      ('catches', 'image_path'),
+    ];
+    final placeholders = List.filled(variants.length, '?').join(',');
+    for (final (table, column) in sources) {
+      try {
+        final rows = await db.query(
+          table,
+          columns: ['id'],
+          where: '$column IN ($placeholders)',
+          whereArgs: variants,
+          limit: 1,
+        );
+        if (rows.isNotEmpty) return true;
+      } catch (_) {
+        // Table/column may not exist in older schemas — skip it.
+      }
+    }
+    return false;
   }
 
   // FISH TYPES

@@ -251,6 +251,29 @@ class MediaStorageService {
     return '$canonical/${portable.substring(slash + 1)}';
   }
 
+  /// All stored spellings that could reference the same file: the given
+  /// path, its canonicalised form (`catch/` → `catches/`), and the
+  /// reverse legacy singular form (`catches/` → `catch/`). Callers
+  /// checking whether a file is still referenced must test every variant
+  /// because rows written by different app versions disagree on spelling.
+  static Set<String> mediaPathVariants(String filePath) {
+    final portable = filePath.replaceAll('\\', '/');
+    final variants = {portable, canonicalizeRelPath(portable)};
+    for (final v in variants.toList()) {
+      final slash = v.indexOf('/');
+      if (slash <= 0) continue;
+      final first = v.substring(0, slash);
+      for (final entry in _legacySubdirs.entries) {
+        if (entry.value == first) {
+          variants.add('${entry.key}/${v.substring(slash + 1)}');
+        } else if (entry.key == first) {
+          variants.add('${entry.value}/${v.substring(slash + 1)}');
+        }
+      }
+    }
+    return variants;
+  }
+
   /// One-time storage migration: move files out of legacy singular
   /// entity directories (`catch/`, `trip/`, `journal/`, `lure/`) into the
   /// canonical plural ones. Identical content collisions are dropped;
@@ -333,6 +356,77 @@ class MediaStorageService {
     }
   }
   
+  /// Move a media file into a recoverable quarantine area instead of
+  /// permanently deleting it.
+  ///
+  /// The file is moved to `<app support>/bragmat/quarantine/<yyyymmdd>/`
+  /// preserving its media-relative path, so it can be restored by moving
+  /// it back. Only files inside the managed media directory are ever
+  /// touched — absolute paths that point elsewhere (e.g. a user's
+  /// original gallery photo) are never moved or deleted.
+  ///
+  /// Returns true if the file was moved or was already absent from the
+  /// media directory. Returns false for out-of-media paths and on error.
+  static Future<bool> quarantinePhoto(String filePath) async {
+    try {
+      final mediaDir = await getMediaDirectory();
+      String rel;
+      if (path.isAbsolute(filePath)) {
+        final normalized = filePath.replaceAll('\\', '/');
+        final mediaPrefix =
+            mediaDir.path.replaceAll('\\', '/');
+        if (!normalized.startsWith('$mediaPrefix/')) {
+          // Outside managed storage — never touch user-owned files.
+          return false;
+        }
+        rel = normalized.substring(mediaPrefix.length + 1);
+      } else {
+        rel = filePath.replaceAll('\\', '/');
+      }
+
+      var source = File(path.joinAll([mediaDir.path, ...rel.split('/')]));
+      if (!await source.exists()) {
+        // Legacy singular subdirs (catch/, lure/, ...) → canonical plural.
+        final canonical = canonicalizeRelPath(rel);
+        if (canonical != rel) {
+          rel = canonical;
+          source = File(path.joinAll([mediaDir.path, ...rel.split('/')]));
+        }
+      }
+      if (!await source.exists()) {
+        return true; // Nothing to quarantine — already absent.
+      }
+
+      // Quarantine sits beside `media/` (both under `bragmat/`) so the
+      // live media tree and ZIP backup collection stay clean.
+      final stamp = DateTime.now()
+          .toIso8601String()
+          .substring(0, 10)
+          .replaceAll('-', '');
+      final quarantineDir = Directory(
+          path.join(mediaDir.parent.path, 'quarantine', stamp));
+
+      var destRel = rel;
+      var dest = File(path.joinAll(
+          [quarantineDir.path, ...destRel.split('/')]));
+      var n = 1;
+      while (await dest.exists()) {
+        final ext = path.extension(rel);
+        final stem = rel.substring(0, rel.length - ext.length);
+        destRel = '${stem}_q$n$ext';
+        dest = File(path.joinAll(
+            [quarantineDir.path, ...destRel.split('/')]));
+        n++;
+      }
+      await dest.parent.create(recursive: true);
+      await source.rename(dest.path);
+      return true;
+    } catch (e) {
+      debugPrint('MediaStorageService: Error quarantining photo');
+      return false;
+    }
+  }
+
   /// Delete a photo file from storage.
   /// 
   /// Returns true if successful, false otherwise.
