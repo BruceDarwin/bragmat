@@ -365,6 +365,9 @@ void main() {
           await db.execute(
             'CREATE TABLE journal_media (id INTEGER PRIMARY KEY AUTOINCREMENT, journal_entry_id INTEGER, file_path TEXT)',
           );
+          await db.execute(
+            'CREATE TABLE environmental_conditions (id INTEGER PRIMARY KEY AUTOINCREMENT, observation_date_time TEXT, created_at TEXT, updated_at TEXT)',
+          );
         },
       );
       for (final fishType in catchFishTypes) {
@@ -739,6 +742,9 @@ void main() {
           );
           await db.execute(
             'CREATE TABLE catch_media (id INTEGER PRIMARY KEY AUTOINCREMENT, catch_id INTEGER, file_path TEXT)',
+          );
+          await db.execute(
+            'CREATE TABLE environmental_conditions (id INTEGER PRIMARY KEY AUTOINCREMENT, observation_date_time TEXT, created_at TEXT, updated_at TEXT)',
           );
         },
       );

@@ -497,6 +497,30 @@ void main() {
       await staged.close();
     });
 
+    test('missing core table fails closed instead of fabricating data',
+        () async {
+      // A v28-stamped database without environmental_conditions is not
+      // legitimate drift — the table has existed since v18. The repair
+      // must abort the whole upgrade transaction, not create an empty
+      // replacement that masks data loss.
+      final path = p.join(testDir.path, 'corrupt.db');
+      final db = await openDatabase(path, version: 28,
+          onCreate: (db, _) async {
+        await db.execute(
+            'CREATE TABLE catches (id INTEGER PRIMARY KEY AUTOINCREMENT,'
+            ' fish_type TEXT)');
+      });
+      await db.close();
+
+      DatabaseHelper.setTestDatabasePath(path);
+      await expectLater(
+          DatabaseHelper.instance.systemDatabase, throwsA(anything));
+      DatabaseHelper.clearTestDatabasePath();
+
+      // The failed upgrade left the file untouched at v28.
+      expect(await userVersion(path), 28);
+    });
+
     test('partial tide_cache is topped up to parity', () async {
       // Theoretical: a drifted DB that somehow already has a bare
       // tide_cache without the WorldTides columns.

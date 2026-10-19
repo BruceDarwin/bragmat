@@ -1278,75 +1278,16 @@ class DatabaseHelper {
       await _addColumnIfMissing(db, 'tide_cache', column);
     }
 
-    // Minimal historical backups may lack the table entirely; create it
-    // verbatim so the column repair below is a no-op on the fresh table.
+    // Core tables are never legitimately absent at this point: catches
+    // has existed since v1 and environmental_conditions since v18 (and
+    // any older origin receives it from the <18 upgrade block above).
+    // Their absence therefore means a corrupt or truncated database —
+    // fail the upgrade transaction rather than fabricate empty tables
+    // that would silently mask data loss.
     if (!await _tableExists(db, 'environmental_conditions')) {
-      await db.execute('''
-        CREATE TABLE environmental_conditions (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          catch_id INTEGER,
-          trip_id INTEGER,
-          observation_date_time TEXT NOT NULL,
-          latitude REAL,
-          longitude REAL,
-          moon_phase TEXT,
-          moon_illumination REAL,
-          sunrise_time TEXT,
-          sunset_time TEXT,
-          tide_stage TEXT,
-          tide_strength TEXT,
-          tide_notes TEXT,
-          tide_height REAL,
-          tide_movement TEXT,
-          tide_station TEXT,
-          tide_data_source TEXT,
-          tide_confidence TEXT,
-          derived_tide_stage TEXT,
-          tide_observed_or_estimated TEXT,
-          tide_diagnostics TEXT,
-          tide_station_name TEXT,
-          tide_station_distance_km REAL,
-          tide_reference_mode TEXT,
-          tide_reference_name TEXT,
-          tide_request_lat REAL,
-          tide_request_lon REAL,
-          worldtides_station TEXT,
-          worldtides_atlas TEXT,
-          worldtides_response_lat REAL,
-          worldtides_response_lon REAL,
-          reference_tide_event_type TEXT,
-          reference_tide_event_time TEXT,
-          reference_tide_event_height REAL,
-          reference_tide_event_relation TEXT,
-          minutes_from_reference_tide_event INTEGER,
-          previous_tide_event_type TEXT,
-          previous_tide_event_time TEXT,
-          previous_tide_event_height REAL,
-          next_tide_event_type TEXT,
-          next_tide_event_time TEXT,
-          next_tide_event_height REAL,
-          tide_context_phrase TEXT,
-          tide_context_data_source TEXT,
-          tide_context_confidence TEXT,
-          weather_condition TEXT,
-          temperature REAL,
-          humidity REAL,
-          cloud_cover REAL,
-          wind_speed REAL,
-          wind_direction TEXT,
-          barometric_pressure REAL,
-          rainfall REAL,
-          river_flow TEXT,
-          water_clarity TEXT,
-          data_source TEXT,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          uuid TEXT,
-          owner_id TEXT,
-          FOREIGN KEY (catch_id) REFERENCES catches (id) ON DELETE CASCADE,
-          FOREIGN KEY (trip_id) REFERENCES fishing_trips (id) ON DELETE CASCADE
-        )
-      ''');
+      throw StateError(
+          'v30 repair aborted: core table environmental_conditions is '
+          'missing — database is corrupt');
     }
 
     const environmentalColumns = [
@@ -1364,32 +1305,9 @@ class DatabaseHelper {
     }
 
     if (!await _tableExists(db, 'catches')) {
-      await db.execute('''
-        CREATE TABLE catches (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          fish_type TEXT,
-          length_cm INTEGER,
-          notes TEXT,
-          created_at TEXT,
-          date_caught TEXT,
-          image_path TEXT,
-          photo_datetime TEXT,
-          latitude REAL,
-          longitude REAL,
-          location TEXT,
-          fishing_buddy_id INTEGER,
-          trip_id INTEGER,
-          coordinate_source TEXT,
-          lure_id INTEGER,
-          bait_id INTEGER,
-          lure_size TEXT,
-          lure_colour TEXT,
-          lure_photo_path TEXT,
-          uuid TEXT,
-          owner_id TEXT,
-          updated_at TEXT
-        )
-      ''');
+      throw StateError(
+          'v30 repair aborted: core table catches is missing — '
+          'database is corrupt');
     }
 
     const catchColumns = [
