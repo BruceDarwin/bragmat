@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 
 import '../services/auth_service.dart';
+import '../services/backup_file_service.dart';
 import '../services/ownership_service.dart';
 import '../services/zip_backup_service.dart';
 
@@ -62,9 +62,9 @@ class _ClaimDataScreenState extends State<ClaimDataScreen> {
       _status = 'Creating backup…';
     });
     try {
-      final dir = await getDownloadsDirectory();
+      final dir = await BackupFileService.backupDirectory();
       if (dir == null) {
-        throw StateError('Could not access the downloads directory');
+        throw StateError('Could not access the backup directory');
       }
       final backupPath = await ZipBackupService.createBackup(
         outputDirectory: dir.path,

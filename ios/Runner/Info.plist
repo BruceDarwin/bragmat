@@ -49,6 +49,33 @@
 	</dict>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Supabase auth deep links: signup confirmation and password recovery
+	     (matches the Android intent filter and Supabase redirect URL). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bragmat</string>
+			</array>
+		</dict>
+	</array>
+	<!-- Permission usage descriptions — required, else the app is terminated
+	     on first camera/photo/location access. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Bragmat uses the camera to attach photos to your catches and trips.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Bragmat lets you choose photos from your library to attach to catches and trips, and reads photo date and location metadata when available.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Bragmat records where each catch was made so it can be shown on the map and matched with local weather and tide data.</string>
+	<!-- Make the app Documents folder visible in the Files app so users can
+	     reach exported backup ZIPs directly. -->
+	<key>UIFileSharingEnabled</key>
+	<true/>
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>

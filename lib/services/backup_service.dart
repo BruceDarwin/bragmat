@@ -1,7 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import '../services/backup_file_service.dart';
 import '../database/database_helper.dart';
 import '../models/trip_media.dart';
 import '../models/trip_journal.dart';
@@ -103,10 +103,10 @@ class BackupService {
     final backup = await createBackup();
     final json = jsonEncode(backup);
     
-    // Get downloads directory
-    final directory = await getDownloadsDirectory();
+    // Platform-appropriate user-accessible directory
+    final directory = await BackupFileService.backupDirectory();
     if (directory == null) {
-      throw Exception('Could not access downloads directory');
+      throw Exception('Could not access backup directory');
     }
     
     // Generate filename with timestamp

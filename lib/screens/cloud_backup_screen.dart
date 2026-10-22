@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 
 import '../services/backup_envelope.dart';
+import '../services/backup_file_service.dart';
 import '../services/cloud_backup_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/zip_backup_service.dart';
@@ -416,7 +416,7 @@ You can disable Cloud Backup at any time. Disabling future backups does not auto
   /// unowned cloud backup is allowed to replace it. Returns the backup's
   /// file name, or null when it could not be created (aborts restore).
   Future<String?> _createSafetyBackup() async {
-    final dir = await getDownloadsDirectory();
+    final dir = await BackupFileService.backupDirectory();
     if (dir == null) return null;
     final backupPath =
         await ZipBackupService.createBackup(outputDirectory: dir.path);

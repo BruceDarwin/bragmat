@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
@@ -2022,8 +2021,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
         return;
       }
 
-      // Get downloads directory
-      final directory = await getDownloadsDirectory();
+      // Platform-appropriate user-accessible directory
+      final directory = await BackupFileService.backupDirectory();
       if (directory == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -2455,7 +2454,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     try {
       debugPrint('=== Backup Data Started ===');
 
-      final directory = await getDownloadsDirectory();
+      final directory = await BackupFileService.backupDirectory();
       if (directory == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -2531,10 +2530,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               TextButton(
                 onPressed: () async {
                   Navigator.pop(context);
-                  // System "save as" picker — lets the user store the
-                  // backup in shared Downloads, Drive, etc.
+                  // System "save as" picker (Android SAF) or share sheet
+                  // (iOS — "Save to Files"). sharePositionOrigin anchors
+                  // the iPad popover.
+                  final anchor = context.findRenderObject() as RenderBox?;
                   final saved = await BackupFileService.exportBackup(
-                      filePath, fileName);
+                    filePath,
+                    fileName,
+                    sharePositionOrigin:
+                        anchor == null ? null : anchor.localToGlobal(Offset.zero) & anchor.size,
+                  );
                   if (mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
                       SnackBar(
@@ -2784,24 +2789,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
 
     try {
-      // Backups inside the app's own external files dir are listed
-      // directly; backups in shared Downloads or other document providers
-      // are reached through the system file picker (scoped storage means
-      // the app cannot list shared directories itself).
-      final backupFiles = <File>[];
-      final directory = await getDownloadsDirectory();
-      if (directory != null && await directory.exists()) {
-        backupFiles.addAll(
-          directory.listSync().whereType<File>().where(
-                (f) =>
-                    f.path.contains('bragmat_backup_') &&
-                    (f.path.endsWith('.zip') || f.path.endsWith('.json')),
-              ),
-        );
-        // Most recent first
-        backupFiles.sort(
-            (a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
-      }
+      // Backups inside the app's own backup dir are listed directly;
+      // backups elsewhere (shared Downloads, iCloud Drive, etc.) are
+      // reached through the system document picker (the app cannot list
+      // shared directories itself).
+      final backupFiles = await BackupFileService.listLocalBackups();
 
       if (!mounted) return;
 
@@ -2849,9 +2841,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       String? filePath = selected;
-      if (selected == browseAction) {
-        // System document picker (Storage Access Framework) — covers
-        // shared Downloads, Google Drive and other providers.
+      final viaDocumentPicker = selected == browseAction;
+      if (viaDocumentPicker) {
+        // System document picker (SAF on Android, UIDocumentPicker via
+        // file_selector elsewhere) — covers shared Downloads, iCloud
+        // Drive and other providers.
         filePath = await BackupFileService.pickBackupZip();
         if (filePath == null) {
           if (mounted) {
@@ -2864,10 +2858,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       final backupFile = File(filePath);
-      if (filePath.endsWith('.json')) {
-        await _restoreLegacyJsonBackup(backupFile);
-      } else {
-        await _restoreZipBackup(backupFile);
+      try {
+        if (filePath.endsWith('.json')) {
+          await _restoreLegacyJsonBackup(backupFile);
+        } else {
+          await _restoreZipBackup(backupFile);
+        }
+      } finally {
+        if (viaDocumentPicker) {
+          await BackupFileService.releasePickedFile(filePath);
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -3064,7 +3064,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// unowned backup is allowed to replace it. Returns the backup's file
   /// name, or null when it could not be created (aborts the restore).
   Future<String?> _createSafetyBackup() async {
-    final dir = await getDownloadsDirectory();
+    final dir = await BackupFileService.backupDirectory();
     if (dir == null) return null;
     final backupPath =
         await ZipBackupService.createBackup(outputDirectory: dir.path);

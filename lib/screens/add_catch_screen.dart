@@ -936,13 +936,17 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       if (outcome.status == GalleryPickStatus.cancelled) return;
       if (outcome.status != GalleryPickStatus.unsupported) return;
 
-      // Unsupported platform — existing image_picker flow.
+      // Unsupported platform — existing image_picker flow. On iOS,
+      // requestFullMetadata delivers the original asset (EXIF intact —
+      // the default compressed copy strips GPS); it is ignored on other
+      // platforms, where quality/size caps still apply.
       final picker = ImagePicker();
       final pickedFile = await picker.pickImage(
         source: ImageSource.gallery,
         imageQuality: 85, // Compress to reduce memory pressure
         maxWidth: 1920, // Limit resolution to reduce memory
         maxHeight: 1080,
+        requestFullMetadata: true,
       );
       
       if (pickedFile != null) {
