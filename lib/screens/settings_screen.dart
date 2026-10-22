@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -33,6 +32,7 @@ import 'favourite_spots_screen.dart';
 import 'claim_data_screen.dart';
 import 'cloud_backup_screen.dart';
 import '../services/cloud_backup_service.dart';
+import '../services/debug_tools.dart';
 import 'achievements_screen.dart';
 import 'photo_metadata_diagnostic_screen.dart';
 
@@ -54,12 +54,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String? _worldTidesApiKey;
   String? _apiTestStatus;
   TideReference? _currentTideReference;
+  int? _databaseVersion;
 
   @override
   void initState() {
     super.initState();
     _loadFishTypes();
     _loadStatistics();
+    _loadDatabaseVersion();
     _loadFishingBuddies();
     _loadLures();
     _loadBaits();
@@ -67,6 +69,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadWorldTidesApiKey();
     _loadTideReference();
     _migrateApiKey();
+  }
+
+  Future<void> _loadDatabaseVersion() async {
+    try {
+      final version = await DatabaseHelper.instance.getSchemaVersion();
+      if (mounted) {
+        setState(() => _databaseVersion = version);
+      }
+    } catch (_) {}
   }
 
   Future<void> _loadStatistics() async {
@@ -1172,25 +1183,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('About Bragmat'),
-        content: const Column(
+        content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
+            const Text(
               'Bragmat helps anglers record, manage and review their fishing catches.',
             ),
-            SizedBox(height: 16),
-            Text(
+            const SizedBox(height: 16),
+            const Text(
               'Version: 1.0.0',
               style: TextStyle(fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
-              'Database Version: 1',
-              style: TextStyle(fontWeight: FontWeight.bold),
+              'Database Version: ${_databaseVersion ?? '—'}',
+              style: const TextStyle(fontWeight: FontWeight.bold),
             ),
-            SizedBox(height: 16),
-            Text(
+            const SizedBox(height: 16),
+            const Text(
               'Website: Coming Soon',
               style: TextStyle(color: Colors.grey),
             ),
@@ -3066,8 +3077,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Seed clearly-marked disposable data (TESTDATA trip, catch and photo)
   /// so restore tests have a distinct before/after state to compare.
-  /// Debug builds only.
+  /// Debug builds only — the guard makes this a no-op if the UI gate is
+  /// ever bypassed.
   Future<void> _seedDisposableTestData() async {
+    if (!DebugTools.isEnabled) return;
     try {
       final db = await DatabaseHelper.instance.database;
       final now = DateTime.now().toIso8601String();
@@ -3118,8 +3131,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// Run the normal restore flow but kill the process when restore reaches
   /// the selected stage. Relaunch the app afterwards to verify recovery.
-  /// Debug builds only — never reachable in release builds.
+  /// Debug builds only — guarded twice: this early return and the
+  /// [ZipBackupService.fireDebugStageHook] gate both no-op in release.
   Future<void> _runFaultInjectionRestore() async {
+    if (!DebugTools.isEnabled) return;
     const stages = <String, String>{
       'mediaStaged': 'media staged, before DB swap',
       'swapped': 'DB swapped, before media promotion',
@@ -3156,8 +3171,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   /// Show recovery/staging artifacts so device tests can verify cleanup
-  /// without a file manager. Debug builds only.
+  /// without a file manager. Debug builds only — the guard makes this a
+  /// no-op if the UI gate is ever bypassed.
   Future<void> _showRestoreDiagnostics() async {
+    if (!DebugTools.isEnabled) return;
     final dbPath = await DatabaseHelper.instance.databaseFilePath;
     final mediaDir = await MediaStorageService.getMediaDirectory();
     final stagingDir =
@@ -3823,11 +3840,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
-          // Restore testing tools — debug builds only. kDebugMode is a
-          // compile-time constant, so this entire section (including the
-          // fault-injection path that calls exit()) is tree-shaken out of
-          // release builds and cannot ship enabled.
-          if (kDebugMode) ...[
+          // Restore testing tools — debug builds only. DebugTools.isEnabled
+          // is compile-time false in release builds, so this entire section
+          // (including the fault-injection path that calls exit()) is
+          // unreachable in release, and the methods themselves no-op via
+          // their own DebugTools guards.
+          if (DebugTools.isEnabled) ...[
             BragmatSectionCard(
               icon: Icons.bug_report,
               title: 'Restore Testing (Debug)',
@@ -3869,21 +3887,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
             icon: Icons.info,
             title: 'App',
             children: [
-              ListTile(
-                leading: const Icon(Icons.science, color: Colors.orange),
-                title: const Text('Photo Metadata Diagnostic', style: TextStyle(color: Colors.orange)),
-                subtitle: const Text('Development tool for Stage 4A investigation', style: TextStyle(color: Colors.orange, fontSize: 12)),
-                trailing: const Icon(Icons.chevron_right),
-                onTap: () async {
-                  await Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => const PhotoMetadataDiagnosticScreen(),
-                    ),
-                  );
-                },
-              ),
-              const Divider(height: 1),
+              // Stage 4A development diagnostic — debug builds only.
+              if (DebugTools.isEnabled) ...[
+                ListTile(
+                  leading: const Icon(Icons.science, color: Colors.orange),
+                  title: const Text('Photo Metadata Diagnostic', style: TextStyle(color: Colors.orange)),
+                  subtitle: const Text('Development tool for Stage 4A investigation', style: TextStyle(color: Colors.orange, fontSize: 12)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    await Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const PhotoMetadataDiagnosticScreen(),
+                      ),
+                    );
+                  },
+                ),
+                const Divider(height: 1),
+              ],
               ListTile(
                 leading: const Icon(Icons.emoji_events),
                 title: const Text('Achievements'),
@@ -3901,7 +3922,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
               const Divider(height: 1),
               _buildInfoRow('App Version', '1.0.0'),
               const Divider(height: 1),
-              _buildInfoRow('Database Version', '1'),
+              _buildInfoRow(
+                  'Database Version', '${_databaseVersion ?? '—'}'),
               const Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.description),

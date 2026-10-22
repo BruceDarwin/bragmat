@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:archive/archive.dart';
+import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import '../database/database_helper.dart';
 import '../database/migration_v29.dart';
+import '../services/debug_tools.dart';
 import '../services/ownership_service.dart';
 import '../models/backup_manifest.dart';
 import '../services/media_storage_service.dart';
@@ -433,6 +435,18 @@ class ZipBackupService {
   /// interruption at that point — for tests and debug builds only.
   static Future<void> Function(String stage)? debugStageHook;
 
+  /// Fire [debugStageHook] for [stage] — a no-op when debug tools are
+  /// unavailable, so a hook can never execute in release builds even if a
+  /// caller assigned one.
+  @visibleForTesting
+  static Future<void> fireDebugStageHook(String stage) async {
+    if (!DebugTools.isEnabled) return;
+    final hook = debugStageHook;
+    if (hook != null) {
+      await hook(stage);
+    }
+  }
+
   /// Report progress and fire the debug stage hook.
   static Future<void> _reportStage(
     String stage,
@@ -440,10 +454,7 @@ class ZipBackupService {
     String message,
   ) async {
     onProgress?.call(message);
-    final hook = debugStageHook;
-    if (hook != null) {
-      await hook(stage);
-    }
+    await fireDebugStageHook(stage);
   }
 
   /// Restore a portable ZIP backup, replacing the current database and media.

@@ -93,6 +93,12 @@ class DatabaseHelper {
     return join(dbPath, 'bragmat.db');
   }
 
+  /// Schema version of the live database (SQLite `user_version`).
+  Future<int> getSchemaVersion() async {
+    final db = await database;
+    return db.getVersion();
+  }
+
   /// Close the live database connection.
   ///
   /// The connection will be re-opened lazily on the next [database] access.
