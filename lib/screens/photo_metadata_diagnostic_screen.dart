@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
 import 'package:path/path.dart' as path;
 import '../services/photo_metadata_diagnostic.dart';
+import '../theme/brand_colors.dart';
 
 /// Temporary Stage 4A diagnostic utility for photo metadata investigation.
 /// 
@@ -397,7 +398,7 @@ class _PhotoMetadataDiagnosticScreenState extends State<PhotoMetadataDiagnosticS
           icon: const Icon(Icons.content_copy),
           label: const Text('Copy Diagnostic Report'),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.blue,
+            backgroundColor: BrandColors.marineBlue,
             foregroundColor: Colors.white,
           ),
         ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/achievement.dart';
+import '../theme/brand_colors.dart';
 import '../services/achievement_service.dart';
 
 class AchievementsScreen extends StatefulWidget {
@@ -87,7 +88,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.blue,
+                    color: BrandColors.marineBlue,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Text(
@@ -189,7 +190,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
           height: 50,
           decoration: BoxDecoration(
             color: achievement.isUnlocked
-                ? Colors.blue.withOpacity(0.1)
+                ? BrandColors.gold.withOpacity(0.18)
                 : Colors.grey.withOpacity(0.3),
             borderRadius: BorderRadius.circular(25),
           ),
@@ -229,7 +230,7 @@ class _AchievementsScreenState extends State<AchievementsScreen> {
               Text(
                 'Progress: ${_getProgress(achievement)}',
                 style: const TextStyle(
-                  color: Colors.orange,
+                  color: BrandColors.warmOrangeDark,
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),

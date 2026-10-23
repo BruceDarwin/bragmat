@@ -8,6 +8,7 @@ import '../models/catch_media.dart';
 import '../models/environmental_condition.dart';
 import '../models/lure.dart';
 import '../models/bait.dart';
+import '../theme/brand_colors.dart';
 import '../widgets/bragmat_section_card.dart';
 import '../widgets/resolved_image.dart';
 import 'add_catch_screen.dart';
@@ -308,7 +309,7 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                                 decoration: BoxDecoration(
-                                  color: Colors.blue,
+                                  color: BrandColors.marineBlue,
                                   borderRadius: BorderRadius.circular(4),
                                 ),
                                 child: const Text(
@@ -701,13 +702,13 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.waves, size: 18, color: Colors.blue),
+                  const Icon(Icons.waves, size: 18, color: BrandColors.marineBlue),
                   const SizedBox(width: 8),
                   Text(
                     'WorldTides',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: Colors.blue.shade700,
+                      color: BrandColors.marineBlue,
                     ),
                   ),
                 ],
@@ -762,13 +763,13 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.edit_note, size: 18, color: Colors.orange),
+                  const Icon(Icons.edit_note, size: 18, color: BrandColors.warmOrange),
                   const SizedBox(width: 8),
                   Text(
                     'Manual Tide Observation',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade700,
+                      color: BrandColors.warmOrangeDark,
                     ),
                   ),
                 ],
@@ -811,19 +812,19 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
             children: [
               Row(
                 children: [
-                  const Icon(Icons.edit_note, size: 18, color: Colors.orange),
+                  const Icon(Icons.edit_note, size: 18, color: BrandColors.warmOrange),
                   const SizedBox(width: 8),
                   Text(
                     'Manual Tide Observation',
                     style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade700,
+                      color: BrandColors.warmOrangeDark,
                     ),
                   ),
                 ],
               ),
               const SizedBox(height: 8),
-              
+
               // Tide stage
               if (condition.tideStage != null && condition.tideStage != 'Unknown')
                 BragmatDataRow(

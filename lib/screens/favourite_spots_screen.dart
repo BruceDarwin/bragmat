@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../models/favourite_spot.dart';
+import '../theme/brand_colors.dart';
 import 'add_edit_favourite_spot_screen.dart';
 
 class FavouriteSpotsScreen extends StatefulWidget {
@@ -102,7 +103,7 @@ class _FavouriteSpotsScreenState extends State<FavouriteSpotsScreen> {
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       child: ListTile(
-                        leading: const Icon(Icons.place, color: Colors.blue),
+                        leading: const Icon(Icons.place, color: BrandColors.marineBlue),
                         title: Text(
                           spot.name,
                           style: const TextStyle(fontWeight: FontWeight.bold),

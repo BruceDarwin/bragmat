@@ -10,6 +10,7 @@ import '../models/trip_summary.dart';
 import '../services/current_trip_service.dart';
 import '../services/trip_summary_service.dart';
 import '../services/media_storage_service.dart';
+import '../theme/brand_colors.dart';
 import '../widgets/resolved_image.dart';
 import 'catch_details_screen.dart';
 import 'add_trip_screen.dart';
@@ -1427,7 +1428,7 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
               children: [
                 Icon(
                   Icons.emoji_events,
-                  color: Colors.amber,
+                  color: BrandColors.gold,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
@@ -1447,9 +1448,9 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                 return Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: Colors.amber.withValues(alpha: 0.1),
+                    color: BrandColors.gold.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.amber.withValues(alpha: 0.3)),
+                    border: Border.all(color: BrandColors.gold.withValues(alpha: 0.45)),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,

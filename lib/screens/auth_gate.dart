@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../services/auth_service.dart';
 import '../services/ownership_service.dart';
 import '../services/supabase_config.dart';
+import '../theme/brand_colors.dart';
 import 'claim_data_screen.dart';
 import 'sign_in_screen.dart';
 import 'reset_password_screen.dart';
@@ -306,7 +307,7 @@ class _AuthMessageScreen extends StatelessWidget {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Icon(icon, size: 64, color: Colors.blueGrey),
+                Icon(icon, size: 64, color: BrandColors.marineBlue),
                 const SizedBox(height: 24),
                 Text(title,
                     style: Theme.of(context).textTheme.headlineSmall),

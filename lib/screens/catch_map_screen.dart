@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
+import '../theme/brand_colors.dart';
 import 'package:latlong2/latlong.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
@@ -358,7 +359,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
   Widget _buildFavouriteSpotMarker(FavouriteSpot spot) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.orange,
+        color: BrandColors.warmOrange,
         shape: BoxShape.circle,
         border: Border.all(color: Colors.white, width: 2),
         boxShadow: [

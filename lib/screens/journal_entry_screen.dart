@@ -4,6 +4,7 @@ import '../database/database_helper.dart';
 import '../models/trip_journal.dart';
 import '../models/journal_media.dart';
 import '../services/media_storage_service.dart';
+import '../theme/brand_colors.dart';
 import '../widgets/resolved_image.dart';
 import 'photo_viewer_screen.dart';
 
@@ -422,7 +423,7 @@ class _JournalEntryScreenState extends State<JournalEntryScreen> {
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: Colors.blue,
+                                    color: BrandColors.marineBlue,
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: const Text(

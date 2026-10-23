@@ -18,6 +18,7 @@ import '../models/photo_metadata_result.dart';
 import '../models/lure.dart';
 import '../models/bait.dart';
 import '../models/tide_reference.dart';
+import '../theme/brand_colors.dart';
 import '../services/current_trip_service.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
@@ -2117,7 +2118,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                                 child: Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
-                                    color: Colors.blue,
+                                    color: BrandColors.marineBlue,
                                     borderRadius: BorderRadius.circular(4),
                                   ),
                                   child: const Text(

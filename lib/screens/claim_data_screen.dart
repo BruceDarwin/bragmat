@@ -5,6 +5,7 @@ import '../services/auth_service.dart';
 import '../services/backup_file_service.dart';
 import '../services/ownership_service.dart';
 import '../services/zip_backup_service.dart';
+import '../theme/brand_colors.dart';
 
 /// Explicit ownership-claim wizard (Stage 4B / pre-beta hardening).
 ///
@@ -106,7 +107,7 @@ class _ClaimDataScreenState extends State<ClaimDataScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.link, size: 64, color: Colors.blueGrey),
+        const Icon(Icons.link, size: 64, color: BrandColors.marineBlue),
         const SizedBox(height: 24),
         Text(
             widget.blocking
@@ -192,7 +193,7 @@ class _ClaimDataScreenState extends State<ClaimDataScreen> {
           const SizedBox(height: 12),
           const Text('Opening your data…',
               textAlign: TextAlign.center,
-              style: TextStyle(color: Colors.blueGrey)),
+              style: TextStyle(color: BrandColors.marineBlue)),
         ],
         const Spacer(),
         if (!widget.blocking)

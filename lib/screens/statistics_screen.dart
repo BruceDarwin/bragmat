@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../database/database_helper.dart';
 import '../services/achievement_service.dart';
 import '../services/environmental_conditions_service.dart';
+import '../theme/brand_colors.dart';
 import '../widgets/resolved_image.dart';
 import 'catch_details_screen.dart';
 import 'achievements_screen.dart';
@@ -523,7 +524,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               children: [
                 Icon(
                   Icons.emoji_events,
-                  color: Colors.amber,
+                  color: BrandColors.gold,
                   size: 20,
                 ),
                 const SizedBox(width: 8),
@@ -678,12 +679,12 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
       height: 50,
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: Colors.amber.withValues(alpha: 0.1),
+        color: BrandColors.gold.withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(8),
       ),
       child: Icon(
         Icons.emoji_events,
-        color: Colors.amber,
+        color: BrandColors.gold,
         size: 24,
       ),
     );
@@ -1140,7 +1141,7 @@ class _StatisticsScreenState extends State<StatisticsScreen> {
               children: [
                 Icon(
                   Icons.air,
-                  color: Colors.teal,
+                  color: BrandColors.marineBlue,
                   size: 20,
                 ),
                 const SizedBox(width: 8),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/brand_colors.dart';
+
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
   factory NotificationService() => _instance;
@@ -74,7 +76,7 @@ class NotificationService {
       message: 'Backup completed successfully',
       icon: Icons.backup,
       duration: const Duration(seconds: 3),
-      backgroundColor: Colors.blue.shade700,
+      backgroundColor: BrandColors.marineBlue,
       textColor: Colors.white,
     );
   }
@@ -85,7 +87,7 @@ class NotificationService {
       message: 'Restore completed successfully',
       icon: Icons.restore,
       duration: const Duration(seconds: 3),
-      backgroundColor: Colors.blue.shade700,
+      backgroundColor: BrandColors.marineBlue,
       textColor: Colors.white,
     );
   }
@@ -96,8 +98,8 @@ class NotificationService {
       message: 'Achievement Unlocked: $achievementName',
       icon: Icons.emoji_events,
       duration: const Duration(seconds: 4),
-      backgroundColor: Colors.amber.shade700,
-      textColor: Colors.white,
+      backgroundColor: BrandColors.gold,
+      textColor: BrandColors.deepOcean,
     );
   }
 
@@ -107,7 +109,7 @@ class NotificationService {
       message: 'New Personal Best: $species ($length cm)',
       icon: Icons.star,
       duration: const Duration(seconds: 4),
-      backgroundColor: Colors.purple.shade700,
+      backgroundColor: BrandColors.deepOcean,
       textColor: Colors.white,
     );
   }
