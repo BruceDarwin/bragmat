@@ -9,9 +9,13 @@ class AppTheme {
         seedColor: palette.primary,
         brightness: Brightness.light,
         primary: palette.primary,
+        onPrimary: palette.white,
         secondary: palette.secondary,
+        onSecondary: palette.white,
         tertiary: palette.tertiary,
+        onTertiary: palette.primary,
         surface: palette.surface,
+        onSurface: Colors.black87,
       ),
       scaffoldBackgroundColor: palette.background,
       appBarTheme: AppBarTheme(

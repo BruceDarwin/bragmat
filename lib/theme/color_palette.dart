@@ -23,15 +23,15 @@ class ColorPalette {
     required this.mutedGrey,
   });
 
-  /// The default Bragmat color palette
+  /// The default Bragmat color palette (approved v5 branding)
   static const ColorPalette bragmat = ColorPalette(
-    primary: Color(0xFF183800), // Primary Green
-    secondary: Color(0xFF439779), // Teal
-    tertiary: Color(0xFFdfb10a), // Gold Accent
-    surface: Color(0xFFcde6e4), // Light Background
-    background: Color(0xFFcde6e4), // Light Background
+    primary: Color(0xFF013A5B), // Deep Ocean
+    secondary: Color(0xFF0D6E8C), // Marine Blue
+    tertiary: Color(0xFFF4A442), // Sunset Gold
+    surface: Color(0xFFF6E8D1), // Sand
+    background: Color(0xFFF8F9FA), // Near-white neutral
     white: Color(0xFFffffff), // White
-    mutedTeal: Color(0xFF5A7A6A), // Muted Teal
+    mutedTeal: Color(0xFF0D6E8C), // Marine Blue
     mutedGrey: Color(0xFF9E9E9E), // Muted Grey
   );
 
