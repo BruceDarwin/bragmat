@@ -135,7 +135,7 @@ begin
     from public.worldtides_config where key = 'cycle_anchor_day';
   v_user_limit   := coalesce(v_user_limit, 40);
   v_global_limit := coalesce(v_global_limit, 15000);
-  v_anchor       := greatest(1, least(28, coalesce(v_anchor, 1)));
+  v_anchor       := greatest(1, least(31, coalesce(v_anchor, 1)));
   v_cycle        := public.worldtides_cycle_start(v_anchor);
 
   -- Per-user reservation: guarded increment — the WHERE clause is
@@ -193,7 +193,7 @@ declare
 begin
   select value::int into v_anchor
     from public.worldtides_config where key = 'cycle_anchor_day';
-  v_anchor := greatest(1, least(28, coalesce(v_anchor, 1)));
+  v_anchor := greatest(1, least(31, coalesce(v_anchor, 1)));
   v_cycle  := public.worldtides_cycle_start(v_anchor);
 
   update public.worldtides_usage
