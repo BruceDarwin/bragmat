@@ -116,12 +116,46 @@ Coordinates exist only inside the transient request.
 5. Optional: scheduled job to reset monthly counters (or lazy rollover on
    first request of a new period — simpler).
 
-## 9. Open licensing question
+## 9. Licensing — CONFIRMED (Bryan Aamot, Brainware LLC, Oct 2026)
 
-Confirm in writing with WorldTides that serving predictions to external
-beta testers via an authenticated proxy under the owner's subscription
-qualifies as retrieval "on behalf of end users" (terms dated Oct 2026 read
-as permitting it; a short confirmation email is recommended before beta).
+Written confirmation received: the existing 20,000-credit/month
+subscription permits serving Bragmat tide predictions to external beta
+testers AND the eventual public release — no separate licence required —
+under these conditions, each mapped to the implementation:
+
+| # | Condition | Compliance |
+|---|---|---|
+| 1 | API key stays on the server | `WORLDTIDES_API_KEY` env secret only; never shipped, logged or returned (handler_test asserts non-leakage). |
+| 2 | Requests are for individual users | Every proxied call is bound to the caller's verified `uid`; no batch or anonymous mode exists. |
+| 3 | Copyright attribution displayed | WT1: tappable notice on the WorldTides card + full licence text in Settings (clickable copyright link). |
+| 4 | Per-user caching indefinite; kept in fishing records | `environmental_conditions` rows persist with the user's catches and travel in that user's own ZIP backups. |
+| 5 | Cached predictions NOT shared across users | See §9.1 — verified, no sharing path exists. |
+| 6 | No resale as standalone dataset | App provides no export of raw tide datasets; tide fields only ever appear attached to the owner's catch records. |
+| 7 | New requests subject to available credits | Per-user (40) and global (15,000) per-cycle atomic budgets; 429 on exhaustion. |
+| 8 | No separate licence for public release | Recorded — beta usage and public release are both covered under these same conditions. |
+
+### 9.1 Cache-sharing analysis (condition 5)
+
+Audited every path by which a WorldTides prediction could reach a user
+other than the requester:
+
+- **Server side**: the proxy persists nothing — no response cache, no
+  request log rows. Each request is fetched fresh for the authenticated
+  caller. No sharing path exists by construction.
+- **`tide_cache` (SQLite)**: lives inside the app's private storage of
+  the requesting user's device install. It is **not** exported by
+  `backup_service` (which exports `environmental_conditions` only), so a
+  backup restored on another device — or by another account — carries no
+  shared cache. Repeat same-user requests hit their own device's cache.
+- **`environmental_conditions`**: catch-attached predictions are the
+  requesting user's own records (explicitly permitted, condition 4) and
+  are bound by schema-v29 ownership/unclaimed-data protection on
+  restore — they cannot be claimed by a different account.
+- **Cloud Backup** (separate branch, disabled for beta): user-scoped,
+  encrypted, owner-only restore — same single-user property.
+
+Conclusion: a prediction fetched under user A's entitlement can only
+ever be read by user A. Compliant.
 
 ## 10. WT2 — as implemented (this branch)
 
