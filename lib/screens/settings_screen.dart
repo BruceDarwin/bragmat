@@ -1,9 +1,11 @@
+import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:share_plus/share_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:exif/exif.dart';
 import 'package:http/http.dart' as http;
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
 import 'dart:io';
 import '../database/database_helper.dart';
@@ -234,19 +236,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const AlertDialog(
+      builder: (context) => AlertDialog(
         content: Row(
           children: [
-            CircularProgressIndicator(),
-            SizedBox(width: 16),
-            Text('Testing WorldTides API variants...'),
+            const CircularProgressIndicator(),
+            const SizedBox(width: 16),
+            Text(kDebugMode
+                ? 'Testing WorldTides API variants...'
+                : 'Testing WorldTides API (1 request)...'),
           ],
         ),
       ),
     );
 
     try {
-      // Test multiple request variants
+      // Debug builds run the full diagnostic matrix; release builds run a
+      // single representative request to limit subscription credit use.
       final results = await _testWorldTidesVariants(apiKey);
       
       // Close loading dialog
@@ -268,18 +273,41 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<List<Map<String, dynamic>>> _testWorldTidesVariants(String apiKey) async {
     final results = <Map<String, dynamic>>[];
     
-    // Test coordinates
-    final testCoordinates = [
-      {'name': 'Darwin/Nightcliff', 'lat': -12.376717, 'lon': 130.8508711},
-      {'name': 'Darwin Harbour', 'lat': -12.4634, 'lon': 130.8446},
-      {'name': 'Fort Hill Wharf', 'lat': -12.4650, 'lon': 130.8370},
-    ];
+    // Test coordinates. Release builds use a single representative location —
+    // the full matrix is a debug-only diagnostic because every request
+    // consumes subscription credits.
+    final testCoordinates = kDebugMode
+        ? [
+            {'name': 'Darwin/Nightcliff', 'lat': -12.376717, 'lon': 130.8508711},
+            {'name': 'Darwin Harbour', 'lat': -12.4634, 'lon': 130.8446},
+            {'name': 'Fort Hill Wharf', 'lat': -12.4650, 'lon': 130.8370},
+          ]
+        : [
+            {'name': 'Darwin Harbour', 'lat': -12.4634, 'lon': 130.8446},
+          ];
     
     final testDate = DateTime.now();
     final dateStr = '${testDate.year}-${testDate.month.toString().padLeft(2, '0')}-${testDate.day.toString().padLeft(2, '0')}';
     
-    // Test variants
-    final variants = [
+    // Test variants. Release builds issue one minimal representative request
+    // (same shape as WorldTidesService: extremes, 3 days, CD datum — ~1
+    // credit). The broader diagnostic matrix is retained for debug builds.
+    final variants = !kDebugMode
+        ? [
+            {
+              'name': 'connectivity check (extremes)',
+              'params': {
+                'extremes': '',
+                'lat': '',
+                'lon': '',
+                'date': dateStr,
+                'key': apiKey,
+                'days': '3',
+                'datum': 'CD',
+              },
+            },
+          ]
+        : [
       {
         'name': 'extremes only',
         'params': {
@@ -443,8 +471,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               color: successfulResults.isNotEmpty ? Colors.green : Colors.orange,
             ),
             const SizedBox(width: 8),
-            const Expanded(
-              child: Text('WorldTides API Test Results'),
+            Expanded(
+              child: Text(
+                'WorldTides API Test — ${results.length} request${results.length == 1 ? '' : 's'}',
+              ),
             ),
           ],
         ),
@@ -3640,6 +3670,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Colors.grey[600],
                 ),
               ),
+              const SizedBox(height: 8),
+              // WorldTides licence attribution — the standard notice with a
+              // clickable link satisfies the terms' copyright requirement.
+              InkWell(
+                onTap: () => launchUrl(
+                  Uri.parse('https://www.worldtides.info/copyright'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: Text(
+                  'Tidal data retrieved from www.worldtides.info. '
+                  'Copyright © 2014–2026 Brainware LLC. Licensed for use of '
+                  'individual spatial coordinates by an end user.\n'
+                  'No guarantees are made about correctness — not for '
+                  'navigation or safety-critical use. Tap for licence details.',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ),
               const SizedBox(height: 12),
               // Action Buttons
               Row(
@@ -3667,6 +3716,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                 ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                kDebugMode
+                    ? 'Test makes up to 15 diagnostic API requests — each consumes subscription credits.'
+                    : 'Test makes 1 WorldTides request to check connectivity (consumes subscription credits).',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Colors.grey[600],
+                ),
               ),
               // Test Status
               if (_apiTestStatus != null) ...[

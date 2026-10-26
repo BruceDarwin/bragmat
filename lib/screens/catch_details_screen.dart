@@ -1,6 +1,7 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../database/database_helper.dart';
 import '../models/catch.dart';
 import '../models/fishing_buddy.dart';
@@ -747,12 +748,34 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                   label: 'Next',
                   value: '${condition.nextTideEventType} ${condition.nextTideEventHeight != null ? '${condition.nextTideEventHeight!.toStringAsFixed(2)} m' : ''} at ${timeFormatter.format(condition.nextTideEventTime!)}',
                 ),
+              const SizedBox(height: 8),
+              // WorldTides licence attribution — required wherever retrieved
+              // predictions are displayed. Opens the source copyright page.
+              InkWell(
+                onTap: () => launchUrl(
+                  Uri.parse('https://www.worldtides.info/copyright'),
+                  mode: LaunchMode.externalApplication,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Tidal data © WorldTides / Brainware LLC — copyright & licence',
+                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                              color: BrandColors.marineBlue,
+                            ),
+                      ),
+                    ),
+                    const Icon(Icons.open_in_new, size: 12, color: BrandColors.marineBlue),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
       );
     }
-    
+
     // Show manual tide context if entered (separate from WorldTides)
     if (hasManualTideContext) {
       children.add(

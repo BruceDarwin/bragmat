@@ -48,6 +48,7 @@ dependencies:
   archive: ^3.6.1
   package_info_plus: ^8.0.0
   supabase_flutter: 2.18.0
+  url_launcher: ^6.3.3
   # System document picker — used on iOS/desktop for backup ZIP import
   # (Android uses the SAF MethodChannel in BackupFileService instead).
   file_selector: ^1.1.0
