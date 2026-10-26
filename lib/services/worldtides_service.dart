@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/tide_event.dart';
 import '../services/secure_storage_service.dart';
+import '../services/supabase_config.dart';
 import '../database/database_helper.dart';
 import '../helpers/tide_context_helper.dart';
 import 'package:flutter/foundation.dart';
@@ -21,13 +23,49 @@ import 'package:flutter/foundation.dart';
 
 class WorldTidesService {
   static const String _baseUrl = 'https://www.worldtides.info/api/v3';
-  
-  /// Check if WorldTides API is available and configured
-  /// 
-  /// Returns true if API key is configured
+
+  /// Edge Function name for the authenticated proxy path (WT2). The
+  /// WorldTides key lives only as a server-side secret — never in the app.
+  static const String proxyFunctionName = 'worldtides-proxy';
+
+  /// Test seam — replaces the real HTTP GET against the WorldTides API
+  /// (direct-key path). Never set from app code.
+  static Future<http.Response> Function(Uri url)? httpGetForTesting;
+
+  /// Test seam — replaces the Supabase Edge Function call (proxy path).
+  /// Never set from app code.
+  static Future<Map<String, dynamic>?> Function({
+    required double latitude,
+    required double longitude,
+    required String date,
+  })? proxyFetchForTesting;
+
+  /// Test seam — overrides proxy-session availability. Never set from
+  /// app code.
+  static bool? proxySessionForTesting;
+
+  /// Check if tide data can be fetched: either a locally stored API key
+  /// (direct integration) or an authenticated Supabase session that can
+  /// reach the beta-proxy (entitlement is enforced server-side — no
+  /// client-side entitlement lookup is performed here).
   Future<bool> isAvailable() async {
     final apiKey = await SecureStorageService.getWorldTidesApiKey();
-    return apiKey != null && apiKey.isNotEmpty;
+    if (apiKey != null && apiKey.isNotEmpty) return true;
+    return _hasProxySession();
+  }
+
+  /// Whether an authenticated Supabase session exists for the proxy path.
+  /// Entitlement is intentionally NOT checked here — the Edge Function
+  /// enforces it per request, which keeps this call offline-safe and free.
+  static bool _hasProxySession() {
+    if (proxySessionForTesting != null) return proxySessionForTesting!;
+    try {
+      if (!SupabaseConfig.isConfigured) return false;
+      return Supabase.instance.client.auth.currentSession != null;
+    } catch (_) {
+      // Supabase not initialised (tests, unconfigured builds).
+      return false;
+    }
   }
 
   /// Get tide events for a location on a specific date
@@ -42,9 +80,11 @@ class WorldTidesService {
     double longitude,
     DateTime observationTime,
   ) async {
-    final apiKey = await SecureStorageService.getWorldTidesApiKey();
-    
-    if (apiKey == null || apiKey.isEmpty) {
+    final storedKey = await SecureStorageService.getWorldTidesApiKey();
+    final apiKey =
+        (storedKey != null && storedKey.isNotEmpty) ? storedKey : null;
+
+    if (apiKey == null && !_hasProxySession()) {
       return null;
     }
 
@@ -82,9 +122,12 @@ class WorldTidesService {
     }
   }
 
-  /// Fetch tide data from WorldTides API with caching
+  /// Fetch tide data with caching. A non-null [apiKey] calls the WorldTides
+  /// API directly; a null key uses the authenticated Supabase proxy
+  /// (`worldtides-proxy` Edge Function), which enforces beta entitlement and
+  /// credit budgets server-side.
   Future<Map<String, dynamic>?> _fetchTideData(
-    String apiKey,
+    String? apiKey,
     double latitude,
     double longitude,
     DateTime observationTime,
@@ -106,28 +149,40 @@ class WorldTidesService {
       return reconstructedData;
     }
     
-    // Not in cache, fetch from API
-    final url = Uri.parse('$_baseUrl').replace(queryParameters: {
-      'extremes': '',
-      'lat': latitude.toString(),
-      'lon': longitude.toString(),
-      'date': dateStr,
-      'key': apiKey,
-      'days': '3',
-      'datum': 'CD',
-    });
+    // Not in cache — fetch. A local key uses the direct WorldTides API;
+    // without one the authenticated proxy is used (its response body has
+    // the same shape, so parsing and caching below are unchanged).
+    int? statusCode;
+    Map<String, dynamic>? data;
+    if (apiKey != null) {
+      final url = Uri.parse('$_baseUrl').replace(queryParameters: {
+        'extremes': '',
+        'lat': latitude.toString(),
+        'lon': longitude.toString(),
+        'date': dateStr,
+        'key': apiKey,
+        'days': '3',
+        'datum': 'CD',
+      });
 
-    final response = await http.get(url).timeout(
-      const Duration(seconds: 30),
-      onTimeout: () {
-        debugPrint('WorldTides: Request timed out');
-        throw Exception('Request timed out');
-      },
-    );
+      final get = httpGetForTesting ?? http.get;
+      final response = await get(url).timeout(
+        const Duration(seconds: 30),
+        onTimeout: () {
+          debugPrint('WorldTides: Request timed out');
+          throw Exception('Request timed out');
+        },
+      );
+      statusCode = response.statusCode;
+      if (statusCode == 200) {
+        data = json.decode(response.body) as Map<String, dynamic>;
+      }
+    } else {
+      data = await _fetchViaProxy(latitude, longitude, dateStr);
+      if (data != null) statusCode = 200;
+    }
 
-    if (response.statusCode == 200) {
-      final data = json.decode(response.body);
-      
+    if (statusCode == 200 && data != null) {
       // Cache the response for future use
       final extremes = data['extremes'] as List?;
       if (extremes != null && extremes.isNotEmpty) {
@@ -143,16 +198,70 @@ class WorldTidesService {
           worldtidesResponseLon: stationInfo['responseLon'] as double?,
         );
       }
-      
+
       return data;
-    } else if (response.statusCode == 401) {
+    } else if (statusCode == 401) {
       debugPrint('WorldTides: Invalid API key');
       return null;
-    } else if (response.statusCode == 429) {
+    } else if (statusCode == 429) {
       debugPrint('WorldTides: Rate limit exceeded');
       return null;
     } else {
-      debugPrint('WorldTides: API error ${response.statusCode}');
+      debugPrint('WorldTides: API error $statusCode');
+      return null;
+    }
+  }
+
+  /// Fetch tide data through the authenticated Supabase proxy. The Edge
+  /// Function adds the API key server-side, enforces beta entitlement and
+  /// per-user/global credit budgets, and returns the WorldTides JSON body
+  /// with the same shape the direct API produces.
+  Future<Map<String, dynamic>?> _fetchViaProxy(
+    double latitude,
+    double longitude,
+    String dateStr,
+  ) async {
+    try {
+      final fetcher = proxyFetchForTesting ?? _invokeProxy;
+      return await fetcher(
+        latitude: latitude,
+        longitude: longitude,
+        date: dateStr,
+      );
+    } catch (e) {
+      debugPrint('WorldTides: proxy request failed');
+      return null;
+    }
+  }
+
+  static Future<Map<String, dynamic>?> _invokeProxy({
+    required double latitude,
+    required double longitude,
+    required String date,
+  }) async {
+    try {
+      final response = await Supabase.instance.client.functions.invoke(
+        proxyFunctionName,
+        body: {
+          'lat': latitude,
+          'lon': longitude,
+          'date': date,
+          'days': 3,
+          'datum': 'CD',
+        },
+      );
+      if (response.status != 200) {
+        debugPrint('WorldTides: proxy returned status ${response.status}');
+        return null;
+      }
+      final data = response.data;
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
+      }
+      return null;
+    } catch (_) {
+      // Never surface internal details — the caller treats all proxy
+      // failures identically (graceful degradation to "Not recorded").
       return null;
     }
   }

@@ -122,3 +122,63 @@ Confirm in writing with WorldTides that serving predictions to external
 beta testers via an authenticated proxy under the owner's subscription
 qualifies as retrieval "on behalf of end users" (terms dated Oct 2026 read
 as permitting it; a short confirmation email is recommended before beta).
+
+## 10. WT2 — as implemented (this branch)
+
+Files:
+
+- `supabase/functions/worldtides-proxy/index.ts` — entrypoint (`Deno.serve`).
+- `supabase/functions/worldtides-proxy/handler.ts` — request logic with
+  injectable deps (`ProxyDeps`) so auth/entitlement/quotas/upstream are
+  unit-testable without a live project.
+- `supabase/functions/worldtides-proxy/handler_test.ts` — 14 Deno tests.
+- `supabase/migrations/0003_worldtides_proxy.sql` — counters, config,
+  hardened SECURITY DEFINER reserve/release functions, admin-only reads.
+- `supabase/tests/worldtides_quota_checks.sql` — rolled-back SQL harness
+  (16 checks) for post-deployment verification.
+- `lib/services/worldtides_service.dart` — null-key requests route to
+  `functions.invoke('worldtides-proxy')`; a stored key keeps the direct
+  path. Test seams: `httpGetForTesting`, `proxyFetchForTesting`,
+  `proxySessionForTesting`.
+
+Decisions worth noting:
+
+- **Entitlement** is `is_approved_beta()` invoked through the *caller's*
+  JWT-scoped client (`userClient.rpc`), not the service role — identical
+  to the storage/profile precedent, so revocation is enforced per request.
+- **Reservation before upstream call.** `worldtides_reserve_credit` uses
+  guarded upserts (`ON CONFLICT … WHERE credits < limit`) evaluated under
+  the row lock — concurrent requests serialise on `(user_id, cycle)` and
+  `cycle` rows, so a parallel burst cannot overdraw either counter.
+- **Indeterminate billing is charged.** Timeouts/network failures keep
+  the reservation; only an upstream body explicitly reporting
+  `callCount === 0` triggers `worldtides_release_credit`. This is
+  deliberately conservative: it can never under-count WorldTides spend.
+- **Cycle alignment**: `worldtides_config.cycle_anchor_day` (day-of-month
+  of the WorldTides subscription renewal — set post-deploy) drives
+  `worldtides_cycle_start()`. Counters key on the cycle start date, so a
+  new billing period automatically starts fresh rows; nothing needs a
+  scheduled reset job.
+- **Compromised-client resistance**: reserve/release execute is granted
+  to `service_role` only, usage tables grant clients admin-gated SELECT
+  only, and the functions use `SECURITY DEFINER` + `search_path = ''`.
+  A tampered client can therefore only talk to the Edge Function, where
+  every call is re-authenticated, re-authorised, re-validated and
+  re-counted — there is no client-reachable path that mints or skips
+  credits. Flooding attempts are bounded by the per-user cap (default
+  40/cycle), and overall spend by the global circuit breaker (15,000).
+- **Privacy**: the function never writes coordinates anywhere; the only
+  persistence is `(user_id, cycle, credits)` plus update timestamps.
+- **Failure semantics**: 401 → session; 403 → entitlement; 400 → params;
+  429 → budget; 500 → missing secret; 502 → upstream/reservation failure.
+  All are mapped in the client to the existing graceful "Not recorded"
+  degradation — catch saving is unaffected.
+
+Deployment prerequisites (all owner-side, none performed in WT2):
+
+1. Apply `0003_worldtides_proxy.sql` to `bragmat-dev`.
+2. `supabase functions deploy worldtides-proxy`.
+3. `supabase secrets set WORLDTIDES_API_KEY=<real key>` — never committed.
+4. `update public.worldtides_config set value='<dd>' where
+   key='cycle_anchor_day';` to match the subscription renewal day.
+5. Run `supabase/tests/worldtides_quota_checks.sql` — expect 16/16 PASS.
