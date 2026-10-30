@@ -42,17 +42,61 @@ workflows:
         recipients:
           - bruceraymonddunn@gmail.com
 
-  # iOS-3B — development-signed IPA for the owner's registered iPhone.
-  # Do NOT trigger until: (a) Apple Developer Program membership is active,
-  # (b) the App Store Connect integration "bragmat_asc" exists in Codemagic
-  #     (Team settings → Integrations → App Store Connect; API key with
-  #      Developer role), and
-  # (c) the iPhone UDID is registered at developer.apple.com → Devices.
-  # Codemagic's automatic signing then fetches the development certificate
-  # and creates/refreshes the provisioning profile for com.bragmat.app
-  # including all registered devices. No signing assets enter this repo.
+  # iOS-3B — App Store signed build published to internal TestFlight.
+  # Preferred install path: preserves the Codemagic signature end-to-end
+  # (no third-party re-sign), requires no local Xcode/Configurator, and the
+  # owner (an App Store Connect user) is the only tester — no external
+  # distribution and no Beta App Review.
+  # Do NOT trigger until: (a) Apple Developer membership is active,
+  # (b) the App Store Connect integration "bragmat_asc" exists (API key,
+  #      App Manager role — Developer role can sign but cannot upload),
+  # (c) an App record for com.bragmat.app exists in App Store Connect, and
+  # (d) the owner is added as an internal tester.
+  ios-testflight:
+    name: iOS TestFlight build (iOS-3B)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: bragmat_asc
+    environment:
+      groups:
+        - bragmat_public
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.bragmat.app
+      flutter: 3.44.1
+      xcode: 26.6
+      cocoapods: default
+    scripts:
+      - name: Materialise .env from protected variables
+        script: |
+          printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\n' \
+            "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > .env
+          test -s .env && grep -q '=.' .env
+      - name: flutter pub get
+        script: flutter pub get
+      - name: Signed IPA (App Store profile)
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=$EXPORT_OPTIONS \
+            --dart-define-from-file=.env
+    artifacts:
+      - build/ios/ipa/*.ipa
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+      email:
+        recipients:
+          - bruceraymonddunn@gmail.com
+
+  # Secondary path — development-signed IPA for direct device install.
+  # Only useful with a capable macOS host (Apple Configurator 2 installs a
+  # signed IPA without re-signing; Sideloadly/3uTools re-sign and are
+  # rejected as an install method). Requires the device UDID registered at
+  # developer.apple.com → Devices. Keep disabled until that host exists.
   ios-signed-device:
-    name: iOS signed device build (iOS-3B)
+    name: iOS signed device build (deferred)
     instance_type: mac_mini_m2
     max_build_duration: 60
     integrations:
