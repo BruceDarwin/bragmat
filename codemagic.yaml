@@ -1,0 +1,43 @@
+# Bragmat iOS build — unsigned compile check (iOS-3A)
+#
+# Purpose: prove the iOS project compiles natively on a hosted macOS
+# machine. No code signing, no distribution — that is iOS-3B.
+#
+# Prerequisite (set in Codemagic UI, never in this file):
+#   Variable group "bragmat_public" containing:
+#     SUPABASE_URL       — public project URL (publishable config)
+#     SUPABASE_ANON_KEY  — publishable anon key (RLS-enforced, public)
+#   No service-role key. No WORLDTIDES_API_KEY — that stays server-side
+#   on Supabase and is never part of any client build.
+workflows:
+  ios-unsigned-compile:
+    name: iOS unsigned compile check
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    environment:
+      groups:
+        - bragmat_public
+      flutter: 3.44.1      # pinned — must match Windows dev SDK
+      xcode: 26.6          # pinned — current Codemagic stable default
+      cocoapods: default
+    scripts:
+      - name: Materialise .env from protected variables
+        script: |
+          printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\n' \
+            "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > .env
+          # Sanity: both values must be non-empty, never printed
+          test -s .env && grep -q '=.' .env
+      - name: flutter pub get
+        script: flutter pub get
+      - name: flutter analyze (baseline guard)
+        script: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Unsigned iOS build
+        script: |
+          flutter build ios --release --no-codesign \
+            --dart-define-from-file=.env
+    artifacts:
+      - build/ios/iphoneos/Runner.app
+    publishing:
+      email:
+        recipients:
+          - bruceraymonddunn@gmail.com
