@@ -76,6 +76,11 @@
 	<true/>
 	<key>LSSupportsOpeningDocumentsInPlace</key>
 	<true/>
+	<!-- Export compliance: app uses only standard mass-market encryption
+	     (TLS, iOS Keychain, linked libsodium) — EAR §740.13(b)(1) exempt.
+	     Declared so App Store/TestFlight processing does not prompt. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>UILaunchStoryboardName</key>
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
