@@ -42,18 +42,19 @@ workflows:
         recipients:
           - bruceraymonddunn@gmail.com
 
-  # iOS-3B — App Store signed build published to internal TestFlight.
-  # Preferred install path: preserves the Codemagic signature end-to-end
-  # (no third-party re-sign), requires no local Xcode/Configurator, and the
-  # owner (an App Store Connect user) is the only tester — no external
-  # distribution and no Beta App Review.
+  # iOS-3B — App Store signed build ONLY. Produces a signed IPA artifact;
+  # it does NOT upload or submit anything. TestFlight publishing is a
+  # separate, explicitly approved step (see notes in the runbook): either
+  # re-enable the commented publishing block below, or use Codemagic's
+  # manual "Publish to App Store Connect" action on the finished build.
+  #
   # Do NOT trigger until: (a) Apple Developer membership is active,
   # (b) the App Store Connect integration "bragmat_asc" exists (API key,
   #      App Manager role — Developer role can sign but cannot upload),
-  # (c) an App record for com.bragmat.app exists in App Store Connect, and
-  # (d) the owner is added as an internal tester.
+  # (c) an App record for com.bragmat.app exists in App Store Connect.
+  # Signing is App Store distribution — required for TestFlight delivery.
   ios-testflight:
-    name: iOS TestFlight build (iOS-3B)
+    name: iOS signed build for TestFlight (iOS-3B)
     instance_type: mac_mini_m2
     max_build_duration: 60
     integrations:
@@ -83,12 +84,16 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
-      app_store_connect:
-        auth: integration
-        submit_to_testflight: true
       email:
         recipients:
           - bruceraymonddunn@gmail.com
+      # Explicitly disabled: no automatic upload or TestFlight submission.
+      # To publish (after approval), uncomment:
+      # app_store_connect:
+      #   auth: integration
+      #   submit_to_testflight: true
+      # submit_to_app_store is intentionally never used — no production
+      # submission exists anywhere in this configuration.
 
   # Secondary path — development-signed IPA for direct device install.
   # Only useful with a capable macOS host (Apple Configurator 2 installs a
