@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/catch.dart';
@@ -305,6 +306,9 @@ class DatabaseHelper {
     return await openDatabase(
       path,
       version: 30,
+      onConfigure: (db) async {
+        await db.execute('PRAGMA foreign_keys = ON');
+      },
       onCreate: _createDB,
       onUpgrade: _onUpgrade,
     );
@@ -1489,7 +1493,11 @@ class DatabaseHelper {
         if (await _isMediaPathStillReferenced(db, relPath)) continue;
         await MediaStorageService.quarantinePhoto(relPath);
       } catch (_) {
-        // See doc comment — best-effort post-commit sweep.
+        // See doc comment — best-effort post-commit sweep. The file
+        // stays in place and remains discoverable by the Phase B
+        // unreferenced-media diagnostic.
+        debugPrint(
+            'quarantineUnreferencedMedia: sweep skipped $relPath');
       }
     }
   }

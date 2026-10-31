@@ -202,10 +202,14 @@ void main() {
     test('claim reports pre-existing orphans but still succeeds',
         () async {
       final db = await DatabaseHelper.instance.systemDatabase;
+      // A pre-existing orphan can only have been written while the
+      // pragma was off — reproduce that state to seed it.
+      await db.execute('PRAGMA foreign_keys = OFF');
       await MigrationV29.withoutTriggers(db, () async {
         await db.insert('catch_media',
             {'catch_id': 9999, 'file_path': 'x.jpg', 'created_at': 't'});
       });
+      await db.execute('PRAGMA foreign_keys = ON');
       final result = await OwnershipService.claim(
           userId: 'user-A', backupName: 'b.zip');
       expect(result.orphanFindings, isNotEmpty);

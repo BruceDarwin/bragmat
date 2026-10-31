@@ -217,6 +217,7 @@ void main() {
     test('absolute path under a legacy subdir becomes canonical',
         () async {
       final db = await DatabaseHelper.instance.database;
+      await db.insert('catches', {'fish_type': 'Test'});
       await db.insert('catch_media', {
         'catch_id': 1,
         // Real-world case: absolute path inside the legacy catch/ dir
@@ -277,6 +278,9 @@ void main() {
 
     Future<void> insertCatchMedia(String ref) async {
       final db = await DatabaseHelper.instance.database;
+      if ((await db.query('catches', where: 'id = 1')).isEmpty) {
+        await db.insert('catches', {'id': 1, 'fish_type': 'Test'});
+      }
       await db.insert('catch_media',
           {'catch_id': 1, 'file_path': ref, 'created_at': 'x'});
     }
@@ -428,6 +432,16 @@ void main() {
       await mediaFile('journals/j.jpg', [3, 4]);
       await insertCatchMedia('catches/rt.jpg');
       final db = await DatabaseHelper.instance.database;
+      final tripId = await db.insert('fishing_trips',
+          {'name': 'T', 'start_date': 'x', 'created_at': 'x'});
+      await db.insert('trip_journal', {
+        'trip_id': tripId,
+        'journal_date_time': 'x',
+        'title': 'J',
+        'entry_text': 'e',
+        'created_at': 'x',
+        'updated_at': 'x',
+      });
       await db.insert('journal_media',
           {'journal_entry_id': 1, 'file_path': 'journals/j.jpg',
            'created_at': 'x'});

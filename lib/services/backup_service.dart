@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:share_plus/share_plus.dart';
 import '../services/backup_file_service.dart';
 import '../database/database_helper.dart';
@@ -351,6 +352,7 @@ class BackupService {
     final environmentalConditions = data['environmentalConditions'] as List<dynamic>?;
     if (environmentalConditions != null) {
       final database = await db.database;
+      var unmappedParents = 0;
       for (final envData in environmentalConditions) {
         final envMap = envData as Map<String, dynamic>;
         // Remove ID to allow new insertion
@@ -368,7 +370,19 @@ class BackupService {
             (oldTripId != null && tripIdMap.containsKey(oldTripId))
                 ? tripIdMap[oldTripId]
                 : null;
+        if ((oldCatchId != null && envMap['catch_id'] == null) ||
+            (oldTripId != null && envMap['trip_id'] == null)) {
+          unmappedParents++;
+        }
         await database.insert('environmental_conditions', envMap);
+      }
+      if (unmappedParents > 0) {
+        // Non-blocking observability: the records are still restored with
+        // NULL parent references, so count them for diagnostics rather
+        // than failing the restore.
+        debugPrint('BackupService: $unmappedParents environmental '
+            'condition record(s) restored without a mappable catch/trip '
+            'parent (stored with NULL parent reference).');
       }
     }
   }

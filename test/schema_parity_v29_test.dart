@@ -195,10 +195,15 @@ void main() {
 
       // The exact write path a fresh install executes on catch save —
       // this threw "no column named tide_reference_mode" before the
-      // onCreate fix.
+      // onCreate fix. The parent catch must exist first: under
+      // PRAGMA foreign_keys=ON writing an env row for a nonexistent
+      // catch is rejected rather than silently orphaned.
+      final db = await DatabaseHelper.instance.database;
+      final catchId = await db.insert(
+          'catches', {'fish_type': 'Barra', 'created_at': '2026-10-01'});
       final id = await EnvironmentalConditionsService()
           .saveEnvironmentalConditionForCatch(
-        1,
+        catchId,
         DateTime(2026, 10, 1, 9, 45),
         -33.8688,
         151.2093,
@@ -206,7 +211,7 @@ void main() {
       expect(id, greaterThan(0));
 
       final saved = await EnvironmentalConditionsService()
-          .getEnvironmentalConditionForCatch(1);
+          .getEnvironmentalConditionForCatch(catchId);
       expect(saved, isNotNull);
       expect(saved!.latitude, closeTo(-33.8688, 1e-9));
     });

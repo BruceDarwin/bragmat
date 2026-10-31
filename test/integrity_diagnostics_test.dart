@@ -82,12 +82,16 @@ void main() {
   test('declared-FK orphans are reported via foreign_key_check',
       () async {
     final db = await DatabaseHelper.instance.database;
-    // Orphan: parent catch 999 does not exist.
+    // Orphan: parent catch 999 does not exist. Under enforcement this
+    // state can only arrive via a database written while the pragma
+    // was off — reproduce it the same way.
+    await db.execute('PRAGMA foreign_keys = OFF');
     await db.insert('catch_media', {
       'catch_id': 999,
       'file_path': 'catches/orphan.jpg',
       'created_at': '2026-10-01',
     });
+    await db.execute('PRAGMA foreign_keys = ON');
 
     final report = await IntegrityDiagnostics.run();
     expect(report.foreignKeyViolations, hasLength(1));
@@ -195,7 +199,7 @@ void main() {
       'created_at': '2026-10-01',
     });
     // Absolute out-of-media path that does not exist → missing, and the
-    // report must not leak the absolute directory (basename only).
+    // report must not leak the directory or the user's filename.
     final outside = p.join(testDir.path, 'elsewhere', 'gone.jpg');
     await db.insert('catch_media', {
       'catch_id': catchId,
@@ -205,19 +209,24 @@ void main() {
 
     final report = await IntegrityDiagnostics.run();
     expect(report.missingMediaFiles, hasLength(1));
-    expect(report.missingMediaFiles.single, endsWith('gone.jpg'));
+    expect(report.missingMediaFiles.single, endsWith('<external .jpg>'));
     expect(report.missingMediaFiles.single,
         isNot(contains('elsewhere')));
+    expect(report.missingMediaFiles.single, isNot(contains('gone')));
   });
 
   test('the scan is read-only for database and filesystem', () async {
     await insertCatch();
     final db = await DatabaseHelper.instance.database;
+    // Deliberate orphan for the scan to find — seeded the same way it
+    // exists in production: written while enforcement was off.
+    await db.execute('PRAGMA foreign_keys = OFF');
     await db.insert('catch_media', {
-      'catch_id': 9999, // deliberate orphan for the scan to find
+      'catch_id': 9999,
       'file_path': 'catches/orphan_media.jpg',
       'created_at': '2026-10-01',
     });
+    await db.execute('PRAGMA foreign_keys = ON');
     await makeMediaFile('catches/stray.jpg');
 
     // Snapshot state.

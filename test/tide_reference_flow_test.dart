@@ -145,6 +145,11 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     testDir = Directory.systemTemp.createTempSync('bragmat_tide_test_');
     DatabaseHelper.setTestDatabasePath(p.join(testDir.path, 'bragmat.db'));
+    // The fixture Catch carries id 7 — persist the parent row so
+    // environmental_conditions writes satisfy the declared FK.
+    final db = await DatabaseHelper.instance.database;
+    await db.insert(
+        'catches', {'id': 7, 'fish_type': 'Barra', 'created_at': 'x'});
     tides = _FakeWorldTidesService();
     service.worldTidesService = tides;
     service.weatherService = _FakeWeatherService();

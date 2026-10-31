@@ -264,7 +264,13 @@ class AchievementService {
   Future<void> unlockAchievement(String achievementId) async {
     final alreadyUnlocked = await isAchievementUnlocked(achievementId);
     if (alreadyUnlocked) return;
-    
+
+    // Definitions are only seeded lazily by getAllAchievements(); the
+    // user_achievements row declares an FK to achievements, so ensure
+    // the parent exists before inserting (required under enforcement,
+    // and prevents orphaned unlock rows otherwise).
+    await initializeAchievements();
+
     final db = await DatabaseHelper.instance.database;
     final achievement = _allAchievements.firstWhere((a) => a.id == achievementId);
     
