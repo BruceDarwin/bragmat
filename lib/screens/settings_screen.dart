@@ -22,6 +22,7 @@ import '../services/ownership_service.dart';
 import '../services/supabase_config.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
+import '../services/integrity_diagnostics.dart';
 import '../services/worldtides_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/tide_reference_service.dart';
@@ -2830,6 +2831,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// Phase B read-only integrity scan. Debug-gated like the rest of the
+  /// Restore Testing section; reports identifiers only — never
+  /// coordinates, photo contents or absolute paths.
+  Future<void> _showIntegrityDiagnostics() async {
+    if (!DebugTools.isEnabled) return;
+    try {
+      final report = await IntegrityDiagnostics.run();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Integrity Diagnostics'),
+          content: SingleChildScrollView(
+            child: SelectableText(report.summary()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Diagnostics failed: $e')),
+      );
+    }
+  }
+
   Future<void> _resetAccountPassword() async {
     final email = AuthService.instance.email;
     if (email == null) return;
@@ -3519,6 +3551,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: const Text(
                       'Show recovery markers, staging and media counts'),
                   onTap: _showRestoreDiagnostics,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.verified, color: Colors.orange),
+                  title: const Text('Integrity Diagnostics',
+                      style: TextStyle(color: Colors.orange)),
+                  subtitle: const Text(
+                      'Read-only FK, soft-reference and media scans'),
+                  onTap: _showIntegrityDiagnostics,
                 ),
               ],
             ),

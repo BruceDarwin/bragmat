@@ -81,6 +81,7 @@ void main() {
     'Review Legacy Estimated Tide Data',
     'Clear All Data',
     'Import CSV (Coming Soon)',
+    'Integrity Diagnostics',
   ];
 
   group('release build (DebugTools disabled)', () {
