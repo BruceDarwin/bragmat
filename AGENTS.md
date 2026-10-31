@@ -94,3 +94,29 @@ App data (SQLite DB + photos) lives in the app's private storage and is
   cloud restore of the user's dataset — only synthetic emulator data
   touched the cloud. Bucket left empty; cloud backup on the device
   remains disabled/untouched. 325/325 unit tests. Not merged, no tag.
+
+## Pending beta v14 integration checklist (user directives — not yet approved)
+
+Components awaiting combination into a v14 candidate, in order of approval:
+
+- `feature/beta-cleanup @ 4181a45` — Settings debug gating + SQLite
+  Integrity Phase A (transactional deletes, JSON restore remap) and
+  Phase B (read-only diagnostics). Accepted.
+- `test/fk-enforcement-validation @ d299c54` — Phase C1 validation of
+  `PRAGMA foreign_keys=ON`: compatible (659 pass, one real defect fixed).
+  Enabling enforcement permanently still requires explicit approval.
+- `feature/icon-dfinal @ 61a352a` — D-Final icon assets (scale 1.762,
+  optical centre). Accepted; branch frozen unchanged.
+
+When v14 is approved, the integration must include:
+
+1. Moto G15 real-device icon check — launcher icon, app drawer,
+   recent-apps thumbnail and Android themed (monochrome) icon.
+2. Same approved icon assets carried into the iOS build unchanged.
+3. Final integration report distinguishing regenerated files from
+   unchanged-but-verified assets (adaptive XML, background PNGs,
+   xxxhdpi monochrome were verified but not rewritten).
+4. Read-only FK diagnostic of the device DB via ZIP backup extract +
+   `tool/audit_fk.dart` before enabling enforcement on-device.
+
+No push, merge, tag or beta distribution until explicitly approved.
