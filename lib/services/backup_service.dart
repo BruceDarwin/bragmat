@@ -355,6 +355,19 @@ class BackupService {
         final envMap = envData as Map<String, dynamic>;
         // Remove ID to allow new insertion
         envMap.remove('id');
+        // Remap parent references to the restored IDs — the same mapping
+        // catches and trips received above. A parent missing from the
+        // backup leaves a NULL reference, never a dangling foreign key.
+        final oldCatchId = envMap['catch_id'] as int?;
+        envMap['catch_id'] =
+            (oldCatchId != null && catchIdMap.containsKey(oldCatchId))
+                ? catchIdMap[oldCatchId]
+                : null;
+        final oldTripId = envMap['trip_id'] as int?;
+        envMap['trip_id'] =
+            (oldTripId != null && tripIdMap.containsKey(oldTripId))
+                ? tripIdMap[oldTripId]
+                : null;
         await database.insert('environmental_conditions', envMap);
       }
     }

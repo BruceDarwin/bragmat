@@ -1424,17 +1424,8 @@ class DatabaseHelper {
     final db = await instance.database;
 
     // Collect candidate media paths first; post-commit cleanup needs them.
-    final mediaPaths = (await db.query(
-      'catch_media',
-      columns: ['file_path'],
-      where: 'catch_id = ?',
-      whereArgs: [id],
-    ))
-        .map((r) => r['file_path'] as String?)
-        .whereType<String>()
-        .where((p) => p.isNotEmpty)
-        .toSet()
-        .toList();
+    final mediaPaths =
+        await _mediaPathsFor(db, 'catch_media', 'catch_id', id);
 
     final deleted = await db.transaction((txn) async {
       await txn.delete('catch_media',
@@ -1444,16 +1435,63 @@ class DatabaseHelper {
       return txn.delete('catches', where: 'id = ?', whereArgs: [id]);
     });
 
-    for (final relPath in mediaPaths) {
+    await quarantineUnreferencedMedia(mediaPaths);
+    return deleted;
+  }
+
+  /// `file_path` values stored in [table] for rows where
+  /// [whereCol] = [id]. Empty/NULL paths are dropped.
+  Future<List<String>> _mediaPathsFor(
+      DatabaseExecutor db, String table, String whereCol, int id) async {
+    final rows = await db.query(
+      table,
+      columns: ['file_path'],
+      where: '$whereCol = ?',
+      whereArgs: [id],
+    );
+    return rows
+        .map((r) => r['file_path'] as String?)
+        .whereType<String>()
+        .where((p) => p.isNotEmpty)
+        .toSet()
+        .toList();
+  }
+
+  /// The `file_path` of a single media row by primary key, or null.
+  Future<String?> _mediaFilePathForRow(
+      DatabaseExecutor db, String table, int id) async {
+    final rows = await db.query(
+      table,
+      columns: ['file_path'],
+      where: 'id = ?',
+      whereArgs: [id],
+      limit: 1,
+    );
+    if (rows.isEmpty) return null;
+    final p = rows.first['file_path'] as String?;
+    return (p == null || p.isEmpty) ? null : p;
+  }
+
+  /// Move newly unreferenced media files to recoverable quarantine.
+  ///
+  /// Filesystem moves cannot roll back with SQLite, so callers invoke
+  /// this only after the owning row deletions have committed. A file
+  /// still referenced by any surviving row — in any table or feature —
+  /// is kept. Missing files are treated as already absent; paths outside
+  /// the managed media directory are never touched. A quarantine
+  /// failure leaves the row cleanup intact — the file simply remains
+  /// in place for a later sweep.
+  Future<void> quarantineUnreferencedMedia(
+      Iterable<String> relPaths) async {
+    final db = await instance.database;
+    for (final relPath in relPaths) {
       try {
         if (await _isMediaPathStillReferenced(db, relPath)) continue;
         await MediaStorageService.quarantinePhoto(relPath);
       } catch (_) {
-        // Quarantine failure leaves the row cleanup intact; the file
-        // simply remains in place for a later sweep.
+        // See doc comment — best-effort post-commit sweep.
       }
     }
-    return deleted;
   }
 
   /// True when [relPath] is still referenced by any surviving row in any
@@ -1545,9 +1583,16 @@ class DatabaseHelper {
     return result.isNotEmpty;
   }
 
+  /// Delete a lure and clear `lure_id` on any catches that used it —
+  /// matches the delete dialog's wording and leaves no dangling
+  /// reference. One transaction; a catch is never deleted.
   Future<void> deleteLure(int id) async {
     final db = await instance.database;
-    await db.delete('lures', where: 'id = ?', whereArgs: [id]);
+    await db.transaction((txn) async {
+      await txn.update('catches', {'lure_id': null},
+          where: 'lure_id = ?', whereArgs: [id]);
+      await txn.delete('lures', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   // BAITS
@@ -1578,9 +1623,25 @@ class DatabaseHelper {
     return result.isNotEmpty;
   }
 
+  Future<void> updateBait(Bait bait) async {
+    final db = await instance.database;
+    await db.update(
+      'baits',
+      bait.toMap(),
+      where: 'id = ?',
+      whereArgs: [bait.id],
+    );
+  }
+
+  /// Delete a bait and clear `bait_id` on any catches that used it —
+  /// same semantics as [deleteLure]. One transaction.
   Future<void> deleteBait(int id) async {
     final db = await instance.database;
-    await db.delete('baits', where: 'id = ?', whereArgs: [id]);
+    await db.transaction((txn) async {
+      await txn.update('catches', {'bait_id': null},
+          where: 'bait_id = ?', whereArgs: [id]);
+      await txn.delete('baits', where: 'id = ?', whereArgs: [id]);
+    });
   }
 
   Future<bool> isFishTypeUsed(String name) async {
@@ -2080,13 +2141,20 @@ class DatabaseHelper {
     );
   }
 
+  /// Delete one catch_media row; its file is quarantined afterwards if
+  /// no surviving row still references it (same sweep as [deleteCatch]).
   Future<int> deleteCatchMedia(int id) async {
     final db = await instance.database;
-    return await db.delete(
+    final relPath = await _mediaFilePathForRow(db, 'catch_media', id);
+    final deleted = await db.delete(
       'catch_media',
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (deleted > 0 && relPath != null) {
+      await quarantineUnreferencedMedia([relPath]);
+    }
+    return deleted;
   }
 
   Future<int> deleteAllMediaForCatch(int catchId) async {
@@ -2184,13 +2252,20 @@ class DatabaseHelper {
     );
   }
 
+  /// Delete one trip_media row; its file is quarantined afterwards if
+  /// no surviving row still references it.
   Future<int> deleteTripMedia(int id) async {
     final db = await instance.database;
-    return await db.delete(
+    final relPath = await _mediaFilePathForRow(db, 'trip_media', id);
+    final deleted = await db.delete(
       'trip_media',
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (deleted > 0 && relPath != null) {
+      await quarantineUnreferencedMedia([relPath]);
+    }
+    return deleted;
   }
 
   Future<int> deleteAllMediaForTrip(int tripId) async {
@@ -2292,13 +2367,23 @@ class DatabaseHelper {
     );
   }
 
+  /// Delete a journal entry together with its dependent journal_media
+  /// rows and unreferenced media files — the same transaction and
+  /// post-commit quarantine pattern as [deleteCatch].
   Future<int> deleteTripJournal(int id) async {
     final db = await instance.database;
-    return await db.delete(
-      'trip_journal',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+
+    final mediaPaths =
+        await _mediaPathsFor(db, 'journal_media', 'journal_entry_id', id);
+
+    final deleted = await db.transaction((txn) async {
+      await txn.delete('journal_media',
+          where: 'journal_entry_id = ?', whereArgs: [id]);
+      return txn.delete('trip_journal', where: 'id = ?', whereArgs: [id]);
+    });
+
+    await quarantineUnreferencedMedia(mediaPaths);
+    return deleted;
   }
 
   Future<int> deleteAllJournalForTrip(int tripId) async {
@@ -2376,13 +2461,20 @@ class DatabaseHelper {
     );
   }
 
+  /// Delete one journal_media row; its file is quarantined afterwards
+  /// if no surviving row still references it.
   Future<int> deleteJournalMedia(int id) async {
     final db = await instance.database;
-    return await db.delete(
+    final relPath = await _mediaFilePathForRow(db, 'journal_media', id);
+    final deleted = await db.delete(
       'journal_media',
       where: 'id = ?',
       whereArgs: [id],
     );
+    if (deleted > 0 && relPath != null) {
+      await quarantineUnreferencedMedia([relPath]);
+    }
+    return deleted;
   }
 
   Future<int> deleteAllMediaForJournalEntry(int journalEntryId) async {
@@ -2471,22 +2563,61 @@ class DatabaseHelper {
     );
   }
 
+  /// Delete a trip together with its dependent rows and unreferenced
+  /// media files.
+  ///
+  /// SQLite foreign keys are not enabled globally (declared
+  /// ON DELETE CASCADE clauses are inert), so dependents are removed
+  /// explicitly inside one transaction: journal media, journal entries,
+  /// trip media, trip-linked environmental conditions, then the trip
+  /// itself. Catches that referenced the trip keep their records with
+  /// `trip_id` cleared — deleting a trip never deletes a catch. If any
+  /// part fails the transaction rolls back and no rows are removed.
+  ///
+  /// Filesystem changes cannot roll back with SQLite, so media files are
+  /// only touched after the row deletions have committed. A file still
+  /// referenced by any surviving row — in any table or feature — is kept.
+  /// Newly unreferenced files are moved to a recoverable quarantine area
+  /// rather than permanently deleted.
   Future<int> deleteFishingTrip(int id) async {
     final db = await instance.database;
-    // First, set trip_id to NULL for all catches associated with this trip
-    await db.update(
-      'catches',
-      {'trip_id': null},
+
+    // Collect candidate media paths first; post-commit cleanup needs them.
+    final mediaPaths = <String>{
+      ...await _mediaPathsFor(db, 'trip_media', 'trip_id', id),
+    };
+    final journalIds = (await db.query(
+      'trip_journal',
+      columns: ['id'],
       where: 'trip_id = ?',
       whereArgs: [id],
-    );
-    
-    // Delete the trip
-    return await db.delete(
-      'fishing_trips',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    ))
+        .map((r) => r['id'] as int)
+        .toList();
+    for (final journalId in journalIds) {
+      mediaPaths.addAll(
+          await _mediaPathsFor(db, 'journal_media', 'journal_entry_id', journalId));
+    }
+
+    final deleted = await db.transaction((txn) async {
+      // Detach catches first — they survive the trip's deletion.
+      await txn.update('catches', {'trip_id': null},
+          where: 'trip_id = ?', whereArgs: [id]);
+      for (final journalId in journalIds) {
+        await txn.delete('journal_media',
+            where: 'journal_entry_id = ?', whereArgs: [journalId]);
+      }
+      await txn.delete('trip_journal',
+          where: 'trip_id = ?', whereArgs: [id]);
+      await txn.delete('trip_media',
+          where: 'trip_id = ?', whereArgs: [id]);
+      await txn.delete('environmental_conditions',
+          where: 'trip_id = ?', whereArgs: [id]);
+      return txn.delete('fishing_trips', where: 'id = ?', whereArgs: [id]);
+    });
+
+    await quarantineUnreferencedMedia(mediaPaths);
+    return deleted;
   }
 
   // Tide Cache Methods

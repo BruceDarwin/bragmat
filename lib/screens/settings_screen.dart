@@ -2,8 +2,6 @@ import 'package:flutter/foundation.dart' show kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as path;
 import 'package:share_plus/share_plus.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:exif/exif.dart';
 import 'package:http/http.dart' as http;
 import 'package:url_launcher/url_launcher.dart';
 import 'dart:convert';
@@ -24,6 +22,7 @@ import '../services/ownership_service.dart';
 import '../services/supabase_config.dart';
 import '../services/preferences_service.dart';
 import '../services/environmental_conditions_service.dart';
+import '../services/integrity_diagnostics.dart';
 import '../services/worldtides_service.dart';
 import '../services/secure_storage_service.dart';
 import '../services/tide_reference_service.dart';
@@ -1532,14 +1531,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed == true && controller.text.trim().isNotEmpty) {
       final name = controller.text.trim();
       if (name != lure.name) {
-        // Delete old and insert new (simple approach for unique constraint)
-        await DatabaseHelper.instance.deleteLure(lure.id!);
-        final result = await DatabaseHelper.instance.insertLure(name);
-        if (result != -1) {
+        // Update in place so catches keep their lure_id reference —
+        // delete+insert would hand the lure a new ID and orphan them.
+        try {
+          await DatabaseHelper.instance
+              .updateLure(lure.copyWith(name: name));
           _loadLures();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Lure updated')),
+            );
+          }
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('A lure with that name already exists')),
             );
           }
         }
@@ -1730,14 +1736,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed == true && controller.text.trim().isNotEmpty) {
       final name = controller.text.trim();
       if (name != bait.name) {
-        // Delete old and insert new (simple approach for unique constraint)
-        await DatabaseHelper.instance.deleteBait(bait.id!);
-        final result = await DatabaseHelper.instance.insertBait(name);
-        if (result != -1) {
+        // Update in place so catches keep their bait_id reference —
+        // same rationale as lure rename.
+        try {
+          await DatabaseHelper.instance
+              .updateBait(bait.copyWith(name: name));
           _loadBaits();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Bait updated')),
+            );
+          }
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('A bait with that name already exists')),
             );
           }
         }
@@ -2169,277 +2182,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     return value;
   }
 
-  // Temporarily disabled due to file_picker build issue
-  // Future<void> _importCatchesFromCSV() async {
-  //   debugPrint('=== Import Catches from CSV started ===');
-  //   
-  //   try {
-  //     // Pick CSV file
-  //     final result = await FilePicker.platform.pickFiles(
-  //       type: FileType.custom,
-  //       allowedExtensions: ['csv'],
-  //     );
-
-  //     if (result == null || result.files.isEmpty) {
-  //       debugPrint('No file selected');
-  //       return;
-  //     }
-
-  //     final file = result.files.first;
-  //     debugPrint('Selected file: ${file.name}');
-  //     
-  //     if (file.path == null) {
-  //       debugPrint('ERROR: File path is null');
-  //       if (mounted) {
-  //         ScaffoldMessenger.of(context).showSnackBar(
-  //           const SnackBar(content: Text('Could not read file')),
-  //         );
-  //       }
-  //       return;
-  //     }
-
-  //     // Read file
-  //     final csvFile = File(file.path!);
-  //     final csvContent = await csvFile.readAsString();
-  //     debugPrint('File read successfully');
-
-  //     // Parse CSV
-  //     final lines = csvContent.split('\n');
-  //     if (lines.isEmpty) {
-  //       debugPrint('ERROR: File is empty');
-  //       if (mounted) {
-  //         ScaffoldMessenger.of(context).showSnackBar(
-  //           const SnackBar(content: Text('File is empty')),
-  //         );
-  //       }
-  //       return;
-  //     }
-
-  //     // Get existing catches for duplicate detection
-  //     final existingCatches = await DatabaseHelper.instance.getCatches();
-  //     debugPrint('Existing catches: ${existingCatches.length}');
-
-  //     // Statistics
-  //     int rowsRead = 0;
-  //     int catchesImported = 0;
-  //     int rowsSkipped = 0;
-  //     List<String> errors = [];
-
-  //     // Skip header row
-  //     final dataLines = lines.skip(1).toList();
-  //     rowsRead = dataLines.length;
-
-  //     for (int i = 0; i < dataLines.length; i++) {
-  //       final line = dataLines[i].trim();
-  //       if (line.isEmpty) {
-  //         rowsSkipped++;
-  //         continue;
-  //       }
-
-  //       // Parse CSV line (handle quoted values)
-  //       final values = _parseCSVLine(line);
-        
-  //       if (values.length < 2) {
-  //         errors.add('Row ${i + 2}: Invalid format (expected at least 2 columns)');
-  //         rowsSkipped++;
-  //         continue;
-  //       }
-
-  //       // Extract fields
-  //       final fishType = values[0].trim();
-  //       final size = int.tryParse(values[1].trim()) ?? 0;
-  //       final dateCaughtStr = values.length > 2 ? values[2].trim() : '';
-  //       final location = values.length > 3 ? values[3].trim() : '';
-  //       final notes = values.length > 4 ? values[4].trim() : '';
-  //       final photoPath = values.length > 5 ? values[5].trim() : '';
-  //       final photoDateTimeStr = values.length > 6 ? values[6].trim() : '';
-  //       final latitudeStr = values.length > 7 ? values[7].trim() : '';
-  //       final longitudeStr = values.length > 8 ? values[8].trim() : '';
-  //       final fishingBuddyStr = values.length > 9 ? values[9].trim() : '';
-
-  //       // Validate required fields
-  //       if (fishType.isEmpty) {
-  //         errors.add('Row ${i + 2}: Fish type is required');
-  //         rowsSkipped++;
-  //         continue;
-  //       }
-
-  //       // Parse date
-  //       DateTime? dateCaught;
-  //       if (dateCaughtStr.isNotEmpty) {
-  //         try {
-  //           dateCaught = DateTime.parse(dateCaughtStr);
-  //         } catch (e) {
-  //           debugPrint('Row ${i + 2}: Could not parse date: $dateCaughtStr');
-  //         }
-  //       }
-
-  //       // Parse photo date/time
-  //       DateTime? photoDateTime;
-  //       if (photoDateTimeStr.isNotEmpty) {
-  //         try {
-  //           photoDateTime = DateTime.parse(photoDateTimeStr);
-  //         } catch (e) {
-  //           debugPrint('Row ${i + 2}: Could not parse photo date/time: $photoDateTimeStr');
-  //         }
-  //       }
-
-  //       // Parse coordinates
-  //       double? latitude;
-  //       if (latitudeStr.isNotEmpty) {
-  //         latitude = double.tryParse(latitudeStr);
-  //       }
-  //       double? longitude;
-  //       if (longitudeStr.isNotEmpty) {
-  //         longitude = double.tryParse(longitudeStr);
-  //       }
-
-  //       // Handle fishing buddy
-  //       int? fishingBuddyId;
-  //       if (fishingBuddyStr.isNotEmpty) {
-  //         // Look up fishing buddy by name
-  //         final buddy = await DatabaseHelper.instance.getFishingBuddyByName(fishingBuddyStr);
-  //         if (buddy != null) {
-  //           fishingBuddyId = buddy.id;
-  //         } else {
-  //           // Create new fishing buddy if it doesn't exist
-  //           final insertedId = await DatabaseHelper.instance.insertFishingBuddy(fishingBuddyStr);
-  //           if (insertedId != -1) {
-  //             fishingBuddyId = insertedId;
-  //           }
-  //         }
-  //       } else {
-  //         // Default to "Me" if no fishing buddy specified
-  //         final meBuddy = await DatabaseHelper.instance.getMeFishingBuddy();
-  //         fishingBuddyId = meBuddy?.id;
-  //       }
-
-  //       // Check for duplicates (fish type + size + date combination)
-  //       final isDuplicate = existingCatches.any((existing) {
-  //         final existingDate = existing.dateCaught ?? existing.createdAt;
-  //         final importDate = dateCaught ?? DateTime.now();
-  //         return existing.fishType == fishType &&
-  //                existing.lengthCm == size &&
-  //                existingDate.year == importDate.year &&
-  //                existingDate.month == importDate.month &&
-  //                existingDate.day == importDate.day;
-  //       });
-
-  //       if (isDuplicate) {
-  //         errors.add('Row ${i + 2}: Duplicate catch (fish type: $fishType, size: $size)');
-  //         rowsSkipped++;
-  //         continue;
-  //       }
-
-  //       // Create catch object
-  //       final newCatch = Catch(
-  //         fishType: fishType,
-  //         lengthCm: size,
-  //         notes: notes.isEmpty ? null : notes,
-  //         createdAt: DateTime.now(),
-  //         dateCaught: dateCaught,
-  //         imagePath: photoPath.isEmpty ? null : photoPath,
-  //         photoDateTime: photoDateTime,
-  //         latitude: latitude,
-  //         longitude: longitude,
-  //         location: location.isEmpty ? null : location,
-  //         fishingBuddyId: fishingBuddyId,
-  //       );
-
-  //       // Insert into database
-  //       await DatabaseHelper.instance.insertCatch(newCatch);
-  //       catchesImported++;
-  //       debugPrint('Imported catch: $fishType');
-  //     }
-
-  //     debugPrint('Import complete: $catchesImported imported, $rowsSkipped skipped, ${errors.length} errors');
-
-  //     if (mounted) {
-  //       showDialog(
-  //         context: context,
-  //         builder: (context) => AlertDialog(
-  //           title: const Text('Import Complete'),
-  //           content: Column(
-  //             mainAxisSize: MainAxisSize.min,
-  //             crossAxisAlignment: CrossAxisAlignment.start,
-  //             children: [
-  //               Text('Rows read: $rowsRead'),
-  //               Text('Catches imported: $catchesImported'),
-  //               Text('Rows skipped: $rowsSkipped'),
-  //               if (errors.isNotEmpty) ...[
-  //                 const SizedBox(height: 8),
-  //                 const Text('Errors:', style: TextStyle(fontWeight: FontWeight.bold)),
-  //                 const SizedBox(height: 4),
-  //                 SizedBox(
-  //                   height: 150,
-  //                   child: ListView.builder(
-  //                     shrinkWrap: true,
-  //                     itemCount: errors.length > 10 ? 10 : errors.length,
-  //                     itemBuilder: (context, index) => Text(
-  //                       errors[index],
-  //                       style: const TextStyle(fontSize: 12, color: Colors.red),
-  //                     ),
-  //                   ),
-  //                 ),
-  //                 if (errors.length > 10)
-  //                   Text('... and ${errors.length - 10} more errors', style: const TextStyle(fontSize: 12)),
-  //               ],
-  //             ],
-  //           ),
-  //           actions: [
-  //             TextButton(
-  //               onPressed: () {
-  //                 Navigator.pop(context);
-  //                 _loadStatistics(); // Refresh statistics
-  //               },
-  //               child: const Text('OK'),
-  //             ),
-  //           ],
-  //         ),
-  //       );
-  //     }
-  //   } catch (e) {
-  //     debugPrint('ERROR: Import failed: $e');
-  //     if (mounted) {
-  //       ScaffoldMessenger.of(context).showSnackBar(
-  //         SnackBar(content: Text('Import failed: $e')),
-  //       );
-  //     }
-  //   }
-  //   debugPrint('=== Import Catches from CSV completed ===');
-  // }
-
-  List<String> _parseCSVLine(String line) {
-    final values = <String>[];
-    final buffer = StringBuffer();
-    bool inQuotes = false;
-
-    for (int i = 0; i < line.length; i++) {
-      final char = line[i];
-      
-      if (char == '"') {
-        if (inQuotes && i + 1 < line.length && line[i + 1] == '"') {
-          // Escaped quote
-          buffer.write('"');
-          i++;
-        } else {
-          // Toggle quote mode
-          inQuotes = !inQuotes;
-        }
-      } else if (char == ',' && !inQuotes) {
-        // End of value
-        values.add(buffer.toString());
-        buffer.clear();
-      } else {
-        buffer.write(char);
-      }
-    }
-    
-    // Add last value
-    values.add(buffer.toString());
-    
-    return values;
-  }
 
   Future<T?> _runWithProgress<T>({
     required String title,
@@ -2611,172 +2353,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         );
       }
     }
-  }
-
-  Future<void> _testPhotoGPS() async {
-    debugPrint('=== Test Photo GPS Started ===');
-    
-    final picker = ImagePicker();
-    final pickedFile = await picker.pickImage(source: ImageSource.gallery);
-    
-    if (pickedFile == null) {
-      debugPrint('No photo selected');
-      return;
-    }
-    
-    debugPrint('Photo selected: ${pickedFile.path}');
-    
-    final file = File(pickedFile.path);
-    final fileExists = await file.exists();
-    final fileSize = fileExists ? await file.length() : 0;
-    
-    debugPrint('File exists: $fileExists');
-    debugPrint('File size: $fileSize bytes');
-    
-    if (!fileExists) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('File not found')),
-        );
-      }
-      return;
-    }
-    
-    // Read EXIF data
-    Map<String, dynamic>? exifData;
-    try {
-      final bytes = await file.readAsBytes();
-      exifData = await readExifFromBytes(bytes);
-      debugPrint('EXIF data keys: ${exifData.keys.toList()}');
-    } catch (e) {
-      debugPrint('Error reading EXIF: $e');
-      exifData = null;
-    }
-    
-    // Extract GPS data
-    double? latitude;
-    double? longitude;
-    String? dateTaken;
-    List<String> gpsTags = [];
-    
-    if (exifData != null) {
-      // Get date taken
-      if (exifData.containsKey('DateTimeOriginal')) {
-        dateTaken = exifData['DateTimeOriginal'].toString();
-        debugPrint('DateTimeOriginal: $dateTaken');
-      }
-      
-      // Get GPS tags
-      final allGpsTags = exifData.entries.where((e) => e.key.startsWith('GPS')).toList();
-      for (final tag in allGpsTags) {
-        gpsTags.add('${tag.key}: ${tag.value}');
-        debugPrint('GPS tag: ${tag.key} = ${tag.value}');
-      }
-      
-      // Try to extract coordinates
-      if (exifData.containsKey('GPSLatitude') && exifData.containsKey('GPSLongitude')) {
-        final lat = exifData['GPSLatitude'];
-        final latRef = exifData['GPSLatitudeRef'];
-        final lon = exifData['GPSLongitude'];
-        final lonRef = exifData['GPSLongitudeRef'];
-        
-        debugPrint('GPSLatitude: $lat');
-        debugPrint('GPSLatitudeRef: $latRef');
-        debugPrint('GPSLongitude: $lon');
-        debugPrint('GPSLongitudeRef: $lonRef');
-        
-        if (lat != null && latRef != null && lon != null && lonRef != null) {
-          latitude = _convertToDecimalDegrees(lat, latRef);
-          longitude = _convertToDecimalDegrees(lon, lonRef);
-          debugPrint('Extracted coordinates: $latitude, $longitude');
-        }
-      }
-    }
-    
-    debugPrint('=== Test Photo GPS Completed ===');
-    
-    if (mounted) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Photo GPS Test Results'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('File path:', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                SelectableText(
-                  pickedFile.path,
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-                ),
-                const SizedBox(height: 12),
-                Text('File size: ${(fileSize / 1024).toStringAsFixed(2)} KB'),
-                const SizedBox(height: 12),
-                const Text('EXIF metadata:', style: TextStyle(fontWeight: FontWeight.bold)),
-                Text(exifData != null ? 'Yes (${exifData.length} tags)' : 'No'),
-                const SizedBox(height: 12),
-                if (dateTaken != null) ...[
-                  const Text('Date taken:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  Text(dateTaken),
-                  const SizedBox(height: 12),
-                ],
-                const Text('GPS coordinates:', style: TextStyle(fontWeight: FontWeight.bold)),
-                if (latitude != null && longitude != null) ...[
-                  Text('Latitude: ${latitude.toStringAsFixed(6)}'),
-                  Text('Longitude: ${longitude.toStringAsFixed(6)}'),
-                ] else ...[
-                  const Text('No GPS coordinates found'),
-                  const SizedBox(height: 12),
-                  const Text('GPS tags found:', style: TextStyle(fontWeight: FontWeight.bold)),
-                  if (gpsTags.isEmpty)
-                    const Text('None')
-                  else
-                    ...gpsTags.map((tag) => Padding(
-                      padding: const EdgeInsets.only(bottom: 2),
-                      child: Text(tag, style: const TextStyle(fontSize: 11)),
-                    )),
-                ],
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('OK'),
-            ),
-          ],
-        ),
-      );
-    }
-  }
-
-  double _convertToDecimalDegrees(dynamic value, dynamic ref) {
-    if (value is! List) return 0.0;
-    
-    final degrees = _convertRational(value[0]);
-    final minutes = _convertRational(value[1]);
-    final seconds = _convertRational(value[2]);
-    
-    var decimal = degrees + (minutes / 60) + (seconds / 3600);
-    
-    if (ref == 'S' || ref == 'W') {
-      decimal = -decimal;
-    }
-    
-    return decimal;
-  }
-
-  double _convertRational(dynamic value) {
-    if (value is List && value.length >= 2) {
-      final numerator = value[0] is int ? value[0] as int : int.tryParse(value[0].toString()) ?? 0;
-      final denominator = value[1] is int ? value[1] as int : int.tryParse(value[1].toString()) ?? 1;
-      if (denominator != 0) {
-        return numerator / denominator;
-      }
-    }
-    return 0.0;
   }
 
   Future<void> _restoreData() async {
@@ -3255,6 +2831,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// Phase B read-only integrity scan. Debug-gated like the rest of the
+  /// Restore Testing section; reports identifiers only — never
+  /// coordinates, photo contents or absolute paths.
+  Future<void> _showIntegrityDiagnostics() async {
+    if (!DebugTools.isEnabled) return;
+    try {
+      final report = await IntegrityDiagnostics.run();
+      if (!mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Integrity Diagnostics'),
+          content: SingleChildScrollView(
+            child: SelectableText(report.summary()),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Close'),
+            ),
+          ],
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Diagnostics failed: $e')),
+      );
+    }
+  }
+
   Future<void> _resetAccountPassword() async {
     final email = AuthService.instance.email;
     if (email == null) return;
@@ -3588,12 +3195,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           const SizedBox(height: 16),
 
-          // API Keys Section
+          // API Keys Section — key entry and the direct-API test button are
+          // development features; release builds get tide data through the
+          // authenticated proxy, so they see only the attribution notice.
           BragmatSectionCard(
             icon: Icons.key,
             title: 'API Keys',
             children: [
               // API Key Status
+              if (DebugTools.isEnabled) ...[
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -3670,6 +3280,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   color: Colors.grey[600],
                 ),
               ),
+              ],
               const SizedBox(height: 8),
               // WorldTides licence attribution — the standard notice with a
               // clickable link satisfies the terms' copyright requirement.
@@ -3690,7 +3301,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              // Action Buttons
+              // Action Buttons — release builds never expose the Test API
+              // button (it consumes subscription credits) or key management.
+              if (DebugTools.isEnabled) ...[
               Row(
                 children: [
                   Expanded(
@@ -3769,6 +3382,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     ],
                   ),
                 ),
+              ],
               ],
             ],
           ),
@@ -3871,29 +3485,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle: const Text('Export catches to CSV file'),
                 onTap: _exportCatchesToCSV,
               ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.refresh),
-                title: const Text('Recalculate Environmental Data'),
-                subtitle: const Text('Update missing automatic environmental data for catches with GPS'),
-                onTap: _showRecalculateEnvironmentalDataDialog,
-              ),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.waves),
-                title: const Text('Review Legacy Estimated Tide Data'),
-                subtitle: const Text('Identify tide data that may have been incorrectly backfilled'),
-                onTap: _showLegacyTideDataDialog,
-              ),
-              const Divider(height: 1),
-              _buildComingSoonMenuItem(Icons.file_download, 'Import CSV (Coming Soon)'),
-              const Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.delete_forever, color: Colors.red),
-                title: const Text('Clear All Data', style: TextStyle(color: Colors.red)),
-                subtitle: const Text('Permanently delete all catches and data', style: TextStyle(color: Colors.red)),
-                onTap: _showClearAllDataDialog,
-              ),
+              // Bulk/maintenance controls — hidden in release builds; the
+              // underlying methods are retained for development and a later
+              // product decision. (Beta polish, release gating.)
+              if (DebugTools.isEnabled) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.refresh),
+                  title: const Text('Recalculate Environmental Data'),
+                  subtitle: const Text('Update missing automatic environmental data for catches with GPS'),
+                  onTap: _showRecalculateEnvironmentalDataDialog,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.waves),
+                  title: const Text('Review Legacy Estimated Tide Data'),
+                  subtitle: const Text('Identify tide data that may have been incorrectly backfilled'),
+                  onTap: _showLegacyTideDataDialog,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.delete_forever, color: Colors.red),
+                  title: const Text('Clear All Data', style: TextStyle(color: Colors.red)),
+                  subtitle: const Text('Permanently delete all catches and data', style: TextStyle(color: Colors.red)),
+                  onTap: _showClearAllDataDialog,
+                ),
+              ],
             ],
           ),
           const SizedBox(height: 16),
@@ -3934,6 +3551,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   subtitle: const Text(
                       'Show recovery markers, staging and media counts'),
                   onTap: _showRestoreDiagnostics,
+                ),
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.verified, color: Colors.orange),
+                  title: const Text('Integrity Diagnostics',
+                      style: TextStyle(color: Colors.orange)),
+                  subtitle: const Text(
+                      'Read-only FK, soft-reference and media scans'),
+                  onTap: _showIntegrityDiagnostics,
                 ),
               ],
             ),
@@ -4049,25 +3675,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildComingSoonMenuItem(IconData icon, String label) {
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(label),
-      trailing: const Text(
-        'Coming Soon',
-        style: TextStyle(
-          color: Colors.grey,
-          fontSize: 12,
-        ),
-      ),
-      onTap: () {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Coming Soon')),
-        );
-      },
     );
   }
 }

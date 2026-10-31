@@ -1526,12 +1526,21 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         await DatabaseHelper.instance.updateCatch(updatedCatch);
         savedCatch = updatedCatch;
         
-        // Delete existing media and re-add
+        // Delete existing media and re-add. Collect the old paths first
+        // and sweep only after the new rows exist — files still used by
+        // the kept media items stay referenced and are preserved, while
+        // photos removed during this edit are quarantined.
+        final previousPaths = (await DatabaseHelper.instance
+                .getMediaForCatch(widget.catchToEdit!.id!))
+            .map((m) => m.filePath)
+            .toList();
         await DatabaseHelper.instance.deleteAllMediaForCatch(widget.catchToEdit!.id!);
         for (final media in _mediaItems) {
           final mediaToInsert = media.copyWith(catchId: widget.catchToEdit!.id);
           await DatabaseHelper.instance.insertCatchMedia(mediaToInsert);
         }
+        await DatabaseHelper.instance
+            .quarantineUnreferencedMedia(previousPaths);
         
         // Save manual environmental conditions from form
         await _saveManualEnvironmentalConditions(savedCatch!.id!);
