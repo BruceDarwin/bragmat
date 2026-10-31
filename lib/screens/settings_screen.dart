@@ -1530,14 +1530,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed == true && controller.text.trim().isNotEmpty) {
       final name = controller.text.trim();
       if (name != lure.name) {
-        // Delete old and insert new (simple approach for unique constraint)
-        await DatabaseHelper.instance.deleteLure(lure.id!);
-        final result = await DatabaseHelper.instance.insertLure(name);
-        if (result != -1) {
+        // Update in place so catches keep their lure_id reference —
+        // delete+insert would hand the lure a new ID and orphan them.
+        try {
+          await DatabaseHelper.instance
+              .updateLure(lure.copyWith(name: name));
           _loadLures();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Lure updated')),
+            );
+          }
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('A lure with that name already exists')),
             );
           }
         }
@@ -1728,14 +1735,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (confirmed == true && controller.text.trim().isNotEmpty) {
       final name = controller.text.trim();
       if (name != bait.name) {
-        // Delete old and insert new (simple approach for unique constraint)
-        await DatabaseHelper.instance.deleteBait(bait.id!);
-        final result = await DatabaseHelper.instance.insertBait(name);
-        if (result != -1) {
+        // Update in place so catches keep their bait_id reference —
+        // same rationale as lure rename.
+        try {
+          await DatabaseHelper.instance
+              .updateBait(bait.copyWith(name: name));
           _loadBaits();
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(content: Text('Bait updated')),
+            );
+          }
+        } catch (_) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('A bait with that name already exists')),
             );
           }
         }
