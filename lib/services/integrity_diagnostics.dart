@@ -210,9 +210,12 @@ class IntegrityDiagnostics {
     );
   }
 
-  /// Stored paths are reported verbatim when relative; absolute paths
-  /// (out-of-media, e.g. a gallery original) collapse to the basename
-  /// so the report never leaks filesystem layout.
-  static String _safe(String stored) =>
-      path.isAbsolute(stored) ? path.basename(stored) : stored;
+  /// Stored paths are reported verbatim when relative (app-generated
+  /// `catches/…` names carry no personal information); absolute paths —
+  /// e.g. a gallery original — could embed the user's own filename, so
+  /// only the extension is kept and the report shows `<external .jpg>`.
+  /// The `table#id` prefix already identifies the record for follow-up.
+  static String _safe(String stored) => path.isAbsolute(stored)
+      ? '<external ${path.extension(stored)}>'
+      : stored;
 }
