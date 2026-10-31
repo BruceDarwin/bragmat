@@ -1352,17 +1352,33 @@ class DatabaseHelper {
     }
   }
 
+  /// Runs achievement evaluation after a row has already committed.
+  /// Achievement bookkeeping is best-effort: if it throws, the write it
+  /// followed still succeeded — propagating the error would make callers
+  /// report a failed save and invite a duplicate insert. Logged only.
+  Future<void> _runAchievementEval(
+      Future<void> Function() eval) async {
+    try {
+      await eval();
+    } catch (e) {
+      debugPrint('Achievement evaluation failed post-commit: $e');
+    }
+  }
+
   // INSERT
   Future<int> insertCatch(Catch catchItem) async {
     final db = await instance.database;
     final id = await db.insert('catches', catchItem.toMap());
-    
-    // Evaluate achievements
-    await AchievementService().evaluateCatchAchievements();
-    if (catchItem.lengthCm > 0) {
-      await AchievementService().evaluatePersonalBest(catchItem.lengthCm);
-    }
-    
+
+    // Evaluate achievements — post-commit side effect: a failure here
+    // must not masquerade as a failed save and invite a duplicate insert.
+    await _runAchievementEval(() async {
+      await AchievementService().evaluateCatchAchievements();
+      if (catchItem.lengthCm > 0) {
+        await AchievementService().evaluatePersonalBest(catchItem.lengthCm);
+      }
+    });
+
     return id;
   }
 
@@ -1400,12 +1416,14 @@ class DatabaseHelper {
       whereArgs: [catchItem.id],
     );
     
-    // Evaluate achievements
-    await AchievementService().evaluateCatchAchievements();
-    if (catchItem.lengthCm > 0) {
-      await AchievementService().evaluatePersonalBest(catchItem.lengthCm);
-    }
-    
+    // Evaluate achievements — post-commit; see [_runAchievementEval].
+    await _runAchievementEval(() async {
+      await AchievementService().evaluateCatchAchievements();
+      if (catchItem.lengthCm > 0) {
+        await AchievementService().evaluatePersonalBest(catchItem.lengthCm);
+      }
+    });
+
     return result;
   }
 
@@ -1773,9 +1791,10 @@ class DatabaseHelper {
     final db = await instance.database;
     final id = await db.insert('favourite_spots', spot.toMap());
     
-    // Evaluate achievements
-    await AchievementService().evaluateExplorationAchievements();
-    
+    // Evaluate achievements — post-commit; see [_runAchievementEval].
+    await _runAchievementEval(
+        AchievementService().evaluateExplorationAchievements);
+
     return id;
   }
 
@@ -2320,9 +2339,10 @@ class DatabaseHelper {
     final db = await instance.database;
     final id = await db.insert('trip_journal', journal.toMap());
     
-    // Evaluate achievements
-    await AchievementService().evaluateJournalAchievements();
-    
+    // Evaluate achievements — post-commit; see [_runAchievementEval].
+    await _runAchievementEval(
+        AchievementService().evaluateJournalAchievements);
+
     return id;
   }
 
@@ -2529,9 +2549,10 @@ class DatabaseHelper {
     final db = await instance.database;
     final id = await db.insert('fishing_trips', trip.toMap());
     
-    // Evaluate achievements
-    await AchievementService().evaluateTripAchievements();
-    
+    // Evaluate achievements — post-commit; see [_runAchievementEval].
+    await _runAchievementEval(
+        AchievementService().evaluateTripAchievements);
+
     return id;
   }
 

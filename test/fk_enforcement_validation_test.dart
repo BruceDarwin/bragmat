@@ -1,6 +1,7 @@
 import 'dart:io';
 
 import 'package:bragmat/database/database_helper.dart';
+import 'package:bragmat/models/catch.dart' as model;
 import 'package:bragmat/services/media_storage_service.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:path/path.dart' as p;
@@ -345,6 +346,27 @@ void main() {
       await f.writeAsBytes([1, 2, 3]);
       expect(await f.exists(), isTrue);
       expect(await fkState(), 1);
+    });
+  });
+
+  group('post-commit achievement failure', () {
+    test('catch save reports success and persists the row even when '
+        'achievement evaluation throws after commit', () async {
+      final db = await DatabaseHelper.instance.database;
+      // Sabotage the achievement bookkeeping so evaluation genuinely
+      // fails — the same class of post-commit error the lazy-seeding
+      // defect produced under FK enforcement.
+      await db.execute('DROP TABLE user_achievements');
+
+      final id = await DatabaseHelper.instance.insertCatch(
+        model.Catch(lengthCm: 0, createdAt: DateTime(2026, 10, 1)),
+      );
+
+      // insertCatch must return the committed row id rather than
+      // throwing — a thrown error would surface as a failed save and
+      // invite the user to retry, duplicating the already-saved catch.
+      expect(id, greaterThan(0));
+      expect(await db.query('catches'), hasLength(1));
     });
   });
 }
