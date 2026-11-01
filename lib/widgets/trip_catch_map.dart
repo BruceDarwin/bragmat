@@ -169,7 +169,13 @@ class TripCatchMap extends StatelessWidget {
           children: [
             FlutterMap(
               options: MapOptions(
-                initialCameraFit: sorted.length == 1
+                // Viewport: when every catch falls in ONE proximity
+                // group (single catch, or identical/near-identical
+                // coordinates) a bounds fit would be degenerate — pin
+                // the camera to zoom 15 on the group instead. Multiple
+                // groups always use a padded bounds fit covering every
+                // location; nothing is excluded.
+                initialCameraFit: groups.length == 1
                     ? CameraFit.insideBounds(
                         bounds: bounds,
                         padding: const EdgeInsets.all(60),
@@ -193,8 +199,8 @@ class TripCatchMap extends StatelessWidget {
                           g.first.latitude!,
                           g.first.longitude!,
                         ),
-                        width: 44,
-                        height: 44,
+                        width: 48,
+                        height: 48,
                         child: g.length == 1
                             ? _NumberedMarker(
                                 number: _sequenceOf(sorted, g.first),
@@ -233,6 +239,45 @@ class TripCatchMap extends StatelessWidget {
   }
 }
 
+/// Shared high-contrast navy pin shell — same visual language as the
+/// all-catches map's `_buildMarker` (primary circle, white border,
+/// drop shadow). [badge] carries the chronological number or group
+/// count so markers stay readable over both land and water.
+class _MarkerShell extends StatelessWidget {
+  final Widget badge;
+  final VoidCallback onTap;
+  final bool grouped;
+  const _MarkerShell(
+      {required this.badge, required this.onTap, this.grouped = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: scheme.primary,
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: grouped ? scheme.tertiary : Colors.white,
+            width: grouped ? 3 : 2,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.3),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        alignment: Alignment.center,
+        child: badge,
+      ),
+    );
+  }
+}
+
 class _NumberedMarker extends StatelessWidget {
   final int number;
   final VoidCallback onTap;
@@ -240,26 +285,21 @@ class _NumberedMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.primary;
-    return InkWell(
+    return _MarkerShell(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2),
-          boxShadow: const [
-            BoxShadow(color: Colors.black26, blurRadius: 4)
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          '$number',
-          style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 14),
-        ),
+      badge: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.location_on, color: Colors.white, size: 16),
+          Text(
+            '$number',
+            style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 12,
+                height: 1.0),
+          ),
+        ],
       ),
     );
   }
@@ -272,26 +312,15 @@ class _GroupMarker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = Theme.of(context).colorScheme.tertiary;
-    return InkWell(
+    return _MarkerShell(
       onTap: onTap,
-      child: Container(
-        decoration: BoxDecoration(
-          color: color,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 2),
-          boxShadow: const [
-            BoxShadow(color: Colors.black26, blurRadius: 4)
-          ],
-        ),
-        alignment: Alignment.center,
-        child: Text(
-          '$count+',
-          style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-              fontSize: 12),
-        ),
+      grouped: true,
+      badge: Text(
+        '$count',
+        style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.bold,
+            fontSize: 16),
       ),
     );
   }

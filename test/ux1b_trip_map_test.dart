@@ -127,7 +127,7 @@ void main() {
       )));
       await tester.pump();
 
-      expect(find.text('2+'), findsOneWidget);
+      expect(find.text('2'), findsOneWidget);
       expect(find.text('1'), findsNothing);
     });
 
@@ -164,6 +164,36 @@ void main() {
       expect(find.byType(FlutterMap), findsNothing);
     });
 
+    testWidgets('single catch renders a numbered marker', (tester) async {
+      await tester.pumpWidget(_wrap(TripCatchMap(
+        catches: [_c(id: 1, caught: DateTime(2026))],
+        tripId: 7,
+        tripName: 'Solo',
+      )));
+      await tester.pump();
+      expect(find.byType(FlutterMap), findsOneWidget);
+      expect(find.text('1'), findsOneWidget);
+    });
+
+    testWidgets('marker tap opens the shared catch summary',
+        (tester) async {
+      await tester.pumpWidget(_wrap(TripCatchMap(
+        catches: [
+          _c(id: 1, fish: 'Barramundi', caught: DateTime(2026)),
+          _c(id: 2, lat: -13.5, lng: 131.5, caught: DateTime(2026, 2)),
+        ],
+        tripId: 7,
+        tripName: 'Kakadu Run',
+      )));
+      await tester.pump();
+      await tester.tap(find.text('1'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Barramundi'), findsWidgets);
+      expect(find.text('Catch 1 of 2'), findsOneWidget);
+      expect(find.text('View Full Details'), findsOneWidget);
+    });
+
     testWidgets('group marker tap lists each catch by sequence number',
         (tester) async {
       await tester.pumpWidget(_wrap(TripCatchMap(
@@ -175,7 +205,7 @@ void main() {
         tripName: 'T',
       )));
       await tester.pump();
-      await tester.tap(find.text('2+'));
+      await tester.tap(find.text('2'));
       await tester.pumpAndSettle();
 
       expect(find.text('2 catches at this location'), findsOneWidget);
