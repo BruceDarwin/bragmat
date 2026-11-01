@@ -3,6 +3,7 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import '../services/connectivity_service.dart';
+import '../widgets/bragmat_map_layers.dart';
 
 class LocationPickerScreen extends StatefulWidget {
   final double? initialLatitude;
@@ -135,10 +136,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             onTap: _onMapTap,
           ),
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.bragmat.app',
-            ),
+            BragmatMapLayers.standardOsmTileLayer(),
             if (_selectedLocation != null)
               MarkerLayer(
                 markers: [
@@ -168,6 +166,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                   ),
                 ],
               ),
+            BragmatMapLayers.osmAttribution(),
           ],
         ),
         Positioned(

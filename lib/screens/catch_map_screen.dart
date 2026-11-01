@@ -8,6 +8,7 @@ import '../models/catch_media.dart';
 import '../models/fishing_buddy.dart';
 import '../models/fishing_trip.dart';
 import '../models/favourite_spot.dart';
+import '../widgets/bragmat_map_layers.dart';
 import '../widgets/resolved_image.dart';
 import 'catch_details_screen.dart';
 import '../services/connectivity_service.dart';
@@ -510,10 +511,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
             maxZoom: 18,
           ),
           children: [
-            TileLayer(
-              urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-              userAgentPackageName: 'com.bragmat.app',
-            ),
+            BragmatMapLayers.standardOsmTileLayer(),
             MarkerLayer(
               markers: _filteredCatches.map((catch_) {
                 return Marker(
@@ -535,6 +533,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
                   );
                 }).toList(),
               ),
+            BragmatMapLayers.osmAttribution(),
           ],
         );
       }
@@ -569,10 +568,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
         maxZoom: 18,
       ),
       children: [
-        TileLayer(
-          urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-          userAgentPackageName: 'com.bragmat.app',
-        ),
+        BragmatMapLayers.standardOsmTileLayer(),
         MarkerLayer(
           markers: _filteredCatches.map((catch_) {
             return Marker(
@@ -594,6 +590,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
               );
             }).toList(),
           ),
+        BragmatMapLayers.osmAttribution(),
       ],
     );
   }

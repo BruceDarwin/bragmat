@@ -10,7 +10,9 @@ import '../models/environmental_condition.dart';
 import '../models/lure.dart';
 import '../models/bait.dart';
 import '../theme/brand_colors.dart';
+import '../helpers/coordinate_source_label.dart';
 import '../widgets/bragmat_section_card.dart';
+import '../widgets/catch_location_map_preview.dart';
 import '../widgets/resolved_image.dart';
 import 'add_catch_screen.dart';
 import 'photo_viewer_screen.dart';
@@ -510,6 +512,13 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                       label: 'Location Name',
                       value: _catchItem.location!,
                     ),
+                  if (CatchLocationMapPreview.hasValidCoordinates(_catchItem)) ...[
+                    CatchLocationMapPreview(
+                      catchItem: _catchItem,
+                      isOnline: _isOnline,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   if (_catchItem.latitude != null && _catchItem.longitude != null)
                     BragmatDataRow(
                       icon: Icons.gps_fixed,
@@ -521,34 +530,6 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
                       icon: Icons.info_outline,
                       label: 'Coordinate Source',
                       value: _getCoordinateSource(),
-                    ),
-                  if (!_isOnline && _catchItem.latitude != null && _catchItem.longitude != null)
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.orange.shade200),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(
-                            Icons.cloud_off,
-                            size: 20,
-                            color: Colors.orange.shade700,
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Map imagery unavailable while offline',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: Colors.orange.shade900,
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
                     ),
                 ],
               ),
@@ -1026,32 +1007,13 @@ class _CatchDetailsScreenState extends State<CatchDetailsScreen> {
     return details;
   }
 
-  static const Map<String, String> _coordinateSourceLabels = {
-    'manual': 'Manual',
-    'device_gps': 'Device GPS',
-    'photo_gps': 'Photo GPS',
-    'favourite_spot': 'Favourite Spot',
-    'map_selected': 'Map Selected',
-  };
-
   String _getCoordinateSource() {
-    if (_catchItem.coordinateSource != null && _catchItem.coordinateSource!.isNotEmpty) {
-      return _coordinateSourceLabels[_catchItem.coordinateSource!] ??
-          _catchItem.coordinateSource!;
-    }
-    
-    if (_mediaItems.isNotEmpty) {
-      for (final media in _mediaItems) {
-        if (media.latitude != null && media.longitude != null) {
-          final latDiff = (media.latitude! - (_catchItem.latitude ?? 0)).abs();
-          final lonDiff = (media.longitude! - (_catchItem.longitude ?? 0)).abs();
-          if (latDiff < 0.000001 && lonDiff < 0.000001) {
-            return 'Photo EXIF';
-          }
-        }
-      }
-    }
-    return 'Manual';
+    return coordinateSourceLabel(
+      coordinateSource: _catchItem.coordinateSource,
+      latitude: _catchItem.latitude,
+      longitude: _catchItem.longitude,
+      mediaItems: _mediaItems,
+    );
   }
 
   /// Calculate distance between two coordinates using Haversine formula

@@ -1234,7 +1234,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         setState(() {
           _latitudeController.text = position.latitude.toString();
           _longitudeController.text = position.longitude.toString();
-          _coordinateSource = 'Device GPS';
+          _coordinateSource = 'device_gps';
           _selectedFavouriteSpotId = null; // Clear favourite spot selection when using current location
         });
         
@@ -1270,7 +1270,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       setState(() {
         _latitudeController.text = result['latitude'].toString();
         _longitudeController.text = result['longitude'].toString();
-        _coordinateSource = 'Map Selected';
+        _coordinateSource = 'map_selected';
         _selectedFavouriteSpotId = null; // Clear favourite spot selection when manually picking location
       });
     }
@@ -1283,7 +1283,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         _locationController.text = spot.name;
         _latitudeController.text = spot.latitude.toString();
         _longitudeController.text = spot.longitude.toString();
-        _coordinateSource = 'Favourite Spot';
+        _coordinateSource = 'favourite_spot';
       });
     } else {
       setState(() {
