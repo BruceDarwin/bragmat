@@ -394,16 +394,25 @@ class EnvironmentalConditionsService {
       longitude: condition.longitude!,
     );
 
-    // Fetch weather data (non-blocking, continues on failure)
+    // Fetch weather data (non-blocking, continues on failure).
+    // UX-2A: skip the request when the record already carries weather
+    // observations — a re-save of an unchanged record must not repeat
+    // network calls or silently replace stored values.
     WeatherData? weatherData;
-    try {
-      weatherData = await _weatherService.fetchWeather(
-        condition.latitude!,
-        condition.longitude!,
-        condition.observationDateTime,
-      );
-    } catch (e) {
-      debugPrint('Weather fetch failed, continuing without weather data: $e');
+    final hasStoredWeather = condition.temperature != null ||
+        condition.weatherCondition != null ||
+        condition.windSpeed != null ||
+        condition.humidity != null;
+    if (!hasStoredWeather) {
+      try {
+        weatherData = await _weatherService.fetchWeather(
+          condition.latitude!,
+          condition.longitude!,
+          condition.observationDateTime,
+        );
+      } catch (e) {
+        debugPrint('Weather fetch failed, continuing without weather data: $e');
+      }
     }
 
     // Convert wind direction degrees to compass if available
@@ -487,16 +496,25 @@ class EnvironmentalConditionsService {
       longitude: condition.longitude!,
     );
 
-    // Fetch weather data (non-blocking, continues on failure)
+    // Fetch weather data (non-blocking, continues on failure).
+    // UX-2A: skip the request when the record already carries weather
+    // observations — a re-save of an unchanged record must not repeat
+    // network calls or silently replace stored values.
     WeatherData? weatherData;
-    try {
-      weatherData = await _weatherService.fetchWeather(
-        condition.latitude!,
-        condition.longitude!,
-        condition.observationDateTime,
-      );
-    } catch (e) {
-      debugPrint('Weather fetch failed, continuing without weather data: $e');
+    final hasStoredWeather = condition.temperature != null ||
+        condition.weatherCondition != null ||
+        condition.windSpeed != null ||
+        condition.humidity != null;
+    if (!hasStoredWeather) {
+      try {
+        weatherData = await _weatherService.fetchWeather(
+          condition.latitude!,
+          condition.longitude!,
+          condition.observationDateTime,
+        );
+      } catch (e) {
+        debugPrint('Weather fetch failed, continuing without weather data: $e');
+      }
     }
 
     // Convert wind direction degrees to compass if available
@@ -620,6 +638,20 @@ class EnvironmentalConditionsService {
       mergedTideObservedOrEstimated = 'Observed';
     }
     
+    // UX-2A: an intentional weather override is detected by comparing
+    // the supplied weather values against the stored record. Re-saving
+    // unchanged fields (or editing only tide/river-flow/clarity) keeps
+    // the recorded provenance instead of reclassifying as 'Manual'.
+    final weatherOverridden = existing != null &&
+        (weatherCondition != existing.weatherCondition ||
+            temperature != existing.temperature ||
+            humidity != existing.humidity ||
+            cloudCover != existing.cloudCover ||
+            windSpeed != existing.windSpeed ||
+            windDirection != existing.windDirection ||
+            barometricPressure != existing.barometricPressure ||
+            rainfall != existing.rainfall);
+
     final condition = EnvironmentalCondition(
       id: existing?.id,
       catchId: catchId,
@@ -688,7 +720,13 @@ class EnvironmentalConditionsService {
       derivedTideStage: existing?.derivedTideStage,
       tideObservedOrEstimated: mergedTideObservedOrEstimated,
       tideDiagnostics: existing?.tideDiagnostics,
-      dataSource: 'Manual',
+      // UX-2A: preserve recorded provenance unless the weather values
+      // supplied actually differ from the stored record — only a real
+      // override reclassifies the record as manual. New records are
+      // manual by definition.
+      dataSource: existing == null
+          ? 'Manual'
+          : (weatherOverridden ? 'Manual' : existing.dataSource ?? 'Manual'),
       createdAt: existing?.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
     );
@@ -1199,7 +1237,10 @@ class EnvironmentalConditionsService {
       rainfall: existing?.rainfall,
       riverFlow: existing?.riverFlow,
       waterClarity: existing?.waterClarity,
-      dataSource: 'Manual',
+      // UX-2A: this path preserves the stored weather readings
+      // wholesale, so its provenance is preserved too — a re-save is
+      // not reclassified as manual.
+      dataSource: existing?.dataSource ?? 'Manual',
       createdAt: existing?.createdAt ?? DateTime.now(),
       updatedAt: DateTime.now(),
     );
