@@ -14,8 +14,9 @@ import 'bragmat_map_layers.dart';
 /// - Renders nothing when the catch has no valid coordinates.
 /// - Pan and zoom are enabled; the map itself never navigates — the
 ///   explicit expand button opens the existing full-screen map.
-/// - When [isOnline] is false an offline notice replaces the map so the
-///   location data in the surrounding card remains accessible.
+/// - When [isOnline] is false the map still renders — previously cached
+///   tiles display while the persistent cache can serve them — and a
+///   non-blocking banner flags the offline state.
 /// - Individual tile-load failures are surfaced via a subtle banner while
 ///   the map (and any loaded tiles) stays visible.
 class CatchLocationMapPreview extends StatefulWidget {
@@ -68,10 +69,10 @@ class _CatchLocationMapPreviewState extends State<CatchLocationMapPreview> {
       return const SizedBox.shrink();
     }
 
-    if (!widget.isOnline) {
-      return _buildOfflineNotice(context);
-    }
-
+    // The map renders even while offline: the persistent tile cache can
+    // still serve previously viewed tiles, and the marker plus the
+    // coordinate text in the surrounding card stay accessible. An
+    // offline banner (below) flags the degraded state instead.
     final center = LatLng(
       widget.catchItem.latitude!,
       widget.catchItem.longitude!,
@@ -121,7 +122,9 @@ class _CatchLocationMapPreviewState extends State<CatchLocationMapPreview> {
                 ),
               ),
             ),
-            if (_tileLoadFailed)
+            if (!widget.isOnline)
+              BragmatMapLayers.offlineBanner(bottom: 0)
+            else if (_tileLoadFailed)
               Positioned(
                 left: 0,
                 right: 0,
@@ -172,36 +175,6 @@ class _CatchLocationMapPreviewState extends State<CatchLocationMapPreview> {
         Icons.location_on,
         color: Colors.white,
         size: 24,
-      ),
-    );
-  }
-
-  Widget _buildOfflineNotice(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.orange.shade50,
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.orange.shade200),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.cloud_off,
-            size: 20,
-            color: Colors.orange.shade700,
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              'Map imagery unavailable while offline',
-              style: TextStyle(
-                fontSize: 14,
-                color: Colors.orange.shade900,
-              ),
-            ),
-          ),
-        ],
       ),
     );
   }

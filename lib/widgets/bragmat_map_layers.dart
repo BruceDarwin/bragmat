@@ -117,6 +117,46 @@ class BragmatMapLayers {
     );
   }
 
+  /// Non-blocking banner shown over a map while the device is offline.
+  /// The wording is deliberately cautious — only tiles already in the
+  /// persistent cache render while offline; missing tiles appear as
+  /// blank cells rather than implying a complete offline map.
+  /// [bottom] positions the banner above the bottom edge (0 = pinned to
+  /// the bottom of the map, as used by the embedded preview).
+  static Positioned offlineBanner({double? bottom}) {
+    return Positioned(
+      bottom: bottom ?? 8,
+      left: 8,
+      right: 8,
+      child: IgnorePointer(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+          decoration: BoxDecoration(
+            color: Colors.orange.shade50.withValues(alpha: 0.95),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.orange.shade200),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.cloud_off, size: 16, color: Colors.orange.shade800),
+              const SizedBox(width: 8),
+              Flexible(
+                child: Text(
+                  'Offline — map shows cached imagery where available',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.orange.shade900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   /// Permanent '© OpenStreetMap contributors' attribution (bottom-right).
   static Widget osmAttribution() {
     return SimpleAttributionWidget(

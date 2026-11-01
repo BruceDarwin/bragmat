@@ -5,7 +5,7 @@
 //  - preview renders FlutterMap + marker + attribution + expand control
 //    for a catch with valid coordinates
 //  - preview renders nothing for missing/invalid coordinates
-//  - offline state replaces the map but keeps the data accessible
+//  - offline state keeps the map (cached tiles) with a non-blocking banner
 //  - tile-load failure surfaces a non-blocking banner
 //  - expand control navigates to the full-screen CatchMapScreen
 //  - Catch Details Location card shows the preview, coordinates and the
@@ -26,6 +26,7 @@ import 'package:bragmat/database/database_helper.dart';
 import 'package:bragmat/models/catch.dart' as model;
 import 'package:bragmat/screens/catch_details_screen.dart';
 import 'package:bragmat/screens/catch_map_screen.dart';
+import 'package:bragmat/screens/location_picker_screen.dart';
 import 'package:bragmat/widgets/bragmat_map_layers.dart';
 import 'package:bragmat/widgets/catch_location_map_preview.dart';
 
@@ -149,7 +150,7 @@ void main() {
       expect(find.byType(FlutterMap), findsOneWidget);
     });
 
-    testWidgets('offline shows notice instead of the map', (tester) async {
+    testWidgets('offline keeps the map and shows a banner', (tester) async {
       await tester.pumpWidget(_wrap(
         CatchLocationMapPreview(
           catchItem: _catchWith(),
@@ -158,9 +159,39 @@ void main() {
       ));
       await tester.pump();
 
-      expect(find.byType(FlutterMap), findsNothing);
-      expect(find.text('Map imagery unavailable while offline'),
+      // The map (marker, attribution, expand) stays rendered; only cached
+      // tiles will display, flagged by a non-blocking banner.
+      expect(find.byType(FlutterMap), findsOneWidget);
+      expect(find.byType(MarkerLayer), findsOneWidget);
+      expect(find.byIcon(Icons.open_in_full), findsOneWidget);
+      expect(
+          find.text('Offline — map shows cached imagery where available'),
           findsOneWidget);
+    });
+
+    testWidgets('reconnection removes the offline banner', (tester) async {
+      await tester.pumpWidget(_wrap(
+        CatchLocationMapPreview(
+          catchItem: _catchWith(),
+          isOnline: false,
+        ),
+      ));
+      await tester.pump();
+      expect(
+          find.text('Offline — map shows cached imagery where available'),
+          findsOneWidget);
+
+      await tester.pumpWidget(_wrap(
+        CatchLocationMapPreview(
+          catchItem: _catchWith(),
+          isOnline: true,
+        ),
+      ));
+      await tester.pump();
+      expect(
+          find.text('Offline — map shows cached imagery where available'),
+          findsNothing);
+      expect(find.byType(FlutterMap), findsOneWidget);
     });
 
     testWidgets('tile failure shows a non-blocking banner over the map',
@@ -244,6 +275,88 @@ void main() {
 
       expect(find.text('Coordinate Source'), findsOneWidget);
       expect(find.text('Map Selected'), findsOneWidget);
+    });
+  });
+
+  group('Offline map surfaces (D1)', () {
+    void mockOffline() {
+      TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(
+        _connectivityChannel,
+        (call) async => ['none'],
+      );
+    }
+
+    void mockOnline() {
+      _mockConnectivity(TestWidgetsFlutterBinding.instance);
+    }
+
+    testWidgets('CatchMapScreen keeps map, markers and banner offline',
+        (tester) async {
+      mockOffline();
+      await tester.runAsync(() async {
+        final db = await DatabaseHelper.instance.database;
+        await db.insert('catches', _catchWith().toMap());
+      });
+      await tester.pumpWidget(const MaterialApp(home: CatchMapScreen()));
+      await tester.pump();
+      for (var i = 0; i < 10; i++) {
+        await tester
+            .runAsync(() => Future.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+      }
+
+      expect(find.byType(FlutterMap), findsOneWidget);
+      expect(find.byType(MarkerLayer), findsWidgets);
+      expect(
+          find.text('Offline — map shows cached imagery where available'),
+          findsOneWidget);
+      expect(find.byType(SimpleAttributionWidget), findsOneWidget);
+      // No full-screen offline fallback: markers/FABs remain.
+      expect(find.text('Map tiles unavailable'), findsNothing);
+      // Flush the 10s offline-debounce timer before the test ends.
+      await tester.pump(const Duration(seconds: 11));
+      mockOnline();
+    });
+
+    testWidgets('LocationPicker offline: map, manual entry and select',
+        (tester) async {
+      mockOffline();
+      // Initial coordinates skip the geolocator fetch (which schedules a
+      // platform-timeout timer unavailable in tests).
+      await tester.pumpWidget(const MaterialApp(
+          home: LocationPickerScreen(
+              initialLatitude: -12.4634, initialLongitude: 130.8456)));
+      await tester.pump();
+      for (var i = 0; i < 10; i++) {
+        await tester
+            .runAsync(() => Future.delayed(const Duration(milliseconds: 20)));
+        await tester.pump();
+      }
+
+      expect(find.byType(FlutterMap), findsOneWidget);
+      expect(
+          find.text('Offline — map shows cached imagery where available'),
+          findsOneWidget);
+      // Manual coordinate entry is offered offline.
+      expect(find.text('Or enter coordinates:'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Latitude'), findsOneWidget);
+      expect(find.widgetWithText(TextField, 'Longitude'), findsOneWidget);
+
+      // Tap-to-select still works offline and enables Confirm.
+      final mapCenter = tester.getCenter(find.byType(FlutterMap));
+      await tester.tapAt(mapCenter);
+      await tester.pump();
+      expect(find.text('Selected Location:'), findsOneWidget);
+      expect(
+          tester
+              .widget<ElevatedButton>(find.widgetWithText(
+                  ElevatedButton, 'Confirm'))
+              .onPressed,
+          isNotNull);
+      // Flush the 10s offline-debounce timer before the test ends.
+      await tester.pump(const Duration(seconds: 11));
+      mockOnline();
     });
   });
 }

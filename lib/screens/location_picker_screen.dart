@@ -117,9 +117,16 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _isOnline
-              ? _buildOnlineMap()
-              : _buildOfflineMap(),
+          // The map renders even offline: the persistent tile cache can
+          // serve previously viewed tiles; a banner flags the degraded
+          // state instead of removing the map, and tap-to-select plus
+          // manual coordinate entry stay usable.
+          : Stack(
+              children: [
+                _buildOnlineMap(),
+                if (!_isOnline) BragmatMapLayers.offlineBanner(),
+              ],
+            ),
     );
   }
 
@@ -196,6 +203,61 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                     ),
                   ] else
                     const Text('Tap on the map to select a location'),
+                  if (!_isOnline) ...[
+                    const SizedBox(height: 12),
+                    const Divider(),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Or enter coordinates:',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      decoration: const InputDecoration(
+                        labelText: 'Latitude',
+                        hintText: '-12.4604',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        signed: true,
+                        decimal: true,
+                      ),
+                      onChanged: (value) {
+                        final lat = double.tryParse(value);
+                        if (lat == null) return;
+                        setState(() {
+                          _selectedLocation = LatLng(
+                            lat,
+                            _selectedLocation?.longitude ?? 133.7751,
+                          );
+                        });
+                      },
+                    ),
+                    const SizedBox(height: 8),
+                    TextField(
+                      decoration: const InputDecoration(
+                        labelText: 'Longitude',
+                        hintText: '130.8412',
+                        border: OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        signed: true,
+                        decimal: true,
+                      ),
+                      onChanged: (value) {
+                        final lng = double.tryParse(value);
+                        if (lng == null) return;
+                        setState(() {
+                          _selectedLocation = LatLng(
+                            _selectedLocation?.latitude ?? -25.2744,
+                            lng,
+                          );
+                        });
+                      },
+                    ),
+                  ],
                   const SizedBox(height: 16),
                   Row(
                     children: [
@@ -223,157 +285,4 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     );
   }
 
-  Widget _buildOfflineMap() {
-    return SingleChildScrollView(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            Card(
-              color: Colors.orange.shade50,
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.cloud_off,
-                      color: Colors.orange.shade700,
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Map unavailable offline',
-                            style: TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.orange.shade900,
-                            ),
-                          ),
-                          Text(
-                            'Enter coordinates manually',
-                            style: TextStyle(
-                              color: Colors.orange.shade700,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Current Coordinates:',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      decoration: const InputDecoration(
-                        labelText: 'Latitude',
-                        hintText: '-12.4604',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        signed: true,
-                        decimal: true,
-                      ),
-                      onChanged: (value) {
-                        final lat = double.tryParse(value);
-                        if (lat != null && _selectedLocation != null) {
-                          setState(() {
-                            _selectedLocation = LatLng(lat, _selectedLocation!.longitude);
-                          });
-                        } else if (lat != null) {
-                          setState(() {
-                            _selectedLocation = LatLng(lat, 133.7751);
-                          });
-                        }
-                      },
-                      controller: TextEditingController(
-                        text: _selectedLocation?.latitude.toStringAsFixed(6) ?? '',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      decoration: const InputDecoration(
-                        labelText: 'Longitude',
-                        hintText: '130.8412',
-                        border: OutlineInputBorder(),
-                      ),
-                      keyboardType: const TextInputType.numberWithOptions(
-                        signed: true,
-                        decimal: true,
-                      ),
-                      onChanged: (value) {
-                        final lng = double.tryParse(value);
-                        if (lng != null && _selectedLocation != null) {
-                          setState(() {
-                            _selectedLocation = LatLng(_selectedLocation!.latitude, lng);
-                          });
-                        } else if (lng != null) {
-                          setState(() {
-                            _selectedLocation = LatLng(-25.2744, lng);
-                          });
-                        }
-                      },
-                      controller: TextEditingController(
-                        text: _selectedLocation?.longitude.toStringAsFixed(6) ?? '',
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    if (_selectedLocation != null) ...[
-                      const Divider(),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Selected:',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                      ),
-                      Text(
-                        'Lat: ${_selectedLocation!.latitude.toStringAsFixed(6)}',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                      Text(
-                        'Lng: ${_selectedLocation!.longitude.toStringAsFixed(6)}',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: _cancel,
-                    child: const Text('Cancel'),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: ElevatedButton(
-                    onPressed: _selectedLocation != null ? _confirmLocation : null,
-                    child: const Text('Confirm'),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
-      ),
-    );
-  }
 }
