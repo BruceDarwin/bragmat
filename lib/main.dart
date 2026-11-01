@@ -17,9 +17,13 @@ import 'services/auth_service.dart';
 import 'database/database_helper.dart';
 import 'database/migration_v29.dart';
 import 'screens/auth_gate.dart';
+import 'widgets/bragmat_map_layers.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // Persistent OSM tile cache — never blocks startup; falls back to
+  // uncached tiles on any failure.
+  await BragmatMapLayers.initTileCache();
   // Recover from an interrupted backup restore (DB swap + staged media).
   // Database-level recovery also runs on first database access, so this is
   // safe to run unawaited in the background.

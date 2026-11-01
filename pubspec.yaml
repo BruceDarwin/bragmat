@@ -60,6 +60,10 @@ dependencies:
   sqflite_common: ^2.5.14
   sodium_libs: ^3.4.6+4
   crypto: ^3.0.7
+  flutter_map_cache: ^2.1.1
+  http_cache_file_store: ^2.0.2
+  dio_cache_interceptor: ^4.0.7
+  dio: ^5.11.1
 
 dev_dependencies:
   flutter_test:
