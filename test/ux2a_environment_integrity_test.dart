@@ -161,6 +161,42 @@ void main() {
     expect(saved!.dataSource, 'Manual');
   });
 
+  test("stored 'Unknown' condition does not read as an override",
+      () async {
+    // The form normalises 'Unknown'->null on submit; a stored 'Unknown'
+    // must compare equal so provenance isn't falsely flipped.
+    await seedRecord(dataSource: 'Open-Meteo');
+    final db = await DatabaseHelper.instance.database;
+    await db.update('environmental_conditions',
+        {'weather_condition': 'Unknown', 'wind_direction': 'Unknown'},
+        where: 'catch_id = ?', whereArgs: [42]);
+    await service.saveEnvironmentalConditionForCatch(
+      42, DateTime(2026, 7, 3, 9, 0), -12.4634, 130.8456,
+      weatherCondition: null, // 'Unknown' selected -> submitted as null
+      temperature: 31.5,
+      humidity: 70.0,
+      windSpeed: 12.0,
+      windDirection: null,
+    );
+    final saved = await service.getEnvironmentalConditionForCatch(42);
+    expect(saved!.dataSource, 'Open-Meteo');
+  });
+
+  test('partially populated record preserves provenance', () async {
+    await seedRecord(dataSource: 'Calculated');
+    final db = await DatabaseHelper.instance.database;
+    await db.update(
+        'environmental_conditions',
+        {'temperature': null, 'humidity': null, 'wind_speed': null},
+        where: 'catch_id = ?', whereArgs: [42]);
+    await service.saveEnvironmentalConditionForCatch(
+      42, DateTime(2026, 7, 3, 9, 0), -12.4634, 130.8456,
+      weatherCondition: 'Clear', // only condition recorded historically
+    );
+    final saved = await service.getEnvironmentalConditionForCatch(42);
+    expect(saved!.dataSource, 'Calculated');
+  });
+
   test('zero vs null values preserved', () async {
     await seedRecord(dataSource: 'Manual');
     await service.saveEnvironmentalConditionForCatch(

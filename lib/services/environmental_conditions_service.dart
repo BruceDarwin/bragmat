@@ -642,13 +642,19 @@ class EnvironmentalConditionsService {
     // the supplied weather values against the stored record. Re-saving
     // unchanged fields (or editing only tide/river-flow/clarity) keeps
     // the recorded provenance instead of reclassifying as 'Manual'.
+    // Text fields are normalised first — the form collapses
+    // null/empty/'Unknown' before submitting, so a stored 'Unknown'
+    // must compare equal to a submitted null rather than reading as a
+    // user override.
+    String? weatherText(String? v) =>
+        (v == null || v.trim().isEmpty || v == 'Unknown') ? null : v;
     final weatherOverridden = existing != null &&
-        (weatherCondition != existing.weatherCondition ||
+        (weatherText(weatherCondition) != weatherText(existing.weatherCondition) ||
             temperature != existing.temperature ||
             humidity != existing.humidity ||
             cloudCover != existing.cloudCover ||
             windSpeed != existing.windSpeed ||
-            windDirection != existing.windDirection ||
+            weatherText(windDirection) != weatherText(existing.windDirection) ||
             barometricPressure != existing.barometricPressure ||
             rainfall != existing.rainfall);
 
