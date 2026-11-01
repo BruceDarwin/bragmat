@@ -12,6 +12,8 @@ import '../services/trip_summary_service.dart';
 import '../services/media_storage_service.dart';
 import '../theme/brand_colors.dart';
 import '../widgets/resolved_image.dart';
+import '../widgets/trip_catch_map.dart';
+import '../services/connectivity_service.dart';
 import 'catch_details_screen.dart';
 import 'add_trip_screen.dart';
 import 'photo_viewer_screen.dart';
@@ -37,6 +39,8 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
   bool _isLoading = true;
   int? _currentTripId;
   TripSummary? _tripSummary;
+  bool _isOnline = true;
+  final ConnectivityService _connectivityService = ConnectivityService();
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _searchController = TextEditingController();
   final TripSummaryService _tripSummaryService = TripSummaryService();
@@ -47,6 +51,15 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
     _trip = widget.trip;
     _loadData();
     _loadCurrentTrip();
+    _checkConnectivity();
+    _connectivityService.connectivityStream.listen((isOnline) {
+      if (mounted) setState(() => _isOnline = isOnline);
+    });
+  }
+
+  Future<void> _checkConnectivity() async {
+    final isOnline = await _connectivityService.checkConnection();
+    if (mounted) setState(() => _isOnline = isOnline);
   }
 
   Future<void> _loadCurrentTrip() async {
@@ -421,6 +434,38 @@ class _TripDetailsScreenState extends State<TripDetailsScreen> {
                       ),
                     ),
                   ),
+
+                  // Catch Locations map (UX-1B) — only when the trip has
+                  // catches with valid coordinates.
+                  if (TripCatchMap.chronologicalCatches(_catches).isNotEmpty)
+                    Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Catch Locations',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .titleMedium
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 12),
+                            TripCatchMap(
+                              catches: _catches,
+                              tripId: _trip.id!,
+                              tripName: _trip.name,
+                              primaryMediaByCatch: _primaryMediaPaths,
+                              buddyNames: _fishingBuddyNames,
+                              isOnline: _isOnline,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 16),
 
                   // Trip Summary Section
                   if (_tripSummary != null) _buildTripSummarySection(),

@@ -9,20 +9,18 @@ import '../models/fishing_buddy.dart';
 import '../models/fishing_trip.dart';
 import '../models/favourite_spot.dart';
 import '../widgets/bragmat_map_layers.dart';
-import '../widgets/resolved_image.dart';
-import 'catch_details_screen.dart';
+import '../widgets/catch_summary_sheet.dart';
 import '../services/connectivity_service.dart';
 
 class CatchMapScreen extends StatefulWidget {
   final Catch? centerOnCatch;
-  // Future: Add optional tripId parameter for trip-specific maps
-  // final int? tripId;
-  
-  // Future: Add optional mode parameter for different map views
-  // enum MapMode { catches, heatMap, favourites }
-  // final MapMode? mode;
 
-  const CatchMapScreen({super.key, this.centerOnCatch});
+  /// When non-null, the trip filter is pre-applied on load — used by the
+  /// Trip Details map's Expand action so the full-screen map opens
+  /// already scoped to that trip.
+  final int? initialTripId;
+
+  const CatchMapScreen({super.key, this.centerOnCatch, this.initialTripId});
 
   @override
   State<CatchMapScreen> createState() => _CatchMapScreenState();
@@ -50,6 +48,7 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
   @override
   void initState() {
     super.initState();
+    _selectedTripId = widget.initialTripId;
     _loadData();
     _checkConnectivity();
     _connectivityService.connectivityStream.listen((isOnline) {
@@ -552,172 +551,15 @@ class _CatchMapScreenState extends State<CatchMapScreen> {
   }
 
   void _showCatchDetails(Catch catch_) {
-    final buddyName = catch_.fishingBuddyId != null
-        ? _fishingBuddyNames[catch_.fishingBuddyId]
-        : null;
-    final tripName = catch_.tripId != null
-        ? _fishingTripNames[catch_.tripId]
-        : null;
-    final primaryMedia = catch_.id != null ? _primaryMedia[catch_.id!] : null;
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.5,
-        minChildSize: 0.3,
-        maxChildSize: 0.9,
-        builder: (context, scrollController) => Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-          ),
-          child: SingleChildScrollView(
-            controller: scrollController,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const SizedBox(height: 20),
-                Center(
-                  child: Container(
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[300],
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          catch_.fishType?.isEmpty ?? true ? 'Unidentified' : catch_.fishType!,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                                fontWeight: FontWeight.bold,
-                              ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.open_in_full),
-                        onPressed: () {
-                          Navigator.pop(context);
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => CatchDetailsScreen(catchItem: catch_),
-                            ),
-                          );
-                        },
-                        tooltip: 'View Full Details',
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (primaryMedia != null) ...[
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
-                      child: ResolvedImage(
-                        imagePath: primaryMedia.filePath,
-                        height: 200,
-                        width: double.infinity,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                ],
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildDetailRow(Icons.straighten, '${catch_.lengthCm} cm', 'Length'),
-                      const SizedBox(height: 12),
-                      _buildDetailRow(
-                        Icons.calendar_today,
-                        _formatDate(catch_.dateCaught ?? catch_.createdAt),
-                        'Date',
-                      ),
-                      if (buddyName != null) ...[
-                        const SizedBox(height: 12),
-                        _buildDetailRow(Icons.person, buddyName, 'Caught by'),
-                      ],
-                      if (tripName != null) ...[
-                        const SizedBox(height: 12),
-                        _buildDetailRow(Icons.directions_boat, tripName, 'Trip'),
-                      ],
-                      if (catch_.location != null && catch_.location!.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        _buildDetailRow(Icons.place, catch_.location!, 'Location'),
-                      ],
-                      const SizedBox(height: 12),
-                      _buildDetailRow(
-                        Icons.my_location,
-                        '${catch_.latitude!.toStringAsFixed(6)}, ${catch_.longitude!.toStringAsFixed(6)}',
-                        'Coordinates',
-                      ),
-                      const SizedBox(height: 24),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (_) => CatchDetailsScreen(catchItem: catch_),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.open_in_full),
-                          label: const Text('View Full Details'),
-                        ),
-                      ),
-                      const SizedBox(height: 20),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
+    showCatchSummarySheet(
+      context, catch_,
+      buddyName: catch_.fishingBuddyId != null
+          ? _fishingBuddyNames[catch_.fishingBuddyId]
+          : null,
+      tripName: catch_.tripId != null
+          ? _fishingTripNames[catch_.tripId]
+          : null,
+      primaryMediaPath: catch_.id != null ? _primaryMedia[catch_.id!]?.filePath : null,
     );
-  }
-
-  Widget _buildDetailRow(IconData icon, String value, String label) {
-    return Row(
-      children: [
-        Icon(icon, size: 18, color: Colors.grey[600]),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(fontWeight: FontWeight.w500),
-              ),
-              Text(
-                label,
-                style: TextStyle(fontSize: 12, color: Colors.grey[500]),
-              ),
-            ],
-          ),
-        ),
-      ],
-    );
-  }
-
-  String _formatDate(DateTime date) {
-    return '${date.day}/${date.month}/${date.year}';
   }
 }
