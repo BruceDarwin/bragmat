@@ -8,9 +8,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 
 import 'package:bragmat/database/database_helper.dart';
+import 'package:bragmat/models/catch.dart' as bragmat;
 import 'package:bragmat/models/environmental_condition.dart';
 import 'package:bragmat/services/environmental_conditions_service.dart';
 import 'package:bragmat/services/weather_service.dart';
+import 'package:bragmat/services/worldtides_service.dart';
 
 class _CountingWeather implements WeatherService {
   int calls = 0;
@@ -24,6 +26,20 @@ class _CountingWeather implements WeatherService {
 
   @override
   String windDirectionToCompass(double? degrees) => 'N';
+}
+
+class _CountingWorldTides implements WorldTidesService {
+  int calls = 0;
+
+  @override
+  Future<bool> isAvailable() async => true;
+
+  @override
+  Future<Map<String, dynamic>?> getTideContextForLocation(
+      double latitude, double longitude, DateTime dateTime) async {
+    calls++;
+    return null;
+  }
 }
 
 EnvironmentalCondition _base({
@@ -195,6 +211,58 @@ void main() {
     );
     final saved = await service.getEnvironmentalConditionForCatch(42);
     expect(saved!.dataSource, 'Calculated');
+  });
+
+  test('deliberately cleared weather stays cleared, no refetch',
+      () async {
+    await seedRecord(dataSource: 'Open-Meteo');
+    await service.saveEnvironmentalConditionForCatch(
+      42, DateTime(2026, 7, 3, 9, 0), -12.4634, 130.8456,
+      // All weather fields deliberately cleared by the user.
+      weatherCondition: null,
+      temperature: null,
+      humidity: null,
+      cloudCover: null,
+      windSpeed: null,
+      windDirection: null,
+      barometricPressure: null,
+      rainfall: null,
+    );
+    final saved = await service.getEnvironmentalConditionForCatch(42);
+    expect(saved!.temperature, isNull);
+    expect(saved.weatherCondition, isNull);
+    expect(weather.calls, 0);
+  });
+
+  test('ordinary save of existing record does not fetch WorldTides',
+      () async {
+    await seedRecord(dataSource: 'Open-Meteo');
+    final tides = _CountingWorldTides();
+    service.worldTidesService = tides;
+    final catchItem = bragmat.Catch(
+      id: 42, fishType: 'Red Snapper', lengthCm: 25,
+      createdAt: DateTime(2026, 7, 3),
+      dateCaught: DateTime(2026, 7, 3, 9, 0),
+      latitude: -12.4634, longitude: 130.8456,
+    );
+    await service.upsertCalculatedConditionsForCatch(catchItem);
+    expect(tides.calls, 0);
+  });
+
+  test('new catch may fetch WorldTides', () async {
+    final db = await DatabaseHelper.instance.database;
+    await db.delete('environmental_conditions');
+    await insertCatchRow(44);
+    final tides = _CountingWorldTides();
+    service.worldTidesService = tides;
+    final catchItem = bragmat.Catch(
+      id: 44, fishType: 'Barramundi', lengthCm: 60,
+      createdAt: DateTime(2026, 7, 3),
+      dateCaught: DateTime(2026, 7, 3, 9, 0),
+      latitude: -12.4634, longitude: 130.8456,
+    );
+    await service.upsertCalculatedConditionsForCatch(catchItem);
+    expect(tides.calls, 1);
   });
 
   test('zero vs null values preserved', () async {

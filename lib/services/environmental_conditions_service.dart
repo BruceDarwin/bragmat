@@ -116,14 +116,17 @@ class EnvironmentalConditionsService {
   /// Update an existing environmental condition record
   /// Recalculates moon phase and sun times if coordinates are provided
   /// Preserves manual tide data - does not overwrite with API data
-  Future<int> updateEnvironmentalCondition(EnvironmentalCondition condition) async {
+  Future<int> updateEnvironmentalCondition(EnvironmentalCondition condition,
+      {bool allowWeatherFetch = true}) async {
     final db = await DatabaseHelper.instance.database;
     
     // Calculate moon phase and sun times if coordinates are available
     // Do NOT recalculate tide data - preserve manual values
     EnvironmentalCondition calculatedCondition = condition;
     if (condition.latitude != null && condition.longitude != null) {
-      calculatedCondition = await _calculateEnvironmentalDataWithoutTide(condition);
+      calculatedCondition = await _calculateEnvironmentalDataWithoutTide(
+          condition,
+          allowWeatherFetch: allowWeatherFetch);
     }
     
     // Update timestamp
@@ -477,7 +480,9 @@ class EnvironmentalConditionsService {
 
   /// Calculate environmental data WITHOUT tide (moon, sun, weather only)
   /// Used when updating existing conditions to preserve manual tide data
-  Future<EnvironmentalCondition> _calculateEnvironmentalDataWithoutTide(EnvironmentalCondition condition) async {
+  Future<EnvironmentalCondition> _calculateEnvironmentalDataWithoutTide(
+      EnvironmentalCondition condition,
+      {bool allowWeatherFetch = true}) async {
     if (condition.latitude == null || condition.longitude == null) {
       return condition;
     }
@@ -505,7 +510,7 @@ class EnvironmentalConditionsService {
         condition.weatherCondition != null ||
         condition.windSpeed != null ||
         condition.humidity != null;
-    if (!hasStoredWeather) {
+    if (!hasStoredWeather && allowWeatherFetch) {
       try {
         weatherData = await _weatherService.fetchWeather(
           condition.latitude!,
@@ -738,7 +743,11 @@ class EnvironmentalConditionsService {
     );
     
     if (existing != null) {
-      return await updateEnvironmentalCondition(condition);
+      // UX-2A: an ordinary save of an existing record never re-fetches
+      // weather — new catches fetch via the create path, explicit
+      // recalculation flows use their own entry points.
+      return await updateEnvironmentalCondition(condition,
+          allowWeatherFetch: false);
     } else {
       return await createEnvironmentalCondition(condition);
     }
@@ -873,8 +882,18 @@ class EnvironmentalConditionsService {
       requestLon: requestLon,
       observationDateTime: observationDateTime,
     );
+    // UX-2A: fetch WorldTides only when the catch is new, the effective
+    // tide request changed (reference, request coordinates or tide
+    // date), or the recorded catch location itself moved — e.g. a
+    // photo-GPS update relocates the catch while a fixed reference is
+    // reconstructed from the recorded request coordinates. An ordinary
+    // save of an existing record does not fetch merely because context
+    // is absent — stored observations and provenance are preserved.
+    final catchLocationChanged = existing != null &&
+        (existing.latitude != catchItem.latitude ||
+            existing.longitude != catchItem.longitude);
     final shouldFetchWorldTides =
-        !_hasValidWorldTidesContext(existing) || requestChanged;
+        existing == null || requestChanged || catchLocationChanged;
 
     Map<String, dynamic>? tideContext;
     var tideFetchSucceeded = false;
@@ -997,7 +1016,11 @@ class EnvironmentalConditionsService {
 
     if (existing != null) {
       debugPrint('Environmental: Updating existing condition for catch ${catchItem.id}');
-      await updateEnvironmentalCondition(condition);
+      // UX-2A: the upsert path preserves weather on existing records —
+      // weather retrieval belongs to the new-catch create path and the
+      // explicit recalculation flow only.
+      await updateEnvironmentalCondition(condition,
+          allowWeatherFetch: false);
     } else {
       debugPrint('Environmental: Creating new condition for catch ${catchItem.id}');
       await createEnvironmentalCondition(condition);
