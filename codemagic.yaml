@@ -83,12 +83,12 @@ workflows:
         script: xcode-project use-profiles
       - name: Verify export options plist
         script: |
-          test -s export_options.plist || \
+          test -s "$HOME/export_options.plist" || \
             { echo "export_options.plist missing or empty"; exit 1; }
       - name: Signed IPA (App Store profile)
         script: |
           flutter build ipa --release \
-            --export-options-plist=export_options.plist \
+            --export-options-plist="$HOME/export_options.plist" \
             --dart-define-from-file=.env
     artifacts:
       - build/ios/ipa/*.ipa
