@@ -76,6 +76,28 @@ workflows:
           test -s .env && grep -q '=.' .env
       - name: flutter pub get
         script: flutter pub get
+      - name: pod install (fetch vendored libsodium)
+        script: |
+          cd ios && pod install
+      - name: Strip arm64e slice from libsodium
+        # Apple 91011: the prebuilt libsodium.xcframework ships an arm64e
+        # slice compiled with the iOS 18.5 SDK; App Store requires arm64e
+        # slices built with iOS 26 SDK. The arm64 slice is retained and
+        # runs natively on arm64e-capable devices. Idempotent, libsodium
+        # only, fails loudly on any unexpected state.
+        script: |
+          set -e
+          FWDIR=$(find "$HOME/.pub-cache" -type d -name "libsodium.xcframework" -path "*sodium_libs*" | head -1)
+          [ -n "$FWDIR" ] || { echo "libsodium.xcframework not found"; exit 1; }
+          find "$FWDIR" -name libsodium -type f | while read -r bin; do
+            echo "before: $(lipo -info "$bin")"
+            if lipo -info "$bin" | grep -q arm64e; then
+              lipo -remove arm64e "$bin" -o "$bin"
+              echo "after: $(lipo -info "$bin")"
+            fi
+            lipo -info "$bin" | grep -q arm64e && { echo "arm64e still present"; exit 1; }
+            lipo -info "$bin" | grep -q arm64 || { echo "arm64 slice missing"; exit 1; }
+          done
       - name: Set up code signing
         # Applies the fetched cert + App Store profile to the project and
         # writes export_options.plist — ios_signing does not populate
