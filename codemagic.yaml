@@ -87,8 +87,17 @@ workflows:
         # only, fails loudly on any unexpected state.
         script: |
           set -e
-          FWDIR=$(find "$HOME/.pub-cache" -type d -name "libsodium.xcframework" -path "*sodium_libs*" | head -1)
-          [ -n "$FWDIR" ] || { echo "libsodium.xcframework not found"; exit 1; }
+          # Deterministic: pod install runs the podspec prepare_command inside
+          # the plugin's symlinked source dir, downloading the xcframework to
+          # darwin/Libraries/. Resolve via .symlinks, not a cache guess.
+          PLUG=$(readlink -f ios/.symlinks/plugins/sodium_libs 2>/dev/null || true)
+          echo "sodium_libs plugin: $PLUG"
+          echo "darwin/Libraries: $(ls "$PLUG/darwin/Libraries" 2>/dev/null || echo missing)"
+          FWDIR="$PLUG/darwin/Libraries/libsodium.xcframework"
+          [ -d "$FWDIR" ] || FWDIR=$(find ios/.symlinks ios/Pods "$HOME/.pub-cache" "$PUB_CACHE" \
+            -type d -name "libsodium.xcframework" -path "*sodium_libs*" 2>/dev/null | head -1)
+          [ -n "$FWDIR" ] && [ -d "$FWDIR" ] || { echo "libsodium.xcframework not found"; exit 1; }
+          echo "xcframework: $FWDIR"
           find "$FWDIR" -name libsodium -type f | while read -r bin; do
             echo "before: $(lipo -info "$bin")"
             if lipo -info "$bin" | grep -q arm64e; then
