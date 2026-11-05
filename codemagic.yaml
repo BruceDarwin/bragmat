@@ -96,13 +96,13 @@ workflows:
       email:
         recipients:
           - bruceraymonddunn@gmail.com
-      # Explicitly disabled: no automatic upload or TestFlight submission.
-      # To publish (after approval), uncomment:
-      # app_store_connect:
-      #   auth: integration
-      #   submit_to_testflight: true
-      # submit_to_app_store is intentionally never used — no production
-      # submission exists anywhere in this configuration.
+      # iOS-3C one-off: upload the built IPA to the Bragmat Oz ASC record
+      # via the bragmat_asc integration. Upload only — no TestFlight beta
+      # submission, no App Store review submission, no group assignment.
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: false
+        submit_to_app_store: false
 
   # Secondary path — development-signed IPA for direct device install.
   # Only useful with a capable macOS host (Apple Configurator 2 installs a
