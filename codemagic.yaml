@@ -112,6 +112,23 @@ workflows:
           flutter build ipa --release \
             --export-options-plist="$HOME/export_options.plist" \
             --dart-define-from-file=.env
+      - name: Verify embedded libsodium architectures
+        # Operates on the final IPA (not the pub-cache framework):
+        # arm64 must be present, arm64e must be absent, and the embedded
+        # app + framework signatures must be valid — before publishing.
+        script: |
+          set -e
+          IPA=$(ls build/ios/ipa/*.ipa | head -1)
+          [ -n "$IPA" ] || { echo "IPA not found"; exit 1; }
+          rm -rf /tmp/ipa_verify && unzip -o -q "$IPA" -d /tmp/ipa_verify
+          BIN=/tmp/ipa_verify/Payload/Runner.app/Frameworks/libsodium.framework/libsodium
+          [ -f "$BIN" ] || { echo "embedded libsodium missing"; exit 1; }
+          ARCHS=$(lipo -archs "$BIN")
+          echo "embedded libsodium archs: $ARCHS"
+          echo "$ARCHS" | grep -qw arm64 || { echo "FAIL: arm64 missing"; exit 1; }
+          echo "$ARCHS" | grep -qw arm64e && { echo "FAIL: arm64e still present"; exit 1; }
+          codesign -v /tmp/ipa_verify/Payload/Runner.app && echo "app signature valid"
+          codesign -v /tmp/ipa_verify/Payload/Runner.app/Frameworks/libsodium.framework && echo "framework signature valid"
     artifacts:
       - build/ios/ipa/*.ipa
     publishing:
