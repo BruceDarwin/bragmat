@@ -105,14 +105,36 @@ workflows:
           [ -n "$FWDIR" ] && [ -d "$FWDIR" ] || { echo "libsodium.xcframework not found"; exit 1; }
           echo "xcframework: $FWDIR"
           find "$FWDIR" -name libsodium -type f | while read -r bin; do
-            echo "before: $(lipo -info "$bin")"
-            if lipo -info "$bin" | grep -q arm64e; then
+            # lipo -archs prints ONLY architecture tokens — lipo -info embeds
+            # the path, whose 'ios-arm64_arm64e' dirname caused a false
+            # arm64e match earlier.
+            ARCHS=$(lipo -archs "$bin")
+            echo "before: $bin -> $ARCHS"
+            if echo "$ARCHS" | tr ' ' '\n' | grep -qx arm64e; then
               lipo -remove arm64e "$bin" -o "$bin"
-              echo "after: $(lipo -info "$bin")"
+              ARCHS=$(lipo -archs "$bin")
+              echo "after: $ARCHS"
             fi
-            lipo -info "$bin" | grep -q arm64e && { echo "arm64e still present"; exit 1; }
-            lipo -info "$bin" | grep -q arm64 || { echo "arm64 slice missing"; exit 1; }
+            echo "$ARCHS" | tr ' ' '\n' | grep -qx arm64e \
+              && { echo "FAIL: arm64e still present"; exit 1; }
+            echo "$ARCHS" | tr ' ' '\n' | grep -qx arm64 \
+              || { echo "FAIL: arm64 missing"; exit 1; }
           done
+          # Keep the xcframework metadata honest after stripping.
+          python3 - <<'PY'
+          import plistlib
+          p = "$FWDIR/Info.plist"
+          with open(p, 'rb') as f:
+              info = plistlib.load(f)
+          for lib in info.get('AvailableLibraries', []):
+              sa = lib.get('SupportedArchitectures', [])
+              if 'arm64e' in sa:
+                  sa.remove('arm64e')
+                  lib['SupportedArchitectures'] = sa
+                  print('metadata: removed arm64e from', lib.get('LibraryPath'))
+          with open(p, 'wb') as f:
+              plistlib.dump(info, f)
+          PY
       - name: Set up code signing
         # Applies the fetched cert + App Store profile to the project and
         # writes export_options.plist — ios_signing does not populate
