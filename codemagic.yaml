@@ -76,10 +76,19 @@ workflows:
           test -s .env && grep -q '=.' .env
       - name: flutter pub get
         script: flutter pub get
+      - name: Set up code signing
+        # Applies the fetched cert + App Store profile to the project and
+        # writes export_options.plist — ios_signing does not populate
+        # $EXPORT_OPTIONS by itself.
+        script: xcode-project use-profiles
+      - name: Verify export options plist
+        script: |
+          test -s export_options.plist || \
+            { echo "export_options.plist missing or empty"; exit 1; }
       - name: Signed IPA (App Store profile)
         script: |
           flutter build ipa --release \
-            --export-options-plist=$EXPORT_OPTIONS \
+            --export-options-plist=export_options.plist \
             --dart-define-from-file=.env
     artifacts:
       - build/ios/ipa/*.ipa
