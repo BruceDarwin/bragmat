@@ -23,54 +23,35 @@ workflows:
     scripts:
       - name: flutter pub get
         script: flutter pub get
-      - name: pod install (first run — injects phase via post_integrate)
+      - name: pod install
         script: |
           cd ios && pod install
-      - name: Inspect Runner build phases
+      - name: Resolve SPM + strip libsodium arm64e
+        # Probe + correct the SPM artifact — the ACTUAL embed source per
+        # the verbose archive log (ProcessXCFramework on
+        # build/ios/SourcePackages/artifacts/sodium_libs-*/libsodium.xcframework)
         script: |
-          cd ios && ruby -e '
-            require "xcodeproj"
-            p = Xcodeproj::Project.open("Runner.xcodeproj")
-            r = p.targets.find { |t| t.name == "Runner" }
-            puts "== Runner build phases =="
-            r.build_phases.each_with_index do |ph, i|
-              puts "#{i}: #{ph.isa} #{ph.respond_to?(:name) ? ph.name : ""}"
-            end
-            strips = r.shell_script_build_phases.select { |ph| ph.name == "Strip libsodium arm64e" }
-            puts "strip phases: #{strips.length}"
-            puts "== Runner file refs mentioning libsodium =="
-            r.files_references.each { |f| puts f.path if f.path.to_s.include?("libsodium") } rescue nil
-            puts "== Pods.xcodeproj targets + script phases =="
-            pp = Xcodeproj::Project.open("Pods/Pods.xcodeproj")
-            pp.targets.each do |t|
-              next unless t.shell_script_build_phases.any? || t.name.include?("sodium")
-              puts "target=#{t.name}"
-              t.shell_script_build_phases.each { |ph| puts "  phase=#{ph.name.inspect} script=#{ph.shell_script.to_s[0,140].inspect}" }
-            end
-          '
-      - name: Grep Pods scripts for libsodium
-        script: |
-          grep -rln "libsodium" "ios/Pods/Target Support Files" | head -10
-          echo "---- embed script libsodium lines ----"
-          grep -n "libsodium\|install_xcframework\|XCFrameworkIntermediates" \
-            "ios/Pods/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh" | head -20
-          find ios/Pods -name "*xcframeworks*.sh" -exec grep -l libsodium {} \; | head -5
-      - name: pod install (second run — idempotency check)
-        script: |
-          cd ios && pod install
-      - name: Re-inspect phase count
-        script: |
-          cd ios && ruby -e '
-            require "xcodeproj"
-            r = Xcodeproj::Project.open("Runner.xcodeproj").targets.find { |t| t.name == "Runner" }
-            strips = r.shell_script_build_phases.select { |ph| ph.name == "Strip libsodium arm64e" }
-            abort("FAIL: duplicate strip phase") unless strips.length == 1
-            puts "OK: still exactly 1 strip phase after repeat pod install"
-          '
-      - name: Resolve libsodium xcframework
-        script: |
-          test -d ios/.symlinks/plugins/sodium_libs/darwin/Libraries/libsodium.xcframework \
-            && echo "xcframework present" || echo "xcframework ABSENT"
+          set -e
+          echo "== pre-resolve =="
+          ls build/ios/SourcePackages/artifacts 2>/dev/null || echo "no artifacts yet"
+          xcodebuild -resolvePackageDependencies \
+            -workspace ios/Runner.xcworkspace -scheme Runner >/dev/null 2>&1 || true
+          echo "== post-resolve =="
+          ls build/ios/SourcePackages/artifacts 2>/dev/null || echo "still no artifacts"
+          XCF=$(find build/ios/SourcePackages -type d \
+            -name "libsodium.xcframework" -path "*sodium_libs*" 2>/dev/null | head -1)
+          [ -n "$XCF" ] && [ -d "$XCF" ] \
+            || { echo "SPM libsodium.xcframework not found after resolve"; exit 1; }
+          echo "SPM artifact: $XCF"
+          find "$XCF" -name libsodium -type f | while read -r bin; do
+            echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+            if lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64e; then
+              lipo -remove arm64e "$bin" -o "$bin"
+            fi
+            lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64 \
+              || { echo "FAIL: arm64 missing in $bin"; exit 1; }
+            echo "after:  $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+          done
 
   ios-unsigned-compile:
     name: iOS unsigned compile check
@@ -241,9 +222,46 @@ workflows:
           echo "downloaded: $PLUG/darwin/Libraries/libsodium.xcframework"
       - name: Set up code signing
         script: xcode-project use-profiles
+      - name: Resolve SPM + strip libsodium arm64e
+        # libsodium is embedded via Swift Package Manager (verbose log
+        # proved it): ProcessXCFramework copies build/ios/SourcePackages/
+        # artifacts/sodium_libs-*/libsodium/libsodium.xcframework into
+        # Runner.app/Frameworks BEFORE any Runner phase and signs it.
+        # The strip must therefore target the SPM artifact, before
+        # xcodebuild. resolvePackageDependencies materialises it.
+        script: |
+          set -e
+          xcodebuild -resolvePackageDependencies \
+            -workspace ios/Runner.xcworkspace -scheme Runner >/dev/null 2>&1 || true
+          XCF=$(find build/ios/SourcePackages -type d \
+            -name "libsodium.xcframework" -path "*sodium_libs*" 2>/dev/null | head -1)
+          [ -n "$XCF" ] && [ -d "$XCF" ] \
+            || { echo "SPM libsodium.xcframework not found"; exit 1; }
+          echo "SPM artifact: $XCF"
+          find "$XCF" -name libsodium -type f | while read -r bin; do
+            echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+            if lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64e; then
+              lipo -remove arm64e "$bin" -o "$bin"
+            fi
+            lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64 \
+              || { echo "FAIL: arm64 missing in $bin"; exit 1; }
+            echo "after:  $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+          done
+          # keep xcframework metadata consistent
+          python3 - "$XCF/Info.plist" <<'PY'
+          import plistlib, sys
+          p = sys.argv[1]
+          info = plistlib.load(open(p, 'rb'))
+          for lib in info.get('AvailableLibraries', []):
+              sa = lib.get('SupportedArchitectures', [])
+              if 'arm64e' in sa:
+                  sa.remove('arm64e'); lib['SupportedArchitectures'] = sa
+          plistlib.dump(info, open(p, 'wb'))
+          PY
       - name: Signed IPA (instrumented, verbose)
         script: |
           set -o pipefail
+          mkdir -p ios/build
           flutter build ipa --release --verbose \
             --export-options-plist="$HOME/export_options.plist" \
             --dart-define-from-file=.env 2>&1 | tee ios/build/verbose_build.log
