@@ -55,7 +55,7 @@ end
 # the Podfile across pod install runs.
 post_integrate do |installer|
   phase_name = 'Strip libsodium arm64e'
-  project_path = File.expand_path('Runner.xcodeproj', __FILE__)
+  project_path = File.expand_path('Runner.xcodeproj', File.dirname(__FILE__))
   project = Xcodeproj::Project.open(project_path)
   runner = project.targets.find { |t| t.name == 'Runner' }
   raise 'Runner target not found' unless runner
@@ -67,7 +67,7 @@ post_integrate do |installer|
 
   # Match the phase whose generated script stages libsodium.xcframework —
   # the phase's shell_script invokes Pods/Target Support Files/…/*.sh.
-  pods_root = File.expand_path('Pods', __FILE__)
+  pods_root = File.expand_path('Pods', File.dirname(__FILE__))
   copy_phase = copy_phases.find do |p|
     ref = p.shell_script.to_s[/["']([^"']*\.sh)["']/, 1] ||
           p.shell_script.to_s[/([^\s"']*\.sh)/, 1]
