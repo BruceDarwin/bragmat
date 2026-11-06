@@ -62,8 +62,12 @@ post_install do |installer|
     end.map { |p| [t, p] }
   end
   matched = candidates.select do |t, p|
-    script_path = Dir[File.join(sandbox, 'Target Support Files', t.name, '*-xcframeworks.sh')].first
-    script_path && File.read(script_path).include?('libsodium.xcframework')
+    # Derive the script path from the phase's own shell_script (e.g.
+    # "${PODS_ROOT}/Target Support Files/sodium_libs/sodium_libs-xcframeworks.sh")
+    # rather than inferring it from the target name.
+    rel = p.shell_script[/\$\{PODS_ROOT\}([^\s"']*xcframeworks\.sh)/, 1]
+    script_path = rel && File.join(sandbox, rel.sub(%r{^/}, ''))
+    script_path && File.exist?(script_path) && File.read(script_path).include?('libsodium.xcframework')
   end
   if matched.empty?
     raise 'No [CP] Copy XCFrameworks script references libsodium.xcframework — cannot order the strip'
