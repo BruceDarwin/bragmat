@@ -88,15 +88,21 @@ post_integrate do |installer|
         echo "XCF=${XCF:-NOT_FOUND}"
         EMB="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/libsodium.framework/libsodium"
         [ -f "$EMB" ] && echo "embedded_exists=true path=$EMB" || echo "embedded_exists=false path=$EMB"
-        # Native-assets embed source: xcode_backend._embedNativeAssets copies
-        # ${BUILT_PRODUCTS_DIR}/native_assets/*.framework into Runner.app.
-        echo "native_assets dir: $(ls -d "${BUILT_PRODUCTS_DIR}/native_assets/" 2>/dev/null || echo ABSENT)"
-        NA="${BUILT_PRODUCTS_DIR}/native_assets/libsodium.framework/libsodium"
-        [ -f "$NA" ] && echo "NA_libsodium: $(lipo -archs "$NA") sha=$(shasum -a 256 "$NA" | cut -d' ' -f1) size=$(stat -f%z "$NA")" \
-          || echo "NA_libsodium: ABSENT"
-        [ -f "$EMB" ] && echo "EMB_libsodium: $(lipo -archs "$EMB") sha=$(shasum -a 256 "$EMB" | cut -d' ' -f1)"
-        ls "${BUILT_PRODUCTS_DIR}/native_assets/"*.json 2>/dev/null | while read -r j; do
-          echo "manifest=$j"; grep -o 'libsodium[^"]*' "$j" | head -5
+        # Native-assets candidates: assemble outputs to build/native_assets
+        # (project), and BUILT_PRODUCTS_DIR/native_assets (xcode embed).
+        for NADIR in "${SRCROOT}/../build/native_assets" "${SRCROOT}/../build/native_assets/ios" \
+                     "${BUILT_PRODUCTS_DIR}/native_assets"; do
+          [ -d "$NADIR" ] || { echo "NA-dir ABSENT: $NADIR"; continue; }
+          echo "NA-dir PRESENT: $NADIR -> $(ls "$NADIR" | head -10 | tr '\n' ' ')"
+          find "$NADIR" -name libsodium -type f 2>/dev/null | while read -r na; do
+            echo "NA_libsodium: $na -> $(lipo -archs "$na") sha=$(shasum -a 256 "$na" | cut -d' ' -f1) size=$(stat -f%z "$na")"
+          done
+        done
+        [ -f "$EMB" ] && echo "EMB_libsodium: $(lipo -archs "$EMB") sha=$(shasum -a 256 "$EMB" | cut -d' ' -f1) size=$(stat -f%z "$EMB") mtime=$(stat -f%Sm "$EMB")"
+        # App-side native-assets manifest (records the embed source path).
+        for J in "${SRCROOT}/../build/native_assets.json" "${SRCROOT}/../.dart_tool/native_assets.json" \
+                 "${BUILT_PRODUCTS_DIR}/native_assets/native_assets.json"; do
+          [ -f "$J" ] && { echo "manifest=$J"; grep -o 'libsodium[^"]*' "$J" | head -5; }
         done
         [ -n "$XCF" ] && [ -d "$XCF" ] && find "$XCF" -name libsodium -type f | while read -r bin; do
           echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
