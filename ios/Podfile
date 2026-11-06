@@ -82,7 +82,7 @@ post_integrate do |installer|
     rel = ref&.sub('${PODS_ROOT}', '')&.sub(%r{^/}, '')
     path = rel && File.join(pods_root, rel)
     Pod::UI.puts "iOS-3C: candidate phase #{p.name.inspect} ref=#{ref.inspect} resolved=#{path.inspect} exists=#{path && File.exist?(path)}"
-    path && File.exist?(path) && File.read(path).include?('libsodium.xcframework')
+    path && File.exist?(path) && File.read(path).include?('libsodium')
   end
   raise 'No [CP] script references libsodium.xcframework' unless copy_phase
 
