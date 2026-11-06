@@ -54,51 +54,43 @@ end
 # phase/framework is absent; idempotent via phase-name check; persisted in
 # the Podfile across pod install runs.
 post_integrate do |installer|
+  # iOS-3C (Apple 91011): strip the stale arm64e slice from libsodium's
+  # vendored xcframework in the EARLIEST Runner build phase — position 1,
+  # immediately after '[CP] Check Pods Manifest.lock'. Every downstream
+  # mechanism that copies/embeds the framework (whichever it is) then sees
+  # the already-stripped source, and the phase that embeds it signs the
+  # stripped binary. No CocoaPods script-content matching — the embed path
+  # proved not to expose a libsodium-named script. Fails loudly if the
+  # Runner target, insertion anchor or framework is absent; idempotent.
   phase_name = 'Strip libsodium arm64e'
-  # Evidence: libsodium is not staged by any Runner phase — it is staged
-  # by the '[CP] Copy XCFrameworks' phase on the pod target in
-  # Pods.xcodeproj (e.g. sodium_libs) whose <target>-xcframeworks.sh
-  # slices the vendored xcframework into XCFrameworkIntermediates.
-  pods_root = File.expand_path('Pods', File.dirname(__FILE__))
-  candidates = installer.pods_project.targets.flat_map do |t|
-    t.shell_script_build_phases.select { |p| p.name == '[CP] Copy XCFrameworks' }
-      .map { |p| [t, p] }
+  project = Xcodeproj::Project.open(File.expand_path('Runner.xcodeproj', File.dirname(__FILE__)))
+  runner = project.targets.find { |t| t.name == 'Runner' }
+  raise 'iOS-3C: Runner target not found' unless runner
+  anchor = runner.build_phases.index do |p|
+    p.respond_to?(:name) && p.name == '[CP] Check Pods Manifest.lock'
   end
-  matched = candidates.select do |t, p|
-    ref = p.shell_script.to_s[/["']([^"']*\.sh)["']/, 1] ||
-          p.shell_script.to_s[/([^\s"']*\.sh)/, 1]
-    rel = ref&.sub('${PODS_ROOT}', '')&.sub(%r{^/}, '')
-    path = rel && File.join(pods_root, rel)
-    Pod::UI.puts "iOS-3C: candidate target=#{t.name} phase=#{p.name.inspect} ref=#{ref.inspect} resolved=#{path.inspect} exists=#{path && File.exist?(path)}"
-    path && File.exist?(path) && File.read(path).include?('libsodium')
-  end
-  raise 'No pod-target [CP] Copy XCFrameworks script references libsodium' if matched.empty?
-  raise "Ambiguous libsodium owners: #{matched.map { |t, _| t.name }.join(', ')}" if matched.length > 1
+  raise 'iOS-3C: [CP] Check Pods Manifest.lock anchor phase not found' if anchor.nil?
 
-  owner, copy_phase = matched.first
-  Pod::UI.puts "iOS-3C: owner=#{owner.name} staging phase=#{copy_phase.name.inspect}"
-  unless owner.shell_script_build_phases.any? { |p| p.name == phase_name }
-    phase = owner.new_shell_script_build_phase(phase_name)
+  unless runner.shell_script_build_phases.any? { |p| p.name == phase_name }
+    phase = runner.new_shell_script_build_phase(phase_name)
     phase.shell_script = <<~'SH'
       set -e
-      # SRCROOT for a pod target is ios/Pods — plugin source resolves via
-      # ../.symlinks/plugins/... (symlink to the pub-cache copy).
-      XCF="${SRCROOT}/../.symlinks/plugins/sodium_libs/darwin/Libraries/libsodium.xcframework"
-      [ -d "$XCF" ] || XCF=$(find "${SRCROOT}/../.symlinks" "${SRCROOT}" \
-        -type d -name "libsodium.xcframework" 2>/dev/null | head -1)
+      XCF="${SRCROOT}/.symlinks/plugins/sodium_libs/darwin/Libraries/libsodium.xcframework"
+      [ -d "$XCF" ] || XCF=$(find "${SRCROOT}" -type d -name "libsodium.xcframework" | head -1)
       [ -d "$XCF" ] || { echo "libsodium.xcframework not found — cannot verify arm64e removal"; exit 1; }
       find "$XCF" -name libsodium -type f | while read -r bin; do
-        ARCHS=$(lipo -archs "$bin")
-        if echo "$ARCHS" | tr ' ' '\n' | grep -qx arm64e; then
+        echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+        if lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64e; then
           lipo -remove arm64e "$bin" -o "$bin"
         fi
         lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64 \
           || { echo "libsodium arm64 missing in $bin"; exit 1; }
+        echo "after:  $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
       done
     SH
-    owner.build_phases.delete(phase)
-    owner.build_phases.insert(owner.build_phases.index(copy_phase), phase)
-    owner.project.save
-    Pod::UI.puts "iOS-3C: injected '#{phase_name}' before '#{copy_phase.name}' on #{owner.name}"
+    runner.build_phases.delete(phase)
+    runner.build_phases.insert(anchor + 1, phase)
+    project.save
+    Pod::UI.puts "iOS-3C: injected '#{phase_name}' at Runner phase #{anchor + 1}"
   end
 end
