@@ -246,6 +246,13 @@ workflows:
           flutter build ipa --release \
             --export-options-plist="$HOME/export_options.plist" \
             --dart-define-from-file=.env
+      - name: Dump strip evidence
+        # Echo evidence into the step log — retrievable even when the
+        # verify step fails and artifact collection is skipped.
+        script: |
+          echo "=== strip_evidence.log ==="
+          cat ios/build/strip_evidence.log 2>/dev/null || echo "EVIDENCE FILE NOT FOUND"
+          echo "=== end ==="
       - name: Verify embedded libsodium architectures
         script: |
           set -e
