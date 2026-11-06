@@ -51,14 +51,28 @@ post_install do |installer|
   # framework is absent; idempotent via phase-name check; survives pod
   # install because it lives in the Podfile.
   phase_name = 'Strip libsodium arm64e'
-  # Locate the target that actually owns '[CP] Copy XCFrameworks' — may be
-  # the sodium_libs pod target or the aggregate; do not assume. Fail loudly
-  # rather than injecting at an unverified position.
-  owner = installer.pods_project.targets.find do |t|
-    t.shell_script_build_phases.any? { |p| p.name == '[CP] Copy XCFrameworks' }
+  # Identify the '[CP] Copy XCFrameworks' phase whose generated script
+  # stages libsodium.xcframework specifically — targets are not assumed.
+  # Each candidate phase invokes <target>-xcframeworks.sh under Pods/
+  # Target Support Files; the script references the framework it stages.
+  sandbox = installer.sandbox.root
+  candidates = installer.pods_project.targets.flat_map do |t|
+    t.shell_script_build_phases.select do |p|
+      p.name == '[CP] Copy XCFrameworks'
+    end.map { |p| [t, p] }
   end
-  raise 'No target with [CP] Copy XCFrameworks found — cannot order the libsodium strip' unless owner
-  Pod::UI.puts "iOS-3C: injecting '#{phase_name}' into target '#{owner.name}' before '[CP] Copy XCFrameworks'"
+  matched = candidates.select do |t, p|
+    script_path = Dir[File.join(sandbox, 'Target Support Files', t.name, '*-xcframeworks.sh')].first
+    script_path && File.read(script_path).include?('libsodium.xcframework')
+  end
+  if matched.empty?
+    raise 'No [CP] Copy XCFrameworks script references libsodium.xcframework — cannot order the strip'
+  end
+  if matched.length > 1
+    raise "Ambiguous libsodium Copy XCFrameworks phases on targets: #{matched.map { |t, _| t.name }.join(', ')}"
+  end
+  owner = matched.first[0]
+  Pod::UI.puts "iOS-3C: injecting '#{phase_name}' into target '#{owner.name}' before its libsodium '[CP] Copy XCFrameworks'"
 
   unless owner.shell_script_build_phases.any? { |p| p.name == phase_name }
     phase = owner.new_shell_script_build_phase(phase_name)
