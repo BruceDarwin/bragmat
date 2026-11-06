@@ -62,12 +62,17 @@ post_install do |installer|
     end.map { |p| [t, p] }
   end
   matched = candidates.select do |t, p|
-    # Derive the script path from the phase's own shell_script (e.g.
-    # "${PODS_ROOT}/Target Support Files/sodium_libs/sodium_libs-xcframeworks.sh")
-    # rather than inferring it from the target name.
-    rel = p.shell_script[/\$\{PODS_ROOT\}([^\s"']*xcframeworks\.sh)/, 1]
-    script_path = rel && File.join(sandbox, rel.sub(%r{^/}, ''))
-    script_path && File.exist?(script_path) && File.read(script_path).include?('libsodium.xcframework')
+    # The phase's shell_script invokes its generated script, quoted because
+    # 'Target Support Files' contains spaces — capture the whole quoted
+    # path, not up to whitespace (a \S-class regex truncates at the space).
+    ref = p.shell_script.to_s[/["']([^"']*xcframeworks\.sh)["']/, 1] ||
+          p.shell_script.to_s[/([^\s"']*xcframeworks\.sh)/, 1]
+    rel = ref&.sub('${PODS_ROOT}', '')&.sub(%r{^/}, '')
+    script_path = rel && File.join(sandbox, rel)
+    Pod::UI.puts "iOS-3C: candidate target=#{t.name} ref=#{ref.inspect} " \
+                 "resolved=#{script_path.inspect} exists=#{script_path && File.exist?(script_path)}"
+    script_path && File.exist?(script_path) &&
+      File.read(script_path).include?('libsodium.xcframework')
   end
   if matched.empty?
     raise 'No [CP] Copy XCFrameworks script references libsodium.xcframework — cannot order the strip'
