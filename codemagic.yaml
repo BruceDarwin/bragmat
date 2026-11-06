@@ -241,11 +241,12 @@ workflows:
           echo "downloaded: $PLUG/darwin/Libraries/libsodium.xcframework"
       - name: Set up code signing
         script: xcode-project use-profiles
-      - name: Signed IPA (instrumented)
+      - name: Signed IPA (instrumented, verbose)
         script: |
-          flutter build ipa --release \
+          set -o pipefail
+          flutter build ipa --release --verbose \
             --export-options-plist="$HOME/export_options.plist" \
-            --dart-define-from-file=.env
+            --dart-define-from-file=.env 2>&1 | tee ios/build/verbose_build.log
       - name: Dump strip evidence
         # Echo evidence into the step log — retrievable even when the
         # verify step fails and artifact collection is skipped.
@@ -253,6 +254,12 @@ workflows:
           echo "=== strip_evidence.log ==="
           cat ios/build/strip_evidence.log 2>/dev/null || echo "EVIDENCE FILE NOT FOUND"
           echo "=== end ==="
+      - name: Verbose libsodium provenance extract
+        # Focused extract of the verbose xcodebuild transcript — names the
+        # operation that copies/embeds libsodium into Runner.app.
+        script: |
+          grep -in "libsodium\|ProcessXCFramework\|Embed.*ramework\|rsync\|native_assets" \
+            ios/build/verbose_build.log | head -60 || echo "no libsodium references in verbose log"
       - name: Verify embedded libsodium architectures
         script: |
           set -e
@@ -270,6 +277,7 @@ workflows:
     artifacts:
       - build/ios/ipa/*.ipa
       - ios/build/strip_evidence.log
+      - ios/build/verbose_build.log
 
   # Secondary path — development-signed IPA for direct device install.
   # Only useful with a capable macOS host (Apple Configurator 2 installs a
