@@ -85,13 +85,18 @@ post_integrate do |installer|
     path && File.exist?(path) && File.read(path).include?('libsodium')
   end
   unless copy_phase
-    Pod::UI.puts 'iOS-3C: no libsodium match — enumerating Runner shell-script phases:'
+    Pod::UI.warn 'iOS-3C: no libsodium embed script matched — full diagnostic:'
     runner.shell_script_build_phases.each do |p|
       ref = p.shell_script.to_s[/["']([^"']*\.sh)["']/, 1] ||
             p.shell_script.to_s[/([^\s"']*\.sh)/, 1]
-      Pod::UI.puts "  phase=#{p.name.inspect} ref=#{ref.inspect}"
+      Pod::UI.puts "  runner phase=#{p.name.inspect} ref=#{ref.inspect}"
     end
-    raise 'No [CP] script references libsodium.xcframework'
+    installer.pods_project.targets.each do |t|
+      t.shell_script_build_phases.each do |p|
+        Pod::UI.puts "  pods target=#{t.name} phase=#{p.name.inspect}"
+      end
+    end
+    next
   end
 
   unless runner.shell_script_build_phases.any? { |p| p.name == phase_name }

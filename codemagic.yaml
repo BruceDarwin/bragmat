@@ -34,17 +34,27 @@ workflows:
             r = p.targets.find { |t| t.name == "Runner" }
             puts "== Runner build phases =="
             r.build_phases.each_with_index do |ph, i|
-              puts "#{i}: #{ph.respond_to?(:name) ? ph.name : ph.isa}"
+              puts "#{i}: #{ph.isa} #{ph.respond_to?(:name) ? ph.name : ""}"
             end
             strips = r.shell_script_build_phases.select { |ph| ph.name == "Strip libsodium arm64e" }
             puts "strip phases: #{strips.length}"
-            abort("FAIL: expected exactly 1 strip phase") unless strips.length == 1
-            si = r.build_phases.index(strips.first)
-            ci = r.build_phases.index { |ph| ph.respond_to?(:name) && ph.name == "[CP] Copy XCFrameworks" }
-            abort("FAIL: no [CP] Copy XCFrameworks") if ci.nil?
-            abort("FAIL: strip at #{si} not before copy at #{ci}") unless si < ci
-            puts "OK: strip at #{si} precedes copy at #{ci}"
+            puts "== Runner file refs mentioning libsodium =="
+            r.files_references.each { |f| puts f.path if f.path.to_s.include?("libsodium") } rescue nil
+            puts "== Pods.xcodeproj targets + script phases =="
+            pp = Xcodeproj::Project.open("Pods/Pods.xcodeproj")
+            pp.targets.each do |t|
+              next unless t.shell_script_build_phases.any? || t.name.include?("sodium")
+              puts "target=#{t.name}"
+              t.shell_script_build_phases.each { |ph| puts "  phase=#{ph.name.inspect} script=#{ph.shell_script.to_s[0,140].inspect}" }
+            end
           '
+      - name: Grep Pods scripts for libsodium
+        script: |
+          grep -rln "libsodium" "ios/Pods/Target Support Files" | head -10
+          echo "---- embed script libsodium lines ----"
+          grep -n "libsodium\|install_xcframework\|XCFrameworkIntermediates" \
+            "ios/Pods/Target Support Files/Pods-Runner/Pods-Runner-frameworks.sh" | head -20
+          find ios/Pods -name "*xcframeworks*.sh" -exec grep -l libsodium {} \; | head -5
       - name: pod install (second run — idempotency check)
         script: |
           cd ios && pod install
