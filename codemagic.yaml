@@ -10,6 +10,58 @@
 #   No service-role key. No WORLDTIDES_API_KEY — that stays server-side
 #   on Supabase and is never part of any client build.
 workflows:
+  # iOS-3C diagnostic: runs pod install + inspects Runner.xcodeproj phase
+  # ordering only. No IPA build, no signing, no publishing.
+  ios-pod-diag:
+    name: iOS pod install diagnostic
+    instance_type: mac_mini_m2
+    max_build_duration: 30
+    environment:
+      flutter: 3.44.1
+      xcode: 26.6
+      cocoapods: default
+    scripts:
+      - name: flutter pub get
+        script: flutter pub get
+      - name: pod install (first run — injects phase via post_integrate)
+        script: |
+          cd ios && pod install
+      - name: Inspect Runner build phases
+        script: |
+          cd ios && ruby -e '
+            require "xcodeproj"
+            p = Xcodeproj::Project.open("Runner.xcodeproj")
+            r = p.targets.find { |t| t.name == "Runner" }
+            puts "== Runner build phases =="
+            r.build_phases.each_with_index do |ph, i|
+              puts "#{i}: #{ph.respond_to?(:name) ? ph.name : ph.isa}"
+            end
+            strips = r.shell_script_build_phases.select { |ph| ph.name == "Strip libsodium arm64e" }
+            puts "strip phases: #{strips.length}"
+            abort("FAIL: expected exactly 1 strip phase") unless strips.length == 1
+            si = r.build_phases.index(strips.first)
+            ci = r.build_phases.index { |ph| ph.respond_to?(:name) && ph.name == "[CP] Copy XCFrameworks" }
+            abort("FAIL: no [CP] Copy XCFrameworks") if ci.nil?
+            abort("FAIL: strip at #{si} not before copy at #{ci}") unless si < ci
+            puts "OK: strip at #{si} precedes copy at #{ci}"
+          '
+      - name: pod install (second run — idempotency check)
+        script: |
+          cd ios && pod install
+      - name: Re-inspect phase count
+        script: |
+          cd ios && ruby -e '
+            require "xcodeproj"
+            r = Xcodeproj::Project.open("Runner.xcodeproj").targets.find { |t| t.name == "Runner" }
+            strips = r.shell_script_build_phases.select { |ph| ph.name == "Strip libsodium arm64e" }
+            abort("FAIL: duplicate strip phase") unless strips.length == 1
+            puts "OK: still exactly 1 strip phase after repeat pod install"
+          '
+      - name: Resolve libsodium xcframework
+        script: |
+          test -d ios/.symlinks/plugins/sodium_libs/darwin/Libraries/libsodium.xcframework \
+            && echo "xcframework present" || echo "xcframework ABSENT"
+
   ios-unsigned-compile:
     name: iOS unsigned compile check
     instance_type: mac_mini_m2
