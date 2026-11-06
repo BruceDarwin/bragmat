@@ -58,7 +58,9 @@ post_install do |installer|
       set -e
       XCF="${SRCROOT}/.symlinks/plugins/sodium_libs/darwin/Libraries/libsodium.xcframework"
       [ -d "$XCF" ] || XCF=$(find "${SRCROOT}/Pods" -type d -name "libsodium.xcframework" | head -1)
-      [ -d "$XCF" ] || exit 0   # plugin absent — nothing to strip
+      # libsodium is a required dependency — a missing framework must fail
+      # the build, never silently skip the arm64e correction.
+      [ -d "$XCF" ] || { echo "libsodium.xcframework not found — cannot verify arm64e removal"; exit 1; }
       find "$XCF" -name libsodium -type f | while read -r bin; do
         ARCHS=$(lipo -archs "$bin")
         if echo "$ARCHS" | tr ' ' '\n' | grep -qx arm64e; then
