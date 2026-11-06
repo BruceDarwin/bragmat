@@ -121,9 +121,9 @@ workflows:
               || { echo "FAIL: arm64 missing"; exit 1; }
           done
           # Keep the xcframework metadata honest after stripping.
-          python3 - <<'PY'
-          import plistlib
-          p = "$FWDIR/Info.plist"
+          python3 - "$FWDIR/Info.plist" <<'PY'
+          import plistlib, sys
+          p = sys.argv[1]
           with open(p, 'rb') as f:
               info = plistlib.load(f)
           for lib in info.get('AvailableLibraries', []):
