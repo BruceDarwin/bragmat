@@ -70,11 +70,16 @@ post_install do |installer|
           || { echo "libsodium arm64 missing in $bin"; exit 1; }
       done
     SH
-    embed_idx = runner_target.build_phases.index do |p|
-      p.respond_to?(:name) && p.name == '[CP] Embed Pods Frameworks'
+    # Position BEFORE '[CP] Copy XCFrameworks' when present — that phase
+    # stages the slice .framework into XCFrameworkIntermediates and
+    # '[CP] Embed Pods Frameworks' embeds the staged copy; stripping the
+    # source first guarantees the staged binary is already corrected.
+    first_cp_idx = runner_target.build_phases.index do |p|
+      p.respond_to?(:name) &&
+        %w[[CP]\ Copy\ XCFrameworks [CP]\ Embed\ Pods\ Frameworks].include?(p.name)
     end
     runner_target.build_phases.delete(phase)
-    runner_target.build_phases.insert(embed_idx || 1, phase)
+    runner_target.build_phases.insert(first_cp_idx || 1, phase)
     runner_project.save
   end
 end
