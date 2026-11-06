@@ -201,6 +201,69 @@ workflows:
         submit_to_testflight: false
         submit_to_app_store: false
 
+  # iOS-3C instrumented diagnostic — identical to ios-testflight but with
+  # NO publishing block: builds the signed IPA, verifies embedded
+  # libsodium, collects strip_evidence.log. Upload is impossible.
+  ios-archive-diag:
+    name: iOS instrumented archive diagnostic (no publish)
+    instance_type: mac_mini_m2
+    max_build_duration: 60
+    integrations:
+      app_store_connect: bragmat_asc
+    environment:
+      groups:
+        - bragmat_public
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.bragmat.app
+      flutter: 3.44.1
+      xcode: 26.6
+      cocoapods: default
+    scripts:
+      - name: Materialise .env from protected variables
+        script: |
+          printf 'SUPABASE_URL=%s\nSUPABASE_ANON_KEY=%s\n' \
+            "$SUPABASE_URL" "$SUPABASE_ANON_KEY" > .env
+          test -s .env && grep -q '=.' .env
+      - name: flutter pub get
+        script: flutter pub get
+      - name: pod install (fetch vendored libsodium)
+        script: |
+          cd ios && pod install
+      - name: Fetch vendored libsodium xcframework
+        script: |
+          set -e
+          PLUG=$(cd ios/.symlinks/plugins/sodium_libs 2>/dev/null && pwd -P || true)
+          (cd "$PLUG/darwin" && dart run ../tool/libsodium/download.dart darwin) \
+            || { echo "libsodium download failed"; exit 1; }
+          test -d "$PLUG/darwin/Libraries/libsodium.xcframework" \
+            || { echo "libsodium.xcframework missing after download"; exit 1; }
+          echo "downloaded: $PLUG/darwin/Libraries/libsodium.xcframework"
+      - name: Set up code signing
+        script: xcode-project use-profiles
+      - name: Signed IPA (instrumented)
+        script: |
+          flutter build ipa --release \
+            --export-options-plist="$HOME/export_options.plist" \
+            --dart-define-from-file=.env
+      - name: Verify embedded libsodium architectures
+        script: |
+          set -e
+          IPA=$(ls build/ios/ipa/*.ipa | head -1)
+          [ -n "$IPA" ] || { echo "IPA not found"; exit 1; }
+          rm -rf /tmp/ipa_verify && unzip -o -q "$IPA" -d /tmp/ipa_verify
+          BIN=/tmp/ipa_verify/Payload/Runner.app/Frameworks/libsodium.framework/libsodium
+          [ -f "$BIN" ] || { echo "embedded libsodium missing"; exit 1; }
+          ARCHS=$(lipo -archs "$BIN")
+          echo "embedded libsodium archs: $ARCHS"
+          echo "$ARCHS" | grep -qw arm64 || { echo "FAIL: arm64 missing"; exit 1; }
+          echo "$ARCHS" | grep -qw arm64e && { echo "FAIL: arm64e still present"; exit 1; }
+          codesign -v /tmp/ipa_verify/Payload/Runner.app && echo "app signature valid"
+          codesign -v /tmp/ipa_verify/Payload/Runner.app/Frameworks/libsodium.framework && echo "framework signature valid"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - ios/build/strip_evidence.log
+
   # Secondary path — development-signed IPA for direct device install.
   # Only useful with a capable macOS host (Apple Configurator 2 installs a
   # signed IPA without re-signing; Sideloadly/3uTools re-sign and are

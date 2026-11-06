@@ -79,6 +79,7 @@ post_integrate do |installer|
       # archs + sha256 before/after, and whether the embedded framework
       # already exists. No secrets/signing material logged.
       EV="${SRCROOT}/build/strip_evidence.log"
+      mkdir -p "$(dirname "$EV")"
       {
         echo "PHASE_EXECUTED config=${CONFIGURATION} target=${TARGET_NAME} platform=${PLATFORM_NAME}"
         echo "SRCROOT=${SRCROOT} BUILT_PRODUCTS_DIR=${BUILT_PRODUCTS_DIR}"
