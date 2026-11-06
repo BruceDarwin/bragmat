@@ -79,62 +79,20 @@ workflows:
       - name: pod install (fetch vendored libsodium)
         script: |
           cd ios && pod install
-      - name: Strip arm64e slice from libsodium
-        # Apple 91011: the prebuilt libsodium.xcframework ships an arm64e
-        # slice compiled with the iOS 18.5 SDK; App Store requires arm64e
-        # slices built with iOS 26 SDK. The arm64 slice is retained and
-        # runs natively on arm64e-capable devices. Idempotent, libsodium
-        # only, fails loudly on any unexpected state.
+      - name: Fetch vendored libsodium xcframework
+        # CocoaPods does not run prepare_command for :path pods — invoke the
+        # package's own download script so the vendored xcframework exists.
+        # arm64e stripping happens in the Runner build phase (before
+        # [CP] Embed Pods Frameworks signs it) — see ios/Podfile.
         script: |
           set -e
-          # Deterministic: pod install runs the podspec prepare_command inside
-          # the plugin's symlinked source dir, downloading the xcframework to
-          # darwin/Libraries/. Resolve via .symlinks, not a cache guess.
           PLUG=$(cd ios/.symlinks/plugins/sodium_libs 2>/dev/null && pwd -P || true)
           echo "sodium_libs plugin: $PLUG"
-          # CocoaPods does not run prepare_command for :path pods, so the
-          # vendored xcframework is never downloaded. Invoke the package's
-          # own download script (same as s.prepare_command in the podspec):
-          # downloads libsodium-1.0.20-darwin.zip -> darwin/Libraries/.
           (cd "$PLUG/darwin" && dart run ../tool/libsodium/download.dart darwin) \
             || { echo "libsodium download failed"; exit 1; }
-          echo "darwin/Libraries: $(ls "$PLUG/darwin/Libraries" 2>/dev/null || echo missing)"
-          FWDIR="$PLUG/darwin/Libraries/libsodium.xcframework"
-          [ -d "$FWDIR" ] || FWDIR=$(find ios/.symlinks ios/Pods "$HOME/.pub-cache" "$PUB_CACHE" \
-            -type d -name "libsodium.xcframework" -path "*sodium_libs*" 2>/dev/null | head -1)
-          [ -n "$FWDIR" ] && [ -d "$FWDIR" ] || { echo "libsodium.xcframework not found"; exit 1; }
-          echo "xcframework: $FWDIR"
-          find "$FWDIR" -name libsodium -type f | while read -r bin; do
-            # lipo -archs prints ONLY architecture tokens — lipo -info embeds
-            # the path, whose 'ios-arm64_arm64e' dirname caused a false
-            # arm64e match earlier.
-            ARCHS=$(lipo -archs "$bin")
-            echo "before: $bin -> $ARCHS"
-            if echo "$ARCHS" | tr ' ' '\n' | grep -qx arm64e; then
-              lipo -remove arm64e "$bin" -o "$bin"
-              ARCHS=$(lipo -archs "$bin")
-              echo "after: $ARCHS"
-            fi
-            echo "$ARCHS" | tr ' ' '\n' | grep -qx arm64e \
-              && { echo "FAIL: arm64e still present"; exit 1; }
-            echo "$ARCHS" | tr ' ' '\n' | grep -qx arm64 \
-              || { echo "FAIL: arm64 missing"; exit 1; }
-          done
-          # Keep the xcframework metadata honest after stripping.
-          python3 - "$FWDIR/Info.plist" <<'PY'
-          import plistlib, sys
-          p = sys.argv[1]
-          with open(p, 'rb') as f:
-              info = plistlib.load(f)
-          for lib in info.get('AvailableLibraries', []):
-              sa = lib.get('SupportedArchitectures', [])
-              if 'arm64e' in sa:
-                  sa.remove('arm64e')
-                  lib['SupportedArchitectures'] = sa
-                  print('metadata: removed arm64e from', lib.get('LibraryPath'))
-          with open(p, 'wb') as f:
-              plistlib.dump(info, f)
-          PY
+          test -d "$PLUG/darwin/Libraries/libsodium.xcframework" \
+            || { echo "libsodium.xcframework missing after download"; exit 1; }
+          echo "downloaded: $PLUG/darwin/Libraries/libsodium.xcframework"
       - name: Set up code signing
         # Applies the fetched cert + App Store profile to the project and
         # writes export_options.plist — ios_signing does not populate

@@ -39,4 +39,40 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
   end
+
+  # iOS-3C (Apple 91011): the prebuilt libsodium xcframework ships an arm64e
+  # slice compiled with an SDK too old for App Store upload. Strip arm64e
+  # from the framework the build actually embeds — a Run Script phase placed
+  # BEFORE '[CP] Embed Pods Frameworks', which copies AND codesigns the
+  # framework, so the signature covers the stripped binary. Restricted to
+  # libsodium; preserves arm64; idempotent via phase-name check; survives
+  # pod install because it lives in the Podfile.
+  phase_name = 'Strip libsodium arm64e'
+  runner_project = Xcodeproj::Project.open('Runner.xcodeproj')
+  runner_target = runner_project.targets.find { |t| t.name == 'Runner' }
+  raise 'Runner target not found in Runner.xcodeproj' unless runner_target
+
+  unless runner_target.shell_script_build_phases.any? { |p| p.name == phase_name }
+    phase = runner_target.new_shell_script_build_phase(phase_name)
+    phase.shell_script = <<~'SH'
+      set -e
+      XCF="${SRCROOT}/.symlinks/plugins/sodium_libs/darwin/Libraries/libsodium.xcframework"
+      [ -d "$XCF" ] || XCF=$(find "${SRCROOT}/Pods" -type d -name "libsodium.xcframework" | head -1)
+      [ -d "$XCF" ] || exit 0   # plugin absent — nothing to strip
+      find "$XCF" -name libsodium -type f | while read -r bin; do
+        ARCHS=$(lipo -archs "$bin")
+        if echo "$ARCHS" | tr ' ' '\n' | grep -qx arm64e; then
+          lipo -remove arm64e "$bin" -o "$bin"
+        fi
+        lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64 \
+          || { echo "libsodium arm64 missing in $bin"; exit 1; }
+      done
+    SH
+    embed_idx = runner_target.build_phases.index do |p|
+      p.respond_to?(:name) && p.name == '[CP] Embed Pods Frameworks'
+    end
+    runner_target.build_phases.delete(phase)
+    runner_target.build_phases.insert(embed_idx || 1, phase)
+    runner_project.save
+  end
 end
