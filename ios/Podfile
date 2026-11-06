@@ -51,11 +51,17 @@ post_install do |installer|
   # framework is absent; idempotent via phase-name check; survives pod
   # install because it lives in the Podfile.
   phase_name = 'Strip libsodium arm64e'
-  aggregate = installer.pods_project.targets.find { |t| t.name == 'Pods-Runner' }
-  raise 'Pods-Runner aggregate target not found' unless aggregate
+  # Locate the target that actually owns '[CP] Copy XCFrameworks' — may be
+  # the sodium_libs pod target or the aggregate; do not assume. Fail loudly
+  # rather than injecting at an unverified position.
+  owner = installer.pods_project.targets.find do |t|
+    t.shell_script_build_phases.any? { |p| p.name == '[CP] Copy XCFrameworks' }
+  end
+  raise 'No target with [CP] Copy XCFrameworks found — cannot order the libsodium strip' unless owner
+  Pod::UI.puts "iOS-3C: injecting '#{phase_name}' into target '#{owner.name}' before '[CP] Copy XCFrameworks'"
 
-  unless aggregate.shell_script_build_phases.any? { |p| p.name == phase_name }
-    phase = aggregate.new_shell_script_build_phase(phase_name)
+  unless owner.shell_script_build_phases.any? { |p| p.name == phase_name }
+    phase = owner.new_shell_script_build_phase(phase_name)
     phase.shell_script = <<~'SH'
       set -e
       # SRCROOT for this aggregate target is ios/Pods — the plugin source
@@ -74,10 +80,11 @@ post_install do |installer|
           || { echo "libsodium arm64 missing in $bin"; exit 1; }
       done
     SH
-    copy_idx = aggregate.build_phases.index do |p|
+    copy_idx = owner.build_phases.index do |p|
       p.respond_to?(:name) && p.name == '[CP] Copy XCFrameworks'
     end
-    aggregate.build_phases.delete(phase)
-    aggregate.build_phases.insert(copy_idx || 0, phase)
+    raise '[CP] Copy XCFrameworks found on target but phase index missing' if copy_idx.nil?
+    owner.build_phases.delete(phase)
+    owner.build_phases.insert(copy_idx, phase)
   end
 end
