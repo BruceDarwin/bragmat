@@ -55,56 +55,37 @@ end
 # the Podfile across pod install runs.
 post_integrate do |installer|
   phase_name = 'Strip libsodium arm64e'
-  project_path = File.expand_path('Runner.xcodeproj', File.dirname(__FILE__))
-  project = Xcodeproj::Project.open(project_path)
-  runner = project.targets.find { |t| t.name == 'Runner' }
-  raise 'Runner target not found' unless runner
-
-  copy_phases = runner.shell_script_build_phases.select do |p|
-    p.name == '[CP] Copy XCFrameworks'
-  end
-
-  # This CocoaPods version has NO separate '[CP] Copy XCFrameworks' phase:
-  # xcframework staging (slice-select + copy) happens inside '[CP] Embed
-  # Pods Frameworks', which also codesigns the embedded framework. If a
-  # copy phase ever appears, prefer it; otherwise target the embed phase.
-  target_phases = copy_phases.empty? ?
-    runner.shell_script_build_phases.select { |p| p.name == '[CP] Embed Pods Frameworks' } :
-    copy_phases
-  raise 'No [CP] xcframework staging/embed phase on Runner target' if target_phases.empty?
-
-  # Match the phase whose generated script stages libsodium.xcframework —
-  # the phase's shell_script invokes Pods/Target Support Files/…/*.sh.
+  # Evidence: libsodium is not staged by any Runner phase — it is staged
+  # by the '[CP] Copy XCFrameworks' phase on the pod target in
+  # Pods.xcodeproj (e.g. sodium_libs) whose <target>-xcframeworks.sh
+  # slices the vendored xcframework into XCFrameworkIntermediates.
   pods_root = File.expand_path('Pods', File.dirname(__FILE__))
-  copy_phase = target_phases.find do |p|
+  candidates = installer.pods_project.targets.flat_map do |t|
+    t.shell_script_build_phases.select { |p| p.name == '[CP] Copy XCFrameworks' }
+      .map { |p| [t, p] }
+  end
+  matched = candidates.select do |t, p|
     ref = p.shell_script.to_s[/["']([^"']*\.sh)["']/, 1] ||
           p.shell_script.to_s[/([^\s"']*\.sh)/, 1]
     rel = ref&.sub('${PODS_ROOT}', '')&.sub(%r{^/}, '')
     path = rel && File.join(pods_root, rel)
-    Pod::UI.puts "iOS-3C: candidate phase #{p.name.inspect} ref=#{ref.inspect} resolved=#{path.inspect} exists=#{path && File.exist?(path)}"
+    Pod::UI.puts "iOS-3C: candidate target=#{t.name} phase=#{p.name.inspect} ref=#{ref.inspect} resolved=#{path.inspect} exists=#{path && File.exist?(path)}"
     path && File.exist?(path) && File.read(path).include?('libsodium')
   end
-  unless copy_phase
-    Pod::UI.warn 'iOS-3C: no libsodium embed script matched — full diagnostic:'
-    runner.shell_script_build_phases.each do |p|
-      ref = p.shell_script.to_s[/["']([^"']*\.sh)["']/, 1] ||
-            p.shell_script.to_s[/([^\s"']*\.sh)/, 1]
-      Pod::UI.puts "  runner phase=#{p.name.inspect} ref=#{ref.inspect}"
-    end
-    installer.pods_project.targets.each do |t|
-      t.shell_script_build_phases.each do |p|
-        Pod::UI.puts "  pods target=#{t.name} phase=#{p.name.inspect}"
-      end
-    end
-    next
-  end
+  raise 'No pod-target [CP] Copy XCFrameworks script references libsodium' if matched.empty?
+  raise "Ambiguous libsodium owners: #{matched.map { |t, _| t.name }.join(', ')}" if matched.length > 1
 
-  unless runner.shell_script_build_phases.any? { |p| p.name == phase_name }
-    phase = runner.new_shell_script_build_phase(phase_name)
+  owner, copy_phase = matched.first
+  Pod::UI.puts "iOS-3C: owner=#{owner.name} staging phase=#{copy_phase.name.inspect}"
+  unless owner.shell_script_build_phases.any? { |p| p.name == phase_name }
+    phase = owner.new_shell_script_build_phase(phase_name)
     phase.shell_script = <<~'SH'
       set -e
-      XCF="${SRCROOT}/.symlinks/plugins/sodium_libs/darwin/Libraries/libsodium.xcframework"
-      [ -d "$XCF" ] || XCF=$(find "${SRCROOT}" -type d -name "libsodium.xcframework" | head -1)
+      # SRCROOT for a pod target is ios/Pods — plugin source resolves via
+      # ../.symlinks/plugins/... (symlink to the pub-cache copy).
+      XCF="${SRCROOT}/../.symlinks/plugins/sodium_libs/darwin/Libraries/libsodium.xcframework"
+      [ -d "$XCF" ] || XCF=$(find "${SRCROOT}/../.symlinks" "${SRCROOT}" \
+        -type d -name "libsodium.xcframework" 2>/dev/null | head -1)
       [ -d "$XCF" ] || { echo "libsodium.xcframework not found — cannot verify arm64e removal"; exit 1; }
       find "$XCF" -name libsodium -type f | while read -r bin; do
         ARCHS=$(lipo -archs "$bin")
@@ -115,9 +96,9 @@ post_integrate do |installer|
           || { echo "libsodium arm64 missing in $bin"; exit 1; }
       done
     SH
-    runner.build_phases.delete(phase)
-    runner.build_phases.insert(runner.build_phases.index(copy_phase), phase)
-    project.save
-    Pod::UI.puts "iOS-3C: injected '#{phase_name}' before '[CP] Copy XCFrameworks' on Runner"
+    owner.build_phases.delete(phase)
+    owner.build_phases.insert(owner.build_phases.index(copy_phase), phase)
+    owner.project.save
+    Pod::UI.puts "iOS-3C: injected '#{phase_name}' before '#{copy_phase.name}' on #{owner.name}"
   end
 end
