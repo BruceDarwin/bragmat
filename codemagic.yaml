@@ -188,6 +188,7 @@ workflows:
           codesign -v /tmp/ipa_verify/Payload/Runner.app/Frameworks/libsodium.framework && echo "framework signature valid"
     artifacts:
       - build/ios/ipa/*.ipa
+      - ios/build/strip_evidence.log
     publishing:
       email:
         recipients:
@@ -235,6 +236,7 @@ workflows:
             --dart-define-from-file=.env
     artifacts:
       - build/ios/ipa/*.ipa
+      - ios/build/strip_evidence.log
     publishing:
       email:
         recipients:

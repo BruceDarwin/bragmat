@@ -74,18 +74,32 @@ post_integrate do |installer|
   unless runner.shell_script_build_phases.any? { |p| p.name == phase_name }
     phase = runner.new_shell_script_build_phase(phase_name)
     phase.shell_script = <<~'SH'
+      # iOS-3C diagnostic: evidence written outside Runner.app, collected
+      # as a build artifact. Records phase execution, resolved paths,
+      # archs + sha256 before/after, and whether the embedded framework
+      # already exists. No secrets/signing material logged.
+      EV="${SRCROOT}/build/strip_evidence.log"
+      {
+        echo "PHASE_EXECUTED config=${CONFIGURATION} target=${TARGET_NAME} platform=${PLATFORM_NAME}"
+        echo "SRCROOT=${SRCROOT} BUILT_PRODUCTS_DIR=${BUILT_PRODUCTS_DIR}"
+        XCF="${SRCROOT}/.symlinks/plugins/sodium_libs/darwin/Libraries/libsodium.xcframework"
+        [ -d "$XCF" ] || XCF=$(find "${SRCROOT}" -type d -name "libsodium.xcframework" | head -1)
+        echo "XCF=${XCF:-NOT_FOUND}"
+        EMB="${BUILT_PRODUCTS_DIR}/${FRAMEWORKS_FOLDER_PATH}/libsodium.framework/libsodium"
+        [ -f "$EMB" ] && echo "embedded_exists=true path=$EMB" || echo "embedded_exists=false path=$EMB"
+        [ -n "$XCF" ] && [ -d "$XCF" ] && find "$XCF" -name libsodium -type f | while read -r bin; do
+          echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+        done
+      } >> "$EV" 2>&1
       set -e
-      XCF="${SRCROOT}/.symlinks/plugins/sodium_libs/darwin/Libraries/libsodium.xcframework"
-      [ -d "$XCF" ] || XCF=$(find "${SRCROOT}" -type d -name "libsodium.xcframework" | head -1)
-      [ -d "$XCF" ] || { echo "libsodium.xcframework not found — cannot verify arm64e removal"; exit 1; }
+      [ -d "$XCF" ] || { echo "libsodium.xcframework not found — cannot verify arm64e removal" | tee -a "$EV"; exit 1; }
       find "$XCF" -name libsodium -type f | while read -r bin; do
-        echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
         if lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64e; then
           lipo -remove arm64e "$bin" -o "$bin"
         fi
         lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64 \
-          || { echo "libsodium arm64 missing in $bin"; exit 1; }
-        echo "after:  $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+          || { echo "libsodium arm64 missing in $bin" | tee -a "$EV"; exit 1; }
+        echo "after:  $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)" >> "$EV"
       done
     SH
     runner.build_phases.delete(phase)
