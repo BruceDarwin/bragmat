@@ -63,20 +63,28 @@ post_integrate do |installer|
   copy_phases = runner.shell_script_build_phases.select do |p|
     p.name == '[CP] Copy XCFrameworks'
   end
-  raise 'No [CP] Copy XCFrameworks phase on Runner target' if copy_phases.empty?
+
+  # This CocoaPods version has NO separate '[CP] Copy XCFrameworks' phase:
+  # xcframework staging (slice-select + copy) happens inside '[CP] Embed
+  # Pods Frameworks', which also codesigns the embedded framework. If a
+  # copy phase ever appears, prefer it; otherwise target the embed phase.
+  target_phases = copy_phases.empty? ?
+    runner.shell_script_build_phases.select { |p| p.name == '[CP] Embed Pods Frameworks' } :
+    copy_phases
+  raise 'No [CP] xcframework staging/embed phase on Runner target' if target_phases.empty?
 
   # Match the phase whose generated script stages libsodium.xcframework —
   # the phase's shell_script invokes Pods/Target Support Files/…/*.sh.
   pods_root = File.expand_path('Pods', File.dirname(__FILE__))
-  copy_phase = copy_phases.find do |p|
+  copy_phase = target_phases.find do |p|
     ref = p.shell_script.to_s[/["']([^"']*\.sh)["']/, 1] ||
           p.shell_script.to_s[/([^\s"']*\.sh)/, 1]
     rel = ref&.sub('${PODS_ROOT}', '')&.sub(%r{^/}, '')
     path = rel && File.join(pods_root, rel)
-    Pod::UI.puts "iOS-3C: candidate phase ref=#{ref.inspect} resolved=#{path.inspect} exists=#{path && File.exist?(path)}"
+    Pod::UI.puts "iOS-3C: candidate phase #{p.name.inspect} ref=#{ref.inspect} resolved=#{path.inspect} exists=#{path && File.exist?(path)}"
     path && File.exist?(path) && File.read(path).include?('libsodium.xcframework')
   end
-  raise 'No [CP] Copy XCFrameworks script references libsodium.xcframework' unless copy_phase
+  raise 'No [CP] script references libsodium.xcframework' unless copy_phase
 
   unless runner.shell_script_build_phases.any? { |p| p.name == phase_name }
     phase = runner.new_shell_script_build_phase(phase_name)
