@@ -26,22 +26,49 @@ workflows:
       - name: pod install
         script: |
           cd ios && pod install
-      - name: Resolve SPM + strip libsodium arm64e
-        # Probe + correct the SPM artifact — the ACTUAL embed source per
-        # the verbose archive log (ProcessXCFramework on
-        # build/ios/SourcePackages/artifacts/sodium_libs-*/libsodium.xcframework)
+      - name: Prepare local libsodium binaryTarget
+        # Generated Package.swift uses a URL binaryTarget — SPM re-downloads
+        # the pristine arm64e zip during archive. Strip the vendored copy,
+        # place it inside the package, point binaryTarget at the local path.
         script: |
           set -e
-          echo "== pre-resolve =="
-          ls build/ios/SourcePackages/artifacts 2>/dev/null || echo "no artifacts yet"
-          xcodebuild -resolvePackageDependencies \
-            -workspace ios/Runner.xcworkspace -scheme Runner || echo "resolve failed"
-          echo "== post-resolve =="
-          ls build/ios/SourcePackages/artifacts 2>/dev/null || echo "still no artifacts"
-          echo "== sodium_libs artifact tree =="
-          find build/ios/SourcePackages -name "*sodium*" -print | head -25
-          echo "== all *libsodium* paths in clone =="
-          find build ios -name "*libsodium*" -print 2>/dev/null | head -30
+          PKG=$(find ios/Flutter/ephemeral/Packages/.packages -maxdepth 1 -type d -name "sodium_libs-*" | head -1)
+          [ -n "$PKG" ] || { echo "generated sodium_libs package not found"; exit 1; }
+          echo "package: $PKG"
+          SRC=$(cd ios/.symlinks/plugins/sodium_libs && pwd -P)/darwin/Libraries/libsodium.xcframework
+          [ -d "$SRC" ] || { echo "vendored xcframework missing"; exit 1; }
+          DEST="$PKG/Libraries"; mkdir -p "$DEST"; rm -rf "$DEST/libsodium.xcframework"
+          cp -R "$SRC" "$DEST/libsodium.xcframework"
+          find "$DEST/libsodium.xcframework" -name libsodium -type f | while read -r bin; do
+            echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+            lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64e && lipo -remove arm64e "$bin" -o "$bin"
+            lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64 || { echo "FAIL: arm64 missing"; exit 1; }
+            echo "after:  $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+          done
+          python3 - "$DEST/libsodium.xcframework/Info.plist" <<'PY'
+          import plistlib, sys
+          p = sys.argv[1]; info = plistlib.load(open(p,'rb'))
+          for lib in info.get('AvailableLibraries', []):
+              sa = lib.get('SupportedArchitectures', [])
+              if 'arm64e' in sa: sa.remove('arm64e'); lib['SupportedArchitectures']=sa
+          plistlib.dump(info, open(p,'wb'))
+          PY
+          python3 - "$PKG/Package.swift" <<'PY'
+          import re, sys
+          p = sys.argv[1]; s = open(p).read()
+          s2 = re.sub(r'\.binaryTarget\(\s*name:\s*"libsodium",\s*url:\s*"[^"]*",\s*checksum:\s*"[^"]*"\s*\)',
+                      '.binaryTarget(name: "libsodium", path: "Libraries/libsodium.xcframework")', s)
+          assert s2 != s or 'path: "Libraries/libsodium.xcframework"' in s, 'binaryTarget rewrite failed'
+          open(p,'w').write(s2)
+          print('binaryTarget ->', [l for l in s2.splitlines() if 'path:' in l][:1])
+          PY
+          grep -n "binaryTarget\|path:" "$PKG/Package.swift" | head -6
+      - name: Verify SPM resolves local binaryTarget
+        script: |
+          set -e
+          xcodebuild -resolvePackageDependencies -workspace ios/Runner.xcworkspace -scheme Runner
+          echo "== artifact tree post-resolve =="
+          find build/ios/SourcePackages -name "*sodium*" -o -name "*libsodium*" | head -20
 
   ios-unsigned-compile:
     name: iOS unsigned compile check
