@@ -59,6 +59,16 @@ dependencies:
   uuid: ^4.6.0
   sqflite_common: ^2.5.14
   sodium_libs: ^3.4.6+4
+
+# iOS-3C: libsodium's SPM binaryTarget ships an arm64e slice that App Store
+# Connect rejects (error 91011). A project-local copy of the unmodified
+# sodium_libs 3.4.6+4 package points binaryTarget at a corrected
+# arm64-only XCFramework placed under darwin/sodium_libs/Libraries/ by the
+# build preparation script. Package name, version, API and crypto are
+# unchanged; upstream pub-cache is untouched.
+dependency_overrides:
+  sodium_libs:
+    path: local_packages/sodium_libs
   crypto: ^3.0.7
   flutter_map_cache: ^2.1.1
   http_cache_file_store: ^2.0.2

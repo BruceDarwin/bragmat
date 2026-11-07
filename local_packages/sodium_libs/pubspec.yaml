@@ -1,0 +1,64 @@
+name: sodium_libs
+version: 3.4.6+4
+description: Flutter companion package to sodium that provides the low-level libsodium binaries for easy use.
+homepage: https://github.com/Skycoder42/libsodium_dart_bindings
+
+environment:
+  sdk: ^3.9.0
+  flutter: ">=3.35.0"
+resolution: workspace
+
+executables:
+  sodium_libs_update_web: update_web
+
+dependencies:
+  args: ^2.7.0
+  flutter:
+    sdk: flutter
+  flutter_web_plugins:
+    sdk: flutter
+  html: ^0.15.6
+  meta: ^1.16.0
+  plugin_platform_interface: ^2.1.8
+  sodium: ^3.4.6
+  synchronized: ^3.4.0
+  web: ^1.1.1
+
+dev_dependencies:
+  cider: ^0.2.8
+  crypto: ^3.0.6
+  custom_lint: ^0.8.0
+  dart_pre_commit: ^6.0.0
+  dart_test_tools: ^6.2.2
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: de.skycoder42.sodium_libs
+        pluginClass: SodiumLibsPlugin
+        dartPluginClass: SodiumAndroid
+      ios:
+        pluginClass: SodiumLibsPlugin
+        dartPluginClass: SodiumIos
+        sharedDarwinSource: true
+      linux:
+        pluginClass: SodiumLibsPlugin
+        dartPluginClass: SodiumLinux
+      windows:
+        pluginClass: SodiumLibsPluginCApi
+        dartPluginClass: SodiumWindows
+      macos:
+        pluginClass: SodiumLibsPlugin
+        dartPluginClass: SodiumMacos
+        sharedDarwinSource: true
+      web:
+        fileName: src/platforms/sodium_web.dart
+        pluginClass: SodiumWeb
+
+cider:
+  link_template:
+    tag: https://github.com/Skycoder42/libsodium_dart_bindings/releases/tag/sodium_libs-v%tag%
+    diff: https://github.com/Skycoder42/libsodium_dart_bindings/compare/sodium_libs-v%from%...sodium_libs-v%to%

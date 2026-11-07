@@ -37,50 +37,19 @@ workflows:
           test -d "$PLUG/darwin/Libraries/libsodium.xcframework" \
             || { echo "libsodium.xcframework missing after download"; exit 1; }
           echo "downloaded: $PLUG/darwin/Libraries/libsodium.xcframework"
-      - name: Prepare local libsodium binaryTarget
-        # Generated Package.swift uses a URL binaryTarget — SPM re-downloads
-        # the pristine arm64e zip during archive. Strip the vendored copy,
-        # place it inside the package, point binaryTarget at the local path.
+      - name: Populate corrected libsodium binaryTarget
+        # local_packages/sodium_libs is the dependency_overrides copy —
+        # Flutter's .packages links now resolve to it, so the corrected
+        # path-based binaryTarget survives regeneration. Download the
+        # vendored xcframework, strip arm64e, place it at
+        # darwin/sodium_libs/Libraries/libsodium.xcframework (the path the
+        # rewritten Package.swift binaryTarget expects).
         script: |
           set -e
-          # The ephemeral .packages dir is created during SPM resolution —
-          # resolve first so the generated sodium_libs package exists.
-          # If SwiftPM reports a stale artifact-cache entry for THIS exact
-          # libsodium zip, remove only that validated path — nothing else.
-          rmout=$(xcodebuild -resolvePackageDependencies \
-            -workspace ios/Runner.xcworkspace -scheme Runner 2>&1 || true)
-          echo "$rmout" | tail -5
-          stale=$(echo "$rmout" | grep -o "$HOME/Library/Caches/org.swift.swiftpm/artifacts/[^ ]*libsodium[^ ]*zip" | head -1)
-          if [ -n "$stale" ]; then
-            case "$stale" in
-              "$HOME/Library/Caches/org.swift.swiftpm/artifacts/"*libsodium*)
-                echo "removing stale SwiftPM artifact: $stale"; rm -rf "$stale" ;;
-              *) echo "refusing to remove unexpected path: $stale"; exit 1 ;;
-            esac
-            xcodebuild -resolvePackageDependencies \
-              -workspace ios/Runner.xcworkspace -scheme Runner
-          fi
-          ls ios/Flutter/ephemeral/Packages/.packages 2>/dev/null || echo ".packages absent"
-          # .packages entries are SYMLINKS to pub-cache — find without -type d,
-          # then resolve to the canonical path. Exactly one match required.
-          LNK=$(find ios/Flutter/ephemeral/Packages/.packages -maxdepth 1 -name "sodium_libs-*" | head -1)
-          [ -n "$LNK" ] || { echo "generated sodium_libs package not found"; exit 1; }
-          CANON=$(cd "$LNK" && pwd -P)
-          echo "link: $LNK -> canonical: $CANON"
-          # Package isolation: NEVER modify the shared pub-cache copy.
-          # Replace the generated symlink with a real build-local copy that
-          # keeps the same package name/version so SPM still resolves it.
-          if [ "$CANON" = "${CANON#.pub-cache}" ]; then :; fi
-          case "$CANON" in
-            */pub-cache/*|*/.pub-cache/*)
-              echo "canonical is inside pub-cache — building local copy"
-              cp -R "$CANON" "$LNK.tmp" && rm "$LNK" && mv "$LNK.tmp" "$LNK" ;;
-            *) echo "canonical is already build-local" ;;
-          esac
-          PKG=$(cd "$LNK" && pwd -P)
           SRC=$(cd ios/.symlinks/plugins/sodium_libs && pwd -P)/darwin/Libraries/libsodium.xcframework
           [ -d "$SRC" ] || { echo "vendored xcframework missing"; exit 1; }
-          DEST="$PKG/Libraries"; mkdir -p "$DEST"; rm -rf "$DEST/libsodium.xcframework"
+          DEST="local_packages/sodium_libs/darwin/sodium_libs/Libraries"
+          mkdir -p "$DEST"; rm -rf "$DEST/libsodium.xcframework"
           cp -R "$SRC" "$DEST/libsodium.xcframework"
           find "$DEST/libsodium.xcframework" -name libsodium -type f | while read -r bin; do
             echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
@@ -96,23 +65,13 @@ workflows:
               if 'arm64e' in sa: sa.remove('arm64e'); lib['SupportedArchitectures']=sa
           plistlib.dump(info, open(p,'wb'))
           PY
-          python3 - "$PKG/Package.swift" <<'PY'
-          import re, sys
-          p = sys.argv[1]; s = open(p).read()
-          s2 = re.sub(r'\.binaryTarget\(\s*name:\s*"libsodium",\s*url:\s*"[^"]*",\s*checksum:\s*"[^"]*"\s*\)',
-                      '.binaryTarget(name: "libsodium", path: "Libraries/libsodium.xcframework")', s)
-          assert s2 != s or 'path: "Libraries/libsodium.xcframework"' in s, 'binaryTarget rewrite failed'
-          open(p,'w').write(s2)
-          print('binaryTarget ->', [l for l in s2.splitlines() if 'path:' in l][:1])
-          PY
-          grep -n "binaryTarget\|path:" "$PKG/Package.swift" | head -6
+          grep -n "binaryTarget" local_packages/sodium_libs/darwin/sodium_libs/Package.swift
       - name: Verify SPM resolves local binaryTarget
         script: |
           set -e
           xcodebuild -resolvePackageDependencies -workspace ios/Runner.xcworkspace -scheme Runner
           echo "== artifact tree post-resolve =="
           find build/ios/SourcePackages -name "*sodium*" -o -name "*libsodium*" | head -20
-
   ios-unsigned-compile:
     name: iOS unsigned compile check
     instance_type: mac_mini_m2
@@ -282,50 +241,19 @@ workflows:
           echo "downloaded: $PLUG/darwin/Libraries/libsodium.xcframework"
       - name: Set up code signing
         script: xcode-project use-profiles
-      - name: Prepare local libsodium binaryTarget
-        # Generated Package.swift uses a URL binaryTarget — SPM re-downloads
-        # the pristine arm64e zip during archive. Strip the vendored copy,
-        # place it inside the package, point binaryTarget at the local path.
+      - name: Populate corrected libsodium binaryTarget
+        # local_packages/sodium_libs is the dependency_overrides copy —
+        # Flutter's .packages links now resolve to it, so the corrected
+        # path-based binaryTarget survives regeneration. Download the
+        # vendored xcframework, strip arm64e, place it at
+        # darwin/sodium_libs/Libraries/libsodium.xcframework (the path the
+        # rewritten Package.swift binaryTarget expects).
         script: |
           set -e
-          # The ephemeral .packages dir is created during SPM resolution —
-          # resolve first so the generated sodium_libs package exists.
-          # If SwiftPM reports a stale artifact-cache entry for THIS exact
-          # libsodium zip, remove only that validated path — nothing else.
-          rmout=$(xcodebuild -resolvePackageDependencies \
-            -workspace ios/Runner.xcworkspace -scheme Runner 2>&1 || true)
-          echo "$rmout" | tail -5
-          stale=$(echo "$rmout" | grep -o "$HOME/Library/Caches/org.swift.swiftpm/artifacts/[^ ]*libsodium[^ ]*zip" | head -1)
-          if [ -n "$stale" ]; then
-            case "$stale" in
-              "$HOME/Library/Caches/org.swift.swiftpm/artifacts/"*libsodium*)
-                echo "removing stale SwiftPM artifact: $stale"; rm -rf "$stale" ;;
-              *) echo "refusing to remove unexpected path: $stale"; exit 1 ;;
-            esac
-            xcodebuild -resolvePackageDependencies \
-              -workspace ios/Runner.xcworkspace -scheme Runner
-          fi
-          ls ios/Flutter/ephemeral/Packages/.packages 2>/dev/null || echo ".packages absent"
-          # .packages entries are SYMLINKS to pub-cache — find without -type d,
-          # then resolve to the canonical path. Exactly one match required.
-          LNK=$(find ios/Flutter/ephemeral/Packages/.packages -maxdepth 1 -name "sodium_libs-*" | head -1)
-          [ -n "$LNK" ] || { echo "generated sodium_libs package not found"; exit 1; }
-          CANON=$(cd "$LNK" && pwd -P)
-          echo "link: $LNK -> canonical: $CANON"
-          # Package isolation: NEVER modify the shared pub-cache copy.
-          # Replace the generated symlink with a real build-local copy that
-          # keeps the same package name/version so SPM still resolves it.
-          if [ "$CANON" = "${CANON#.pub-cache}" ]; then :; fi
-          case "$CANON" in
-            */pub-cache/*|*/.pub-cache/*)
-              echo "canonical is inside pub-cache — building local copy"
-              cp -R "$CANON" "$LNK.tmp" && rm "$LNK" && mv "$LNK.tmp" "$LNK" ;;
-            *) echo "canonical is already build-local" ;;
-          esac
-          PKG=$(cd "$LNK" && pwd -P)
           SRC=$(cd ios/.symlinks/plugins/sodium_libs && pwd -P)/darwin/Libraries/libsodium.xcframework
           [ -d "$SRC" ] || { echo "vendored xcframework missing"; exit 1; }
-          DEST="$PKG/Libraries"; mkdir -p "$DEST"; rm -rf "$DEST/libsodium.xcframework"
+          DEST="local_packages/sodium_libs/darwin/sodium_libs/Libraries"
+          mkdir -p "$DEST"; rm -rf "$DEST/libsodium.xcframework"
           cp -R "$SRC" "$DEST/libsodium.xcframework"
           find "$DEST/libsodium.xcframework" -name libsodium -type f | while read -r bin; do
             echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
@@ -341,16 +269,7 @@ workflows:
               if 'arm64e' in sa: sa.remove('arm64e'); lib['SupportedArchitectures']=sa
           plistlib.dump(info, open(p,'wb'))
           PY
-          python3 - "$PKG/Package.swift" <<'PY'
-          import re, sys
-          p = sys.argv[1]; s = open(p).read()
-          s2 = re.sub(r'\.binaryTarget\(\s*name:\s*"libsodium",\s*url:\s*"[^"]*",\s*checksum:\s*"[^"]*"\s*\)',
-                      '.binaryTarget(name: "libsodium", path: "Libraries/libsodium.xcframework")', s)
-          assert s2 != s or 'path: "Libraries/libsodium.xcframework"' in s, 'binaryTarget rewrite failed'
-          open(p,'w').write(s2)
-          print('binaryTarget ->', [l for l in s2.splitlines() if 'path:' in l][:1])
-          PY
-          grep -n "binaryTarget\|path:" "$PKG/Package.swift" | head -6
+          grep -n "binaryTarget" local_packages/sodium_libs/darwin/sodium_libs/Package.swift
       - name: Verify SPM resolves local binaryTarget
         script: |
           set -e
