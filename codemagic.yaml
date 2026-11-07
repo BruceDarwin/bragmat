@@ -32,7 +32,12 @@ workflows:
         # place it inside the package, point binaryTarget at the local path.
         script: |
           set -e
-          PKG=$(find ios/Flutter/ephemeral/Packages/.packages -maxdepth 1 -type d -name "sodium_libs-*" | head -1)
+          # The ephemeral .packages dir is created during SPM resolution —
+          # resolve first so the generated sodium_libs package exists.
+          xcodebuild -resolvePackageDependencies \
+            -workspace ios/Runner.xcworkspace -scheme Runner || true
+          ls ios/Flutter/ephemeral/Packages/.packages 2>/dev/null || echo ".packages absent"
+          PKG=$(find ios/Flutter/ephemeral -type d -name "sodium_libs-*" | head -1)
           [ -n "$PKG" ] || { echo "generated sodium_libs package not found"; exit 1; }
           echo "package: $PKG"
           SRC=$(cd ios/.symlinks/plugins/sodium_libs && pwd -P)/darwin/Libraries/libsodium.xcframework
