@@ -150,3 +150,39 @@ and backup formats unchanged.
 **Outstanding**: `sodium_libs` is discontinued (replaced by `sodium`).
 Longer-term: migrate to `sodium` or vendor libsodium directly — the
 override remains a stable interim fix.
+
+## iOS-3D — Device acceptance closeout (build 17)
+
+**Validated**: TestFlight `1.0.0+16/17` on iPhone 11, Codemagic
+`6aeebc711dab607040ce3838`, commit `b6061b7` on `feature/ios-dev`.
+
+- **IOS-D1 RESOLVED (device-verified)** — two defects fixed: (a)
+  `_saveCatch` prompt-cancel early returns left `_isSaving` true, deading
+  Save (`finally` now releases it); (b) `_loadInitialData` had no error
+  handling — failures left an eternal spinner with no `bottomNavigationBar`
+  (new `_initialDataLoadFailed` error state, no partial-form save);
+  (c) `bottomNavigationBar` isn't keyboard-inset aware — numeric keyboard
+  covered Save on entry (Padding on `viewInsets.bottom` lifts it).
+- **IOS-D2 RESOLVED (device-verified)** — `location_picker_screen`
+  assigned the centre-of-Australia camera fallback (-25.2744, 133.7751)
+  to `_selectedLocation` on GPS failure, writing false coords. Now:
+  permission request flow + 10s `timeLimit`; failure leaves selection
+  null, disables Confirm, shows explicit unavailable message; fallback
+  remains camera-only; no fabricated coords reach SQLite.
+- **IOS-D3 PENDING** — `NSLocationAlwaysAndWhenInUseUsageDescription`
+  added for ITMS-90683 (geolocator_apple links requestAlwaysAuthorization;
+  When-In-Use only is ever requested). Awaiting Apple's processing
+  result/warning clearance on build 17.
+- **UNRESOLVED** — `settings_release_gate_test` ×2: async exceptions
+  thrown post-completion by an unidentified leaking test file; passes in
+  isolation. Separate test-isolation defect, unrelated to iOS changes.
+- iOS-D1/D2 regression tests: `test/ios_d1_d2_defects_test.dart` (10/10).
+
+## Proposed next-stage iOS acceptance checklist
+
+1. Photo attach (camera + gallery), EXIF/GPS provenance, persistence
+2. Trip create/edit, trip catch map, chronological markers
+3. Environmental conditions entry, tide-reference selection, WorldTides
+4. Full offline operation (airplane mode): catches, trips, maps, saves
+5. Backup: encrypted `bragmat_backup_*.zip` export → verify off-device
+   copy → synthetic-data restore only (no destructive tests)
