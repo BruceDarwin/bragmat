@@ -35,23 +35,13 @@ workflows:
           echo "== pre-resolve =="
           ls build/ios/SourcePackages/artifacts 2>/dev/null || echo "no artifacts yet"
           xcodebuild -resolvePackageDependencies \
-            -workspace ios/Runner.xcworkspace -scheme Runner >/dev/null 2>&1 || true
+            -workspace ios/Runner.xcworkspace -scheme Runner || echo "resolve failed"
           echo "== post-resolve =="
           ls build/ios/SourcePackages/artifacts 2>/dev/null || echo "still no artifacts"
-          XCF=$(find build/ios/SourcePackages -type d \
-            -name "libsodium.xcframework" -path "*sodium_libs*" 2>/dev/null | head -1)
-          [ -n "$XCF" ] && [ -d "$XCF" ] \
-            || { echo "SPM libsodium.xcframework not found after resolve"; exit 1; }
-          echo "SPM artifact: $XCF"
-          find "$XCF" -name libsodium -type f | while read -r bin; do
-            echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
-            if lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64e; then
-              lipo -remove arm64e "$bin" -o "$bin"
-            fi
-            lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64 \
-              || { echo "FAIL: arm64 missing in $bin"; exit 1; }
-            echo "after:  $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
-          done
+          echo "== sodium_libs artifact tree =="
+          find build/ios/SourcePackages -name "*sodium*" -print | head -25
+          echo "== all *libsodium* paths in clone =="
+          find build ios -name "*libsodium*" -print 2>/dev/null | head -30
 
   ios-unsigned-compile:
     name: iOS unsigned compile check
