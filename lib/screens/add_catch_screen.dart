@@ -136,6 +136,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
   bool _hasUnsavedChanges = false;
   late Catch? _originalCatch;
   bool _isLoadingInitialData = false;
+  bool _initialDataLoadFailed = false;
 
   @override
   void initState() {
@@ -202,20 +203,15 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         _isLoadingInitialData = false;
       });
       } catch (e, st) {
-        // A loader failure must not strand the user on the loading screen
-        // — without this catch the spinner (and absent Save button) is
-        // permanent. Surface the error and stop loading.
+        // A loader failure must not strand the user on the loading screen,
+        // and a partially loaded form must never silently overwrite the
+        // stored catch — flag the failure and block the save path.
         debugPrint('ERROR loading catch for editing: $e\n$st');
         if (mounted) {
           setState(() {
             _isLoadingInitialData = false;
+            _initialDataLoadFailed = true;
           });
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Error loading catch details: $e'),
-              backgroundColor: Colors.red,
-            ),
-          );
         }
       }
 
@@ -2083,6 +2079,30 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         ),
       );
     }
+
+    // Initial-data load failed — show an explicit error state instead of
+    // a partially populated form, so nothing can overwrite stored fields.
+    if (_initialDataLoadFailed) {
+      return Scaffold(
+        appBar: AppBar(
+          title: const Text('Edit Catch'),
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => Navigator.pop(context),
+          ),
+        ),
+        body: const Center(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Text(
+              'Couldn\'t load this catch\'s details. '
+              'Your data is unchanged — go back and try again.',
+              textAlign: TextAlign.center,
+            ),
+          ),
+        ),
+      );
+    }
     
     return WillPopScope(
       onWillPop: _onWillPop,
@@ -2927,6 +2947,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                           ];
                           return DropdownButtonFormField<String?>(
                             value: _selectedReferenceTideEventType,
+                            isExpanded: true,
                             decoration: const InputDecoration(labelText: 'Reference Tide Event'),
                             items: items,
                             onChanged: (value) {
@@ -3025,6 +3046,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                           ];
                           return DropdownButtonFormField<String?>(
                             value: _selectedPreviousTideEventType,
+                            isExpanded: true,
                             decoration: const InputDecoration(labelText: 'Previous Tide (Optional)'),
                             items: items,
                             onChanged: (value) {
@@ -3104,6 +3126,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                           ];
                           return DropdownButtonFormField<String?>(
                             value: _selectedNextTideEventType,
+                            isExpanded: true,
                             decoration: const InputDecoration(labelText: 'Next Tide (Optional)'),
                             items: items,
                             onChanged: (value) {

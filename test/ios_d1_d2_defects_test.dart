@@ -322,6 +322,81 @@ void main() {
       await tester.pumpUntil(find.byType(AddCatchScreen),
           because: 'screen to pop after save', invert: true);
     });
+
+    testWidgets('edit form finishes loading — Save visible on iPhone 11 '
+        'viewport', (tester) async {
+      // iPhone 11 logical viewport: 414 x 896.
+      tester.binding.setSurfaceSize(const Size(414, 896));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final catchToEdit = await _insertCatch(tester);
+      await tester.openEditCatch(catchToEdit);
+
+      await tester.ensureVisible(find.text('Save Changes'));
+      expect(find.text('Save Changes'), findsOneWidget);
+      expect(
+          tester.widget<ElevatedButton>(
+              find.widgetWithText(ElevatedButton, 'Save Changes')),
+          isNotNull);
+    });
+
+    testWidgets('failed initial-data load shows error state, Save blocked',
+        (tester) async {
+      final catchToEdit = await _insertCatch(tester);
+      // Corrupt the observation timestamp — DateTime.parse throws inside
+      // getEnvironmentalConditionForCatch, failing the initial load.
+      await tester.runAsync(() async {
+        final db = await DatabaseHelper.instance.database;
+        await db.insert('environmental_conditions', {
+          'catch_id': catchToEdit.id,
+          'observation_date_time': 'not-a-date',
+          'created_at': '2026-08-02T10:00:00.000',
+          'updated_at': '2026-08-02T10:00:00.000',
+        });
+      });
+
+      await tester.pumpWidget(MaterialApp(
+        home: AddCatchScreen(catchToEdit: catchToEdit),
+      ));
+      await tester.pumpUntil(
+          find.textContaining("Couldn't load this catch"),
+          because: 'load-failure error state');
+
+      // No partially loaded form and no Save path — nothing can
+      // silently overwrite the stored catch.
+      expect(find.text('Save Changes'), findsNothing);
+      final row = await tester.runAsync(() async {
+        final db = await DatabaseHelper.instance.database;
+        return db.query('catches',
+            where: 'id = ?', whereArgs: [catchToEdit.id]);
+      });
+      expect(row, isNotEmpty);
+    });
+
+    testWidgets('successful edit persists after saving', (tester) async {
+      final catchToEdit = await _insertCatch(tester);
+      await _insertDarwinCondition(tester, catchToEdit.id!);
+
+      await tester.openEditCatch(catchToEdit);
+
+      // Edit a simple field (notes) — no reference/location/date change,
+      // so save takes the plain upsert path without prompts.
+      final notesField = find.ancestor(
+          of: find.text('Catch Notes'), matching: find.byType(TextField));
+      await tester.ensureVisible(notesField);
+      await tester.enterText(notesField, 'edited notes');
+      await tester.tapSave();
+      await tester.pumpUntil(find.byType(AddCatchScreen),
+          because: 'screen to pop after save', invert: true);
+
+      final rows = await tester.runAsync(() async {
+        final db = await DatabaseHelper.instance.database;
+        return db.query('catches',
+            where: 'id = ?', whereArgs: [catchToEdit.id]);
+      });
+      expect(rows, isNotNull);
+      expect(rows!.single['notes'], 'edited notes');
+    });
   });
 
   group('IOS-D2 — GPS failure never writes fallback coordinates', () {
@@ -380,5 +455,28 @@ void main() {
       expect(result!['latitude'], closeTo(-12.4634, 1e-6));
       expect(result!['longitude'], closeTo(130.8456, 1e-6));
     });
+
+    for (final (name, setup) in [
+      ('permission denied', () => geo.permission = LocationPermission.denied),
+      ('permission denied forever',
+          () => geo.permission = LocationPermission.deniedForever),
+      ('fix timeout/failure',
+          () => geo.nextError = Exception('getCurrentPosition timed out')),
+    ]) {
+      testWidgets('$name: no selection, Confirm disabled, error shown',
+          (tester) async {
+        setup();
+        await tester.pumpWidget(
+            const MaterialApp(home: LocationPickerScreen()));
+        await tester.pumpUntil(
+          find.textContaining("Couldn't get your current location"),
+          because: 'location-unavailable message for $name',
+        );
+        final confirm = tester.widget<IconButton>(
+            find.widgetWithIcon(IconButton, Icons.check));
+        expect(confirm.onPressed, isNull);
+        await tester.pump(const Duration(seconds: 1));
+      });
+    }
   });
 }
