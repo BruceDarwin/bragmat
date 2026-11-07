@@ -373,6 +373,46 @@ void main() {
       expect(row, isNotEmpty);
     });
 
+    testWidgets('Save stays above the keyboard after size entry '
+        '(edit + new, iPhone 11 viewport)', (tester) async {
+      tester.binding.setSurfaceSize(const Size(414, 896));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+
+      final catchToEdit = await _insertCatch(tester);
+      await tester.openEditCatch(catchToEdit);
+
+      // Save visible before size entry.
+      await tester.ensureVisible(find.text('Save Changes'));
+      expect(find.text('Save Changes'), findsOneWidget);
+
+      // Focus the size field and simulate the iOS keyboard inset on the
+      // same live screen (FakeViewPadding is physical; dpr = 3.0).
+      final sizeField = find.ancestor(
+          of: find.text('Size (cm)'), matching: find.byType(TextField));
+      await tester.ensureVisible(sizeField);
+      await tester.tap(sizeField);
+      await tester.enterText(sizeField, '45');
+      tester.view.viewInsets =
+          const FakeViewPadding(bottom: 353 * 3.0);
+      addTearDown(() => tester.view.viewInsets = FakeViewPadding.zero);
+      await tester.pump();
+
+      // The Save bar must sit above the keyboard — its bottom edge
+      // inside the unobscured viewport height (896 - 353).
+      final saveBottom =
+          tester.getBottomLeft(find.text('Save Changes')).dy;
+      expect(saveBottom, lessThanOrEqualTo(896 - 353 + 1));
+
+      // Actually tappable — not just painted.
+      await tester.tap(find.text('Save Changes'));
+      await tester.pump();
+
+      // Keyboard dismissed — Save still reachable.
+      tester.view.viewInsets = FakeViewPadding.zero;
+      await tester.pump();
+      expect(find.text('Save Changes'), findsOneWidget);
+    });
+
     testWidgets('successful edit persists after saving', (tester) async {
       final catchToEdit = await _insertCatch(tester);
       await _insertDarwinCondition(tester, catchToEdit.id!);

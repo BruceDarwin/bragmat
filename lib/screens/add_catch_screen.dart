@@ -3337,19 +3337,24 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
             ],
           ),
       ),
-      bottomNavigationBar: SafeArea(
-        child: Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.1),
-                blurRadius: 8,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
+      bottomNavigationBar: Padding(
+        // Lift the Save bar above the software keyboard — Scaffold's
+        // bottomNavigationBar is NOT inset-aware and would be covered.
+        padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom),
+        child: SafeArea(
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
           child: SizedBox(
             width: double.infinity,
             height: 50,
@@ -3360,6 +3365,7 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
                 style: const TextStyle(fontSize: 16),
               ),
             ),
+          ),
           ),
         ),
       ),
