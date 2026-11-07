@@ -26,6 +26,17 @@ workflows:
       - name: pod install
         script: |
           cd ios && pod install
+      - name: Fetch vendored libsodium xcframework
+        # prepare_command doesn't run for :path pods — invoke the package's
+        # own download script so darwin/Libraries/libsodium.xcframework exists.
+        script: |
+          set -e
+          PLUG=$(cd ios/.symlinks/plugins/sodium_libs 2>/dev/null && pwd -P || true)
+          (cd "$PLUG/darwin" && dart run ../tool/libsodium/download.dart darwin) \
+            || { echo "libsodium download failed"; exit 1; }
+          test -d "$PLUG/darwin/Libraries/libsodium.xcframework" \
+            || { echo "libsodium.xcframework missing after download"; exit 1; }
+          echo "downloaded: $PLUG/darwin/Libraries/libsodium.xcframework"
       - name: Prepare local libsodium binaryTarget
         # Generated Package.swift uses a URL binaryTarget — SPM re-downloads
         # the pristine arm64e zip during archive. Strip the vendored copy,
