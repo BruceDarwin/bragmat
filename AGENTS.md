@@ -120,3 +120,33 @@ When v14 is approved, the integration must include:
    `tool/audit_fk.dart` before enabling enforcement on-device.
 
 No push, merge, tag or beta distribution until explicitly approved.
+
+## iOS-3C — arm64e packaging fix (validated 2026-11-07)
+
+**Root cause**: `sodium_libs` v3.4.6+4 declares an SPM `binaryTarget`
+downloading `libsodium-1.0.20-darwin.zip`, whose xcframework device slice
+contains an `arm64e` binary. Apple's App Store Connect rejects uploads
+containing `arm64e` (error 91011). The arm64e slice is a pointer-auth
+hardware extension for newer devices (A12+, M1+) — Apple requires either
+no arm64e or explicit opt-in, and rejects plain arm64e frameworks.
+
+**Fix — dependency_overrides**: `pubspec.yaml` `dependency_overrides:
+sodium_libs: path: local_packages/sodium_libs` — a project-local copy of
+the same v3.4.6+4 package with `darwin/sodium_libs/Package.swift`
+binaryTarget rewritten to `path: "Libraries/libsodium.xcframework"`
+(the url+checksum form was replaced). The local package is populated at
+build time: `ios-testflight` yaml step downloads the same
+`libsodium-1.0.20-darwin.zip` (upstream checksum verified), extracts the
+xcframework to `local_packages/.../Libraries/`, strips `arm64e` via
+`lipo -remove`, updates `Info.plist` SupportedArchitectures, and SPM
+resolves the local `path:` target — surviving `.packages` regeneration.
+
+**Validated**: Codemagic `ios-testflight` on `d6536b2` →
+`bragmat.ipa` (arm64-only embedded, app + framework signatures valid,
+App Store Connect upload succeeded — no 91011). 714/714 Flutter tests.
+Pub-cache untouched; Android, crypto (Argon2id + XChaCha20-Poly1305),
+and backup formats unchanged.
+
+**Outstanding**: `sodium_libs` is discontinued (replaced by `sodium`).
+Longer-term: migrate to `sodium` or vendor libsodium directly — the
+override remains a stable interim fix.
