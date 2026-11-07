@@ -164,6 +164,35 @@ workflows:
         script: |
           test -s "$HOME/export_options.plist" || \
             { echo "export_options.plist missing or empty"; exit 1; }
+      - name: Populate corrected libsodium binaryTarget
+        # local_packages/sodium_libs is the dependency_overrides copy —
+        # Flutter's .packages links now resolve to it, so the corrected
+        # path-based binaryTarget survives regeneration. Download the
+        # vendored xcframework, strip arm64e, place it at
+        # darwin/sodium_libs/Libraries/libsodium.xcframework (the path the
+        # rewritten Package.swift binaryTarget expects).
+        script: |
+          set -e
+          SRC=$(cd ios/.symlinks/plugins/sodium_libs && pwd -P)/darwin/Libraries/libsodium.xcframework
+          [ -d "$SRC" ] || { echo "vendored xcframework missing"; exit 1; }
+          DEST="local_packages/sodium_libs/darwin/sodium_libs/Libraries"
+          mkdir -p "$DEST"; rm -rf "$DEST/libsodium.xcframework"
+          cp -R "$SRC" "$DEST/libsodium.xcframework"
+          find "$DEST/libsodium.xcframework" -name libsodium -type f | while read -r bin; do
+            echo "before: $bin -> $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+            lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64e && lipo -remove arm64e "$bin" -o "$bin"
+            lipo -archs "$bin" | tr ' ' '\n' | grep -qx arm64 || { echo "FAIL: arm64 missing"; exit 1; }
+            echo "after:  $(lipo -archs "$bin") sha=$(shasum -a 256 "$bin" | cut -d' ' -f1)"
+          done
+          python3 - "$DEST/libsodium.xcframework/Info.plist" <<'PY'
+          import plistlib, sys
+          p = sys.argv[1]; info = plistlib.load(open(p,'rb'))
+          for lib in info.get('AvailableLibraries', []):
+              sa = lib.get('SupportedArchitectures', [])
+              if 'arm64e' in sa: sa.remove('arm64e'); lib['SupportedArchitectures']=sa
+          plistlib.dump(info, open(p,'wb'))
+          PY
+          grep -n "binaryTarget" local_packages/sodium_libs/darwin/sodium_libs/Package.swift
       - name: Signed IPA (App Store profile)
         script: |
           flutter build ipa --release \
