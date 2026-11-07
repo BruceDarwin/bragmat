@@ -70,6 +70,11 @@
 	<string>Bragmat lets you choose photos from your library to attach to catches and trips, and reads photo date and location metadata when available.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Bragmat records where each catch was made so it can be shown on the map and matched with local weather and tide data.</string>
+	<!-- ITMS-90683: geolocator_apple links requestAlwaysAuthorization, so
+	     Apple's scanner requires this key even though Bragmat only ever
+	     requests When In Use. It is never shown to the user. -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>Bragmat records where each catch was made so it can be shown on the map and matched with local weather and tide data.</string>
 	<!-- Make the app Documents folder visible in the Files app so users can
 	     reach exported backup ZIPs directly. -->
 	<key>UIFileSharingEnabled</key>

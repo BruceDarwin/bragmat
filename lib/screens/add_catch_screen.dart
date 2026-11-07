@@ -157,7 +157,8 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       setState(() {
         _isLoadingInitialData = true;
       });
-      
+
+      try {
       // Load all lookup lists and environmental data in parallel where possible
       await Future.wait([
         _loadFishTypes(),
@@ -200,6 +201,23 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
       setState(() {
         _isLoadingInitialData = false;
       });
+      } catch (e, st) {
+        // A loader failure must not strand the user on the loading screen
+        // — without this catch the spinner (and absent Save button) is
+        // permanent. Surface the error and stop loading.
+        debugPrint('ERROR loading catch for editing: $e\n$st');
+        if (mounted) {
+          setState(() {
+            _isLoadingInitialData = false;
+          });
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Error loading catch details: $e'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
 
       // Camera photos taken while editing this catch can be lost when
       // Android destroys the activity. Recover them here — before any
@@ -1722,6 +1740,14 @@ class _AddCatchScreenState extends State<AddCatchScreen> with WidgetsBindingObse
         );
       }
       return;
+    } finally {
+      // The prompt-cancel paths above return early without clearing the
+      // guard — release it here so a later Save press still works.
+      if (mounted && _isSaving) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
 
     setState(() {

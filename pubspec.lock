@@ -130,7 +130,7 @@ packages:
     source: hosted
     version: "0.3.5+2"
   crypto:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       name: crypto
       sha256: c8ea0233063ba03258fbcf2ca4d6dadfefe14f02fab57702265467a19f27fadf
@@ -170,7 +170,7 @@ packages:
     source: hosted
     version: "0.7.14"
   dio:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       name: dio
       sha256: "852ec3b48cc431ac04fff978413c541502b67ffc3e26921e74e3d994694192c1"
@@ -178,7 +178,7 @@ packages:
     source: hosted
     version: "5.11.1"
   dio_cache_interceptor:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       name: dio_cache_interceptor
       sha256: "9472f9f3dcaa384ae68e60606c1d04e6314dea5eab39f18d94ff9b0a300dbbe4"
@@ -319,7 +319,7 @@ packages:
     source: hosted
     version: "6.2.1"
   flutter_map_cache:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       name: flutter_map_cache
       sha256: e48e8be8c08fbfe723252e52b1262dfae7f72dc269330f4aca6f94edb982b2b4
@@ -433,7 +433,7 @@ packages:
     source: hosted
     version: "2.3.14"
   geolocator_platform_interface:
-    dependency: transitive
+    dependency: "direct dev"
     description:
       name: geolocator_platform_interface
       sha256: cdb082e4f048b69da244117b7914cc60d2a8897546ffaa4f2529c786ded7aee2
@@ -505,7 +505,7 @@ packages:
     source: hosted
     version: "1.1.4"
   http_cache_file_store:
-    dependency: "direct overridden"
+    dependency: "direct main"
     description:
       name: http_cache_file_store
       sha256: b83bc178226d82a52f56b97801639ff8d94caeaf5464d25cc96082015111f375

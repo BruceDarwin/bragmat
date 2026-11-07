@@ -59,6 +59,11 @@ dependencies:
   uuid: ^4.6.0
   sqflite_common: ^2.5.14
   sodium_libs: ^3.4.6+4
+  crypto: ^3.0.7
+  flutter_map_cache: ^2.1.1
+  http_cache_file_store: ^2.0.2
+  dio_cache_interceptor: ^4.0.7
+  dio: ^5.11.1
 
 # iOS-3C: libsodium's SPM binaryTarget ships an arm64e slice that App Store
 # Connect rejects (error 91011). A project-local copy of the unmodified
@@ -69,11 +74,6 @@ dependencies:
 dependency_overrides:
   sodium_libs:
     path: local_packages/sodium_libs
-  crypto: ^3.0.7
-  flutter_map_cache: ^2.1.1
-  http_cache_file_store: ^2.0.2
-  dio_cache_interceptor: ^4.0.7
-  dio: ^5.11.1
 
 dev_dependencies:
   flutter_test:
@@ -90,6 +90,8 @@ dev_dependencies:
   # Test-only: fake ImagePickerPlatform for workflow widget tests.
   image_picker_platform_interface: ^2.11.1
   plugin_platform_interface: ^2.1.8
+  # Test-only: fake GeolocatorPlatform for location regression tests.
+  geolocator_platform_interface: ^4.2.6
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

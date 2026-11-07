@@ -24,6 +24,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   LatLng? _selectedLocation;
   bool _isLoading = true;
   bool _isOnline = true;
+  bool _locationUnavailable = false;
   final ConnectivityService _connectivityService = ConnectivityService();
 
   @override
@@ -57,17 +58,30 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       initialCenter = LatLng(widget.initialLatitude!, widget.initialLongitude!);
       _selectedLocation = initialCenter;
     } else {
-      // Try to get current device location
+      // Try to get current device location. iOS requires the permission
+      // request to run first — a bare getCurrentPosition() throws.
       try {
+        var permission = await Geolocator.checkPermission();
+        if (permission == LocationPermission.denied) {
+          permission = await Geolocator.requestPermission();
+        }
+        if (permission == LocationPermission.denied ||
+            permission == LocationPermission.deniedForever) {
+          throw PermissionDeniedException('Location permission denied');
+        }
         final position = await Geolocator.getCurrentPosition(
           desiredAccuracy: LocationAccuracy.high,
+          timeLimit: const Duration(seconds: 10),
         );
         initialCenter = LatLng(position.latitude, position.longitude);
         _selectedLocation = initialCenter;
       } catch (e) {
-        // Default to a sensible location (e.g., center of Australia)
+        // The map may centre on Australia for browsing, but the fallback
+        // is never a real fix — leave _selectedLocation empty so Confirm
+        // stays disabled and flag the failure explicitly.
         initialCenter = const LatLng(-25.2744, 133.7751);
-        _selectedLocation = initialCenter;
+        _selectedLocation = null;
+        _locationUnavailable = true;
       }
     }
 
@@ -78,7 +92,13 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       
       // Move map to initial center after a short delay to ensure controller is ready
       Future.delayed(const Duration(milliseconds: 100), () {
-        _mapController.move(initialCenter, 15.0);
+        if (!mounted) return;
+        try {
+          _mapController.move(initialCenter, 15.0);
+        } catch (_) {
+          // Controller not attached yet — the map already opens at
+          // initialCenter, so the delayed move is best-effort only.
+        }
       });
     }
   }
@@ -187,7 +207,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_selectedLocation != null) ...[
+                  if (_locationUnavailable)
+                    Text(
+                      'Couldn\'t get your current location — '
+                      'tap the map or enter coordinates instead.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                    )
+                  else if (_selectedLocation != null) ...[
                     Text(
                       'Selected Location:',
                       style: Theme.of(context).textTheme.titleSmall,
